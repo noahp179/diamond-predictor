@@ -25,12 +25,22 @@ export function GameCard({ game }: { game: PredictedGame }) {
       {/* status strip */}
       <div className="flex items-center justify-between border-b border-border bg-secondary/40 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
         <span>{formatTime(game.date)} · {game.venue}</span>
-        <span className="text-primary">{game.status}</span>
+        <span className={game.correct == null ? "text-primary" : game.correct ? "text-grass" : "text-clay"}>
+          {game.correct == null ? game.status : game.correct ? "✓ Correct" : "✗ Miss"}
+        </span>
       </div>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-5 py-6">
         <TeamBlock side={game.away} prob={game.awayWinProb} align="left" />
-        <div className="font-display text-3xl text-muted-foreground">@</div>
+        <div className="text-center">
+          {game.homeScore != null && game.awayScore != null ? (
+            <div className="font-display text-3xl text-foreground">
+              {game.awayScore}–{game.homeScore}
+            </div>
+          ) : (
+            <div className="font-display text-3xl text-muted-foreground">@</div>
+          )}
+        </div>
         <TeamBlock side={game.home} prob={game.homeWinProb} align="right" />
       </div>
 
