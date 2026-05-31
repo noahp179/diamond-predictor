@@ -14,7 +14,173 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      daily_metrics: {
+        Row: {
+          accuracy: number | null
+          brier: number | null
+          correct: number
+          games: number
+          log_loss: number | null
+          metric_date: string
+          model_version: string
+          settled: number
+          updated_at: string
+        }
+        Insert: {
+          accuracy?: number | null
+          brier?: number | null
+          correct: number
+          games: number
+          log_loss?: number | null
+          metric_date: string
+          model_version: string
+          settled: number
+          updated_at?: string
+        }
+        Update: {
+          accuracy?: number | null
+          brier?: number | null
+          correct?: number
+          games?: number
+          log_loss?: number | null
+          metric_date?: string
+          model_version?: string
+          settled?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      games: {
+        Row: {
+          away_score: number | null
+          away_team_abbr: string
+          away_team_id: number
+          away_team_name: string
+          created_at: string
+          game_date: string
+          game_id: number
+          game_time: string
+          home_score: number | null
+          home_team_abbr: string
+          home_team_id: number
+          home_team_name: string
+          raw: Json | null
+          status: string
+          updated_at: string
+          venue: string | null
+          winner: string | null
+        }
+        Insert: {
+          away_score?: number | null
+          away_team_abbr: string
+          away_team_id: number
+          away_team_name: string
+          created_at?: string
+          game_date: string
+          game_id: number
+          game_time: string
+          home_score?: number | null
+          home_team_abbr: string
+          home_team_id: number
+          home_team_name: string
+          raw?: Json | null
+          status: string
+          updated_at?: string
+          venue?: string | null
+          winner?: string | null
+        }
+        Update: {
+          away_score?: number | null
+          away_team_abbr?: string
+          away_team_id?: number
+          away_team_name?: string
+          created_at?: string
+          game_date?: string
+          game_id?: number
+          game_time?: string
+          home_score?: number | null
+          home_team_abbr?: string
+          home_team_id?: number
+          home_team_name?: string
+          raw?: Json | null
+          status?: string
+          updated_at?: string
+          venue?: string | null
+          winner?: string | null
+        }
+        Relationships: []
+      }
+      predictions: {
+        Row: {
+          away_pitcher_era: number | null
+          away_pitcher_id: number | null
+          away_pitcher_name: string | null
+          away_win_pct: number | null
+          away_win_prob: number
+          brier: number | null
+          correct: boolean | null
+          game_id: number
+          home_pitcher_era: number | null
+          home_pitcher_id: number | null
+          home_pitcher_name: string | null
+          home_win_pct: number | null
+          home_win_prob: number
+          log_loss: number | null
+          model_version: string
+          predicted_at: string
+          rationale: Json | null
+          settled_at: string | null
+        }
+        Insert: {
+          away_pitcher_era?: number | null
+          away_pitcher_id?: number | null
+          away_pitcher_name?: string | null
+          away_win_pct?: number | null
+          away_win_prob: number
+          brier?: number | null
+          correct?: boolean | null
+          game_id: number
+          home_pitcher_era?: number | null
+          home_pitcher_id?: number | null
+          home_pitcher_name?: string | null
+          home_win_pct?: number | null
+          home_win_prob: number
+          log_loss?: number | null
+          model_version: string
+          predicted_at?: string
+          rationale?: Json | null
+          settled_at?: string | null
+        }
+        Update: {
+          away_pitcher_era?: number | null
+          away_pitcher_id?: number | null
+          away_pitcher_name?: string | null
+          away_win_pct?: number | null
+          away_win_prob?: number
+          brier?: number | null
+          correct?: boolean | null
+          game_id?: number
+          home_pitcher_era?: number | null
+          home_pitcher_id?: number | null
+          home_pitcher_name?: string | null
+          home_win_pct?: number | null
+          home_win_prob?: number
+          log_loss?: number | null
+          model_version?: string
+          predicted_at?: string
+          rationale?: Json | null
+          settled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predictions_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["game_id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
