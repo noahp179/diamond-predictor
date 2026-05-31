@@ -1,184 +1,114 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const STATS_API = "https://statsapi.mlb.com/api/v1";
+import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./mlb-core";
 
-export interface PredictedGame {
-  gameId: number;
-  date: string;
-  status: string;
-  venue: string;
-  home: TeamSide;
-  away: TeamSide;
-  homeWinProb: number;
-  awayWinProb: number;
-  rationale: string[];
+export type { PredictedGame } from "./mlb-core";
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-export interface TeamSide {
-  id: number;
-  name: string;
-  abbreviation: string;
-  record: string;
-  winPct: number;
-  pitcher: {
-    id: number | null;
-    name: string;
-    era: number | null;
-    wins: number | null;
-    losses: number | null;
-  } | null;
-}
-
-interface StandingsRow {
-  teamId: number;
-  winPct: number;
-  wins: number;
-  losses: number;
-}
-
-async function fetchStandings(season: number): Promise<Map<number, StandingsRow>> {
-  const url = `${STATS_API}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`;
-  const res = await fetch(url);
-  if (!res.ok) return new Map();
-  const json: any = await res.json();
-  const map = new Map<number, StandingsRow>();
-  for (const rec of json.records ?? []) {
-    for (const tr of rec.teamRecords ?? []) {
-      map.set(tr.team.id, {
-        teamId: tr.team.id,
-        winPct: parseFloat(tr.winningPercentage ?? "0.5") || 0.5,
-        wins: tr.wins ?? 0,
-        losses: tr.losses ?? 0,
-      });
-    }
-  }
-  return map;
-}
-
-async function fetchPitcherEra(personId: number, season: number): Promise<{ era: number | null; w: number | null; l: number | null }> {
-  try {
-    const url = `${STATS_API}/people/${personId}/stats?stats=season&group=pitching&season=${season}`;
-    const res = await fetch(url);
-    if (!res.ok) return { era: null, w: null, l: null };
-    const json: any = await res.json();
-    const split = json?.stats?.[0]?.splits?.[0]?.stat;
-    if (!split) return { era: null, w: null, l: null };
-    const era = split.era ? parseFloat(split.era) : null;
-    return { era: Number.isFinite(era as number) ? era : null, w: split.wins ?? null, l: split.losses ?? null };
-  } catch {
-    return { era: null, w: null, l: null };
-  }
-}
-
-function predict(
-  homeWinPct: number,
-  awayWinPct: number,
-  homeEra: number | null,
-  awayEra: number | null,
-): { home: number; away: number; rationale: string[] } {
-  const rationale: string[] = [];
-  // log-odds from win pct
-  const clamp = (x: number) => Math.min(0.85, Math.max(0.15, x));
-  const hp = clamp(homeWinPct);
-  const ap = clamp(awayWinPct);
-  const logit = (p: number) => Math.log(p / (1 - p));
-  let lo = logit(hp) - logit(ap);
-  rationale.push(`Season form: ${(hp * 100).toFixed(0)}% vs ${(ap * 100).toFixed(0)}%`);
-
-  // home field
-  lo += 0.18;
-  rationale.push("Home-field edge: +0.18 log-odds");
-
-  // pitcher ERA differential (lower = better). League avg ~4.20
-  if (homeEra != null && awayEra != null) {
-    const diff = awayEra - homeEra; // positive => home pitcher better
-    const adj = diff * 0.18;
-    lo += adj;
-    rationale.push(`Starter ERA gap ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} log-odds`);
-  } else if (homeEra != null) {
-    const adj = (4.2 - homeEra) * 0.1;
-    lo += adj;
-    rationale.push(`Home starter ERA ${homeEra.toFixed(2)} vs league 4.20`);
-  } else if (awayEra != null) {
-    const adj = -(4.2 - awayEra) * 0.1;
-    lo += adj;
-    rationale.push(`Away starter ERA ${awayEra.toFixed(2)} vs league 4.20`);
-  }
-
-  const p = 1 / (1 + Math.exp(-lo));
-  return { home: p, away: 1 - p, rationale };
-}
-
+// Read-side: prefer DB (populated by the cron); fall back to live MLB API.
 export const getDailyGames = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const today = data?.date ?? new Date().toISOString().slice(0, 10);
-    const season = parseInt(today.slice(0, 4), 10);
-    const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue&startDate=${today}&endDate=${today}`;
-    const [scheduleRes, standings] = await Promise.all([fetch(scheduleUrl), fetchStandings(season)]);
-    if (!scheduleRes.ok) {
-      throw new Error(`MLB schedule fetch failed: ${scheduleRes.status}`);
-    }
-    const scheduleJson: any = await scheduleRes.json();
-    const games = scheduleJson?.dates?.[0]?.games ?? [];
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const date = data?.date ?? todayISO();
 
-    const pitcherIds = new Set<number>();
-    for (const g of games) {
-      const hp = g.teams?.home?.probablePitcher?.id;
-      const ap = g.teams?.away?.probablePitcher?.id;
-      if (hp) pitcherIds.add(hp);
-      if (ap) pitcherIds.add(ap);
-    }
-    const pitcherStats = new Map<number, { era: number | null; w: number | null; l: number | null }>();
-    await Promise.all(
-      Array.from(pitcherIds).map(async (id) => {
-        pitcherStats.set(id, await fetchPitcherEra(id, season));
-      }),
-    );
+    const { data: rows } = await supabaseAdmin
+      .from("games")
+      .select(
+        "game_id, game_time, status, venue, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, home_score, away_score, winner, predictions(home_win_prob, away_win_prob, home_win_pct, away_win_pct, home_pitcher_name, home_pitcher_era, away_pitcher_name, away_pitcher_era, rationale, correct, model_version)",
+      )
+      .eq("game_date", date)
+      .order("game_time", { ascending: true });
 
-    const out: PredictedGame[] = games.map((g: any) => {
-      const homeTeam = g.teams.home.team;
-      const awayTeam = g.teams.away.team;
-      const homeStand = standings.get(homeTeam.id);
-      const awayStand = standings.get(awayTeam.id);
-      const homeWinPct = homeStand?.winPct ?? 0.5;
-      const awayWinPct = awayStand?.winPct ?? 0.5;
-      const homePitcher = g.teams.home.probablePitcher;
-      const awayPitcher = g.teams.away.probablePitcher;
-      const homePs = homePitcher ? pitcherStats.get(homePitcher.id) : null;
-      const awayPs = awayPitcher ? pitcherStats.get(awayPitcher.id) : null;
-      const pred = predict(homeWinPct, awayWinPct, homePs?.era ?? null, awayPs?.era ?? null);
-
-      const sideOf = (teamRaw: any, stand: typeof homeStand, pitcher: any, ps: typeof homePs): TeamSide => ({
-        id: teamRaw.id,
-        name: teamRaw.name,
-        abbreviation: teamRaw.abbreviation ?? teamRaw.teamCode?.toUpperCase() ?? "",
-        record: stand ? `${stand.wins}-${stand.losses}` : "—",
-        winPct: stand?.winPct ?? 0.5,
-        pitcher: pitcher
-          ? {
-              id: pitcher.id ?? null,
-              name: pitcher.fullName ?? "TBD",
-              era: ps?.era ?? null,
-              wins: ps?.w ?? null,
-              losses: ps?.l ?? null,
-            }
-          : null,
+    if (rows && rows.length > 0) {
+      const games: PredictedGame[] = rows.map((r: any) => {
+        const p = (r.predictions ?? []).find((x: any) => x.model_version === MODEL_VERSION) ?? r.predictions?.[0];
+        return {
+          gameId: r.game_id,
+          date: r.game_time,
+          status: r.status,
+          venue: r.venue ?? "—",
+          home: {
+            id: r.home_team_id,
+            name: r.home_team_name,
+            abbreviation: r.home_team_abbr,
+            record: "—",
+            winPct: Number(p?.home_win_pct ?? 0.5),
+            pitcher: p?.home_pitcher_name
+              ? { id: null, name: p.home_pitcher_name, era: p.home_pitcher_era != null ? Number(p.home_pitcher_era) : null, wins: null, losses: null }
+              : null,
+          },
+          away: {
+            id: r.away_team_id,
+            name: r.away_team_name,
+            abbreviation: r.away_team_abbr,
+            record: "—",
+            winPct: Number(p?.away_win_pct ?? 0.5),
+            pitcher: p?.away_pitcher_name
+              ? { id: null, name: p.away_pitcher_name, era: p.away_pitcher_era != null ? Number(p.away_pitcher_era) : null, wins: null, losses: null }
+              : null,
+          },
+          homeWinProb: Number(p?.home_win_prob ?? 0.5),
+          awayWinProb: Number(p?.away_win_prob ?? 0.5),
+          rationale: Array.isArray(p?.rationale) ? (p.rationale as string[]) : [],
+          homeScore: r.home_score,
+          awayScore: r.away_score,
+          winner: r.winner,
+          correct: p?.correct ?? null,
+        };
       });
+      return { date, games, source: "db" as const };
+    }
 
-      return {
-        gameId: g.gamePk,
-        date: g.gameDate,
-        status: g.status?.detailedState ?? "Scheduled",
-        venue: g.venue?.name ?? "—",
-        home: sideOf(homeTeam, homeStand, homePitcher, homePs),
-        away: sideOf(awayTeam, awayStand, awayPitcher, awayPs),
-        homeWinProb: pred.home,
-        awayWinProb: pred.away,
-        rationale: pred.rationale,
-      };
-    });
+    // Fallback: compute live (no persistence)
+    const games = await buildPredictionsForDate(date);
+    return { date, games, source: "live" as const };
+  });
 
-    return { date: today, games: out };
+// Aggregate metrics for the dashboard
+export const getMetrics = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: daily } = await supabaseAdmin
+    .from("daily_metrics")
+    .select("*")
+    .eq("model_version", MODEL_VERSION)
+    .order("metric_date", { ascending: true })
+    .limit(60);
+
+  const { data: totals } = await supabaseAdmin
+    .from("predictions")
+    .select("correct, brier, log_loss")
+    .eq("model_version", MODEL_VERSION)
+    .not("settled_at", "is", null);
+
+  const settled = totals?.length ?? 0;
+  const correct = totals?.filter((t: any) => t.correct).length ?? 0;
+  const brier = settled > 0 ? totals!.reduce((a: number, t: any) => a + Number(t.brier ?? 0), 0) / settled : null;
+  const logLoss = settled > 0 ? totals!.reduce((a: number, t: any) => a + Number(t.log_loss ?? 0), 0) / settled : null;
+
+  return {
+    modelVersion: MODEL_VERSION,
+    settled,
+    correct,
+    accuracy: settled > 0 ? correct / settled : null,
+    brier,
+    logLoss,
+    daily: daily ?? [],
+  };
+});
+
+// Manual trigger from UI — same code path as the cron.
+export const runPipeline = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const { ingestAndPredict, settleFinished, recomputeDailyMetrics } = await import("./mlb-pipeline.server");
+    const date = data?.date ?? todayISO();
+    const ingest = await ingestAndPredict(date);
+    const settle = await settleFinished();
+    await recomputeDailyMetrics();
+    return { date, ingest, settle };
   });

@@ -1,9 +1,9 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { getDailyGames } from "@/lib/mlb.functions";
+import { getDailyGames, runPipeline } from "@/lib/mlb.functions";
 import { GameCard } from "@/components/GameCard";
 
 export const Route = createFileRoute("/")({
@@ -26,17 +26,21 @@ function Index() {
   const router = useRouter();
   const [date, setDate] = useState(todayISO());
   const fetchGames = useServerFn(getDailyGames);
+  const runPipelineFn = useServerFn(runPipeline);
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["games", date],
     queryFn: () => fetchGames({ data: { date } }),
     staleTime: 60_000,
   });
+  const [syncing, setSyncing] = useState(false);
 
   const games = data?.games ?? [];
   const avgEdge =
     games.length > 0
       ? games.reduce((a, g) => a + Math.max(g.homeWinProb, g.awayWinProb), 0) / games.length
       : 0;
+  const settledToday = games.filter((g) => g.correct != null);
+  const correctToday = settledToday.filter((g) => g.correct).length;
 
   return (
     <div className="min-h-screen">
@@ -61,22 +65,38 @@ function Index() {
               onChange={(e) => setDate(e.target.value)}
               className="border border-border bg-secondary px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary"
             />
+            <Link
+              to="/history"
+              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
+            >
+              Track record
+            </Link>
             <button
-              onClick={() => {
-                refetch();
-                router.invalidate();
+              onClick={async () => {
+                setSyncing(true);
+                try {
+                  await runPipelineFn({ data: { date } });
+                  await refetch();
+                  router.invalidate();
+                } finally {
+                  setSyncing(false);
+                }
               }}
               className="border border-primary bg-primary px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90"
             >
-              {isFetching ? "Refreshing…" : "Refresh"}
+              {syncing || isFetching ? "Syncing…" : "Sync now"}
             </button>
           </div>
         </div>
         <div className="border-t border-border bg-secondary/30">
-          <div className="mx-auto grid max-w-6xl grid-cols-3 divide-x divide-border font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-border font-mono text-xs uppercase tracking-widest text-muted-foreground md:grid-cols-4">
             <Stat label="Games" value={`${games.length}`} />
             <Stat label="Avg favorite" value={games.length ? `${Math.round(avgEdge * 100)}%` : "—"} />
-            <Stat label="Model" value="Baseline v0.1" />
+            <Stat
+              label="Today settled"
+              value={settledToday.length ? `${correctToday}/${settledToday.length}` : "—"}
+            />
+            <Stat label="Source" value={data?.source === "db" ? "Stored" : data?.source === "live" ? "Live" : "—"} />
           </div>
         </div>
       </header>
