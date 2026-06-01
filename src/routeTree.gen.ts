@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 
+const TeamsRoute = TeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -33,35 +39,51 @@ const ApiPublicHooksRunPipelineRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/history' | '/api/public/hooks/run-pipeline'
+  fullPaths: '/' | '/history' | '/teams' | '/api/public/hooks/run-pipeline'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/api/public/hooks/run-pipeline'
-  id: '__root__' | '/' | '/history' | '/api/public/hooks/run-pipeline'
+  to: '/' | '/history' | '/teams' | '/api/public/hooks/run-pipeline'
+  id:
+    | '__root__'
+    | '/'
+    | '/history'
+    | '/teams'
+    | '/api/public/hooks/run-pipeline'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
+  TeamsRoute: typeof TeamsRoute
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/teams': {
+      id: '/teams'
+      path: '/teams'
+      fullPath: '/teams'
+      preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/history': {
       id: '/history'
       path: '/history'
@@ -89,6 +111,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
+  TeamsRoute: TeamsRoute,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
 }
 export const routeTree = rootRouteImport

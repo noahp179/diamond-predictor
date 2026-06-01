@@ -1,6 +1,8 @@
 // Pure logic shared by ingestion + live fetch. No imports from .server modules.
 
-export const MODEL_VERSION = "baseline-v0.1";
+import { parkFactor } from "./park-factors";
+
+export const MODEL_VERSION = "baseline-v0.2";
 export const STATS_API = "https://statsapi.mlb.com/api/v1";
 
 export interface TeamSide {
@@ -85,6 +87,7 @@ export function predict(
   awayWinPct: number,
   homeEra: number | null,
   awayEra: number | null,
+  venue?: string | null,
 ): { home: number; away: number; rationale: string[] } {
   const rationale: string[] = [];
   const clamp = (x: number) => Math.min(0.85, Math.max(0.15, x));
@@ -112,6 +115,16 @@ export function predict(
     const adj = -(4.2 - awayEra) * 0.1;
     lo += adj;
     rationale.push(`Away starter ERA ${awayEra.toFixed(2)} vs league 4.20`);
+  }
+
+  // Park-factor nudge: hitter-friendly parks slightly help the favorite by
+  // amplifying expected run differentials; pitcher-friendly parks compress them.
+  const pf = parkFactor(venue);
+  if (pf !== 100) {
+    const baseLo = lo;
+    const amplify = 1 + (pf - 100) / 200; // ±6% on logit for extreme parks
+    lo = baseLo * amplify;
+    rationale.push(`Park factor ${pf} (${venue}) → ×${amplify.toFixed(3)} logit`);
   }
 
   const p = 1 / (1 + Math.exp(-lo));
@@ -149,7 +162,7 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
     const ap = g.teams.away.probablePitcher;
     const hps = hp ? pitcherStats.get(hp.id) : null;
     const aps = ap ? pitcherStats.get(ap.id) : null;
-    const pred = predict(homeWinPct, awayWinPct, hps?.era ?? null, aps?.era ?? null);
+    const pred = predict(homeWinPct, awayWinPct, hps?.era ?? null, aps?.era ?? null, g.venue?.name);
 
     const side = (raw: any, st: typeof hs, pitcher: any, ps: typeof hps): TeamSide => ({
       id: raw.id,
