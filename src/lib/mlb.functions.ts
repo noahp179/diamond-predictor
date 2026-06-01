@@ -112,3 +112,74 @@ export const runPipeline = createServerFn({ method: "POST" })
     await recomputeDailyMetrics();
     return { date, ingest, settle };
   });
+
+// Per-team performance leaderboard: actual W-L from games + model accuracy per team.
+export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const { data: games } = await supabaseAdmin
+    .from("games")
+    .select(
+      "game_id, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, winner, home_score, away_score, status, predictions(home_win_prob, correct, model_version)",
+    )
+    .not("winner", "is", null);
+
+  type Row = {
+    id: number;
+    name: string;
+    abbr: string;
+    wins: number;
+    losses: number;
+    runsFor: number;
+    runsAgainst: number;
+    predicted: number;
+    predictedCorrect: number;
+  };
+  const map = new Map<number, Row>();
+  const bump = (id: number, name: string, abbr: string): Row => {
+    let r = map.get(id);
+    if (!r) {
+      r = { id, name, abbr, wins: 0, losses: 0, runsFor: 0, runsAgainst: 0, predicted: 0, predictedCorrect: 0 };
+      map.set(id, r);
+    }
+    return r;
+  };
+
+  for (const g of (games ?? []) as any[]) {
+    const home = bump(g.home_team_id, g.home_team_name, g.home_team_abbr);
+    const away = bump(g.away_team_id, g.away_team_name, g.away_team_abbr);
+    if (typeof g.home_score === "number" && typeof g.away_score === "number") {
+      home.runsFor += g.home_score;
+      home.runsAgainst += g.away_score;
+      away.runsFor += g.away_score;
+      away.runsAgainst += g.home_score;
+    }
+    if (g.winner === "home") {
+      home.wins += 1;
+      away.losses += 1;
+    } else if (g.winner === "away") {
+      away.wins += 1;
+      home.losses += 1;
+    }
+    const p = (g.predictions ?? []).find((x: any) => x.model_version === MODEL_VERSION) ?? g.predictions?.[0];
+    if (p && p.correct != null) {
+      home.predicted += 1;
+      away.predicted += 1;
+      if (p.correct) {
+        home.predictedCorrect += 1;
+        away.predictedCorrect += 1;
+      }
+    }
+  }
+
+  const teams = Array.from(map.values())
+    .map((t) => ({
+      ...t,
+      winPct: t.wins + t.losses > 0 ? t.wins / (t.wins + t.losses) : 0,
+      runDiff: t.runsFor - t.runsAgainst,
+      modelAccuracy: t.predicted > 0 ? t.predictedCorrect / t.predicted : null,
+    }))
+    .sort((a, b) => b.winPct - a.winPct || b.runDiff - a.runDiff);
+
+  return { teams, modelVersion: MODEL_VERSION };
+});
