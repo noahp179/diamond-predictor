@@ -71,6 +71,12 @@ function Index() {
             >
               Track record
             </Link>
+            <Link
+              to="/teams"
+              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
+            >
+              Teams
+            </Link>
             <button
               onClick={async () => {
                 setSyncing(true);
