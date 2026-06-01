@@ -75,14 +75,12 @@ export const getMetrics = createServerFn({ method: "GET" }).handler(async () => 
   const { data: daily } = await supabaseAdmin
     .from("daily_metrics")
     .select("*")
-    .eq("model_version", MODEL_VERSION)
     .order("metric_date", { ascending: true })
     .limit(60);
 
   const { data: totals } = await supabaseAdmin
     .from("predictions")
-    .select("correct, brier, log_loss")
-    .eq("model_version", MODEL_VERSION)
+    .select("correct, brier, log_loss, model_version")
     .not("settled_at", "is", null);
 
   const settled = totals?.length ?? 0;
