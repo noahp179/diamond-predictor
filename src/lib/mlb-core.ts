@@ -2,7 +2,7 @@
 
 import { parkFactor } from "./park-factors";
 
-export const MODEL_VERSION = "baseline-v0.2";
+export const MODEL_VERSION = "baseline-v0.3";
 export const STATS_API = "https://statsapi.mlb.com/api/v1";
 
 export interface TeamSide {
@@ -40,6 +40,12 @@ interface StandingsRow {
   winPct: number;
   wins: number;
   losses: number;
+  runsScored: number;
+  runsAllowed: number;
+  pythagPct: number; // run-based expected win%
+  lastTenPct: number; // L10 record
+  homePct: number; // home-only win%
+  awayPct: number; // away-only win%
 }
 
 export async function fetchStandings(season: number): Promise<Map<number, StandingsRow>> {
@@ -50,10 +56,30 @@ export async function fetchStandings(season: number): Promise<Map<number, Standi
   const map = new Map<number, StandingsRow>();
   for (const rec of json.records ?? []) {
     for (const tr of rec.teamRecords ?? []) {
+      const rs = tr.runsScored ?? 0;
+      const ra = tr.runsAllowed ?? 0;
+      // Pythagorean expectation with exponent 1.83 (Bill James).
+      const pythag = rs + ra > 0
+        ? Math.pow(rs, 1.83) / (Math.pow(rs, 1.83) + Math.pow(ra, 1.83))
+        : 0.5;
+      const splits: any[] = tr.records?.splitRecords ?? [];
+      const split = (type: string) => {
+        const s = splits.find((x) => x.type === type);
+        if (!s) return 0.5;
+        const w = s.wins ?? 0;
+        const l = s.losses ?? 0;
+        return w + l > 0 ? w / (w + l) : 0.5;
+      };
       map.set(tr.team.id, {
         winPct: parseFloat(tr.winningPercentage ?? "0.5") || 0.5,
         wins: tr.wins ?? 0,
         losses: tr.losses ?? 0,
+        runsScored: rs,
+        runsAllowed: ra,
+        pythagPct: pythag,
+        lastTenPct: split("lastTen"),
+        homePct: split("home"),
+        awayPct: split("away"),
       });
     }
   }
