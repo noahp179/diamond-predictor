@@ -219,8 +219,6 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
     const awayTeam = g.teams.away.team;
     const hs = standings.get(homeTeam.id);
     const as = standings.get(awayTeam.id);
-    const homeWinPct = hs?.winPct ?? 0.5;
-    const awayWinPct = as?.winPct ?? 0.5;
     const hp = g.teams.home.probablePitcher;
     const ap = g.teams.away.probablePitcher;
     const hps = hp ? pitcherStats.get(hp.id) : null;
