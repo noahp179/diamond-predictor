@@ -183,8 +183,10 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
 
     const home = g.teams.home.score ?? null;
     const away = g.teams.away.score ?? null;
+    const statusStr: string = g.status?.detailedState ?? "Scheduled";
+    const isFinal = /final|game over|completed/i.test(statusStr);
     let winner: "home" | "away" | null = null;
-    if (typeof home === "number" && typeof away === "number" && home !== away) {
+    if (isFinal && typeof home === "number" && typeof away === "number" && home !== away) {
       winner = home > away ? "home" : "away";
     }
 
