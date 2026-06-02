@@ -79,6 +79,12 @@ function Index() {
             >
               Teams
             </Link>
+            <Link
+              to="/model"
+              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
+            >
+              Model
+            </Link>
             <button
               onClick={async () => {
                 setSyncing(true);
