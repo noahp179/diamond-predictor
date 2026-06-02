@@ -53,23 +53,27 @@ function ModelPage() {
         <Section title="Features &amp; log-odds construction">
           <ol className="space-y-3 text-sm leading-relaxed">
             <li>
-              <span className="font-mono text-primary">1.</span> Start with each team's season win% (clamped 15–85%),
-              convert to log-odds, take the home minus away difference.
+              <span className="font-mono text-primary">1.</span> Composite <span className="text-foreground">team strength</span>: 40% Pythagorean
+              expectation (RS<sup>1.83</sup> / (RS<sup>1.83</sup>+RA<sup>1.83</sup>)), 30% season W%,
+              20% last-10 form, 10% home/away split record. Converted to log-odds and differenced.
             </li>
             <li>
-              <span className="font-mono text-primary">2.</span> Add a fixed home-field edge of <code className="font-mono text-primary">+0.18</code> log-odds (~4% bump at 50/50).
+              <span className="font-mono text-primary">2.</span> <span className="text-foreground">Run-differential per game</span> gap,
+              weighted by <code className="font-mono text-primary">×0.12</code>. Captures dominance not visible in W%.
             </li>
             <li>
-              <span className="font-mono text-primary">3.</span> Compare starting pitcher ERAs.
-              Every 1.00 ERA gap is worth ~<code className="font-mono text-primary">0.18</code> log-odds toward the better starter.
+              <span className="font-mono text-primary">3.</span> Fixed <span className="text-foreground">home-field edge</span> of <code className="font-mono text-primary">+0.18</code> log-odds (~MLB 54%).
             </li>
             <li>
-              <span className="font-mono text-primary">4.</span> Apply the park factor as a logit multiplier
-              (<code className="font-mono text-primary">×(1 + (pf − 100)/200)</code>). Hitter-friendly parks amplify
-              the favorite; pitcher-friendly parks compress the spread.
+              <span className="font-mono text-primary">4.</span> <span className="text-foreground">Starting pitcher ERA</span> gap regressed to league 4.20,
+              weighted by <code className="font-mono text-primary">×0.16</code>.
             </li>
             <li>
-              <span className="font-mono text-primary">5.</span> Convert the final log-odds back to a probability via the sigmoid.
+              <span className="font-mono text-primary">5.</span> <span className="text-foreground">Park factor</span> as a logit multiplier
+              (<code className="font-mono text-primary">×(1 + (pf − 100)/200)</code>).
+            </li>
+            <li>
+              <span className="font-mono text-primary">6.</span> Sigmoid → probability, hard-clamped to <code className="font-mono text-primary">[0.10, 0.90]</code>.
             </li>
           </ol>
         </Section>
@@ -116,9 +120,9 @@ games table  ←──────  predictions table (frozen at publish)
 
         <Section title="Honest limitations">
           <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>· No bullpen, lineup, injury, or travel/rest features yet.</li>
-            <li>· ERA is a noisy single-number proxy for starter quality.</li>
-            <li>· Weather is not incorporated in v0.2.</li>
+            <li>· No bullpen ERA, lineup handedness, injury, or travel/rest features yet.</li>
+            <li>· Coefficients are hand-tuned, not fit by gradient descent on backtests.</li>
+            <li>· Weather (wind, temp) is not incorporated.</li>
             <li>· Park factors are static priors, not season-adjusted.</li>
           </ul>
         </Section>
