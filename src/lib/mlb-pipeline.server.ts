@@ -72,24 +72,24 @@ export async function settleFinished() {
   for (const r of rows ?? []) {
     const g: any = (r as any).games;
     if (!g) continue;
-    // Refresh status from MLB if not yet final
-    let winner: "home" | "away" | null = g.winner ?? null;
-    let status: string = g.status;
-    let homeScore: number | null = g.home_score;
-    let awayScore: number | null = g.away_score;
+    // Only settle on truly final games. Refresh from MLB to confirm.
+    const isFinal = /final|game over|completed/i.test(g.status ?? "");
+    let winner: "home" | "away" | null = isFinal ? (g.winner ?? null) : null;
 
     if (!winner) {
       const live = await fetchGameFinal((r as any).game_id);
       if (!live) continue;
-      status = live.status;
-      homeScore = live.homeScore;
-      awayScore = live.awayScore;
-      winner = live.winner;
       await supabaseAdmin
         .from("games")
-        .update({ status, home_score: homeScore, away_score: awayScore, winner })
+        .update({
+          status: live.status,
+          home_score: live.homeScore,
+          away_score: live.awayScore,
+          winner: live.winner,
+        })
         .eq("game_id", (r as any).game_id);
-      if (!winner) continue;
+      if (!live.winner) continue;
+      winner = live.winner;
     }
 
     const pHome = Number((r as any).home_win_prob);
