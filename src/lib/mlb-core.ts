@@ -108,52 +108,89 @@ export async function fetchPitcherEra(
   }
 }
 
-export function predict(
-  homeWinPct: number,
-  awayWinPct: number,
-  homeEra: number | null,
-  awayEra: number | null,
-  venue?: string | null,
-): { home: number; away: number; rationale: string[] } {
+export interface PredictInputs {
+  home: StandingsRow | undefined;
+  away: StandingsRow | undefined;
+  homeEra: number | null;
+  awayEra: number | null;
+  venue?: string | null;
+}
+
+/**
+ * Probabilistic blend in log-odds space. Each feature contributes a
+ * coefficient-weighted logit term derived from a blended team-strength
+ * estimate plus matchup adjustments. Coefficients are hand-tuned from
+ * public MLB priors and clamped to keep predictions in [0.10, 0.90].
+ */
+export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs): {
+  home: number;
+  away: number;
+  rationale: string[];
+} {
   const rationale: string[] = [];
-  const clamp = (x: number) => Math.min(0.85, Math.max(0.15, x));
-  const hp = clamp(homeWinPct);
-  const ap = clamp(awayWinPct);
   const logit = (p: number) => Math.log(p / (1 - p));
-  let lo = logit(hp) - logit(ap);
-  rationale.push(`Season form: ${(hp * 100).toFixed(0)}% vs ${(ap * 100).toFixed(0)}%`);
+  const clamp = (x: number, lo = 0.2, hi = 0.8) => Math.min(hi, Math.max(lo, x));
 
-  lo += 0.18;
-  rationale.push("Home-field edge: +0.18 log-odds");
+  // Composite team strength: 40% Pythagorean, 30% season W%, 20% L10 form,
+  // 10% home/away split. Falls back to 0.5 when standings are missing.
+  const strength = (s: StandingsRow | undefined, isHome: boolean): number => {
+    if (!s) return 0.5;
+    const split = isHome ? s.homePct : s.awayPct;
+    return 0.4 * s.pythagPct + 0.3 * s.winPct + 0.2 * s.lastTenPct + 0.1 * split;
+  };
+  const hStrength = clamp(strength(home, true));
+  const aStrength = clamp(strength(away, false));
+  let lo = logit(hStrength) - logit(aStrength);
+  rationale.push(
+    `Team strength: ${(hStrength * 100).toFixed(0)}% vs ${(aStrength * 100).toFixed(0)}% (Pythag·W%·L10·split blend)`,
+  );
 
-  if (homeEra != null && awayEra != null) {
-    const diff = awayEra - homeEra;
-    const adj = diff * 0.18;
+  // Run-differential signal — explicitly add a small extra term so a
+  // dominant run diff isn't washed out by the W% averaging.
+  if (home && away) {
+    const hRdg = (home.runsScored - home.runsAllowed) / Math.max(1, home.wins + home.losses);
+    const aRdg = (away.runsScored - away.runsAllowed) / Math.max(1, away.wins + away.losses);
+    const diff = hRdg - aRdg;
+    const adj = diff * 0.12;
     lo += adj;
-    rationale.push(
-      `Starter ERA gap ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} log-odds`,
-    );
-  } else if (homeEra != null) {
-    const adj = (4.2 - homeEra) * 0.1;
-    lo += adj;
-    rationale.push(`Home starter ERA ${homeEra.toFixed(2)} vs league 4.20`);
-  } else if (awayEra != null) {
-    const adj = -(4.2 - awayEra) * 0.1;
-    lo += adj;
-    rationale.push(`Away starter ERA ${awayEra.toFixed(2)} vs league 4.20`);
+    rationale.push(`Run-diff/game ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`);
   }
 
-  // Park-factor nudge: hitter-friendly parks slightly help the favorite by
-  // amplifying expected run differentials; pitcher-friendly parks compress them.
+  // Home-field edge (MLB historical ~54%).
+  lo += 0.18;
+  rationale.push("Home-field edge: +0.18 logit");
+
+  // Starting pitcher ERA gap, regressed toward league mean (4.20).
+  const eraTerm = (era: number | null) => (era == null ? null : 4.2 - era);
+  const ht = eraTerm(homeEra);
+  const at = eraTerm(awayEra);
+  if (ht != null && at != null) {
+    const adj = (ht - at) * 0.16;
+    lo += adj;
+    rationale.push(
+      `Starter ERA ${homeEra!.toFixed(2)} vs ${awayEra!.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`,
+    );
+  } else if (ht != null) {
+    const adj = ht * 0.08;
+    lo += adj;
+    rationale.push(`Home starter ERA ${homeEra!.toFixed(2)} vs lg 4.20`);
+  } else if (at != null) {
+    const adj = -at * 0.08;
+    lo += adj;
+    rationale.push(`Away starter ERA ${awayEra!.toFixed(2)} vs lg 4.20`);
+  }
+
+  // Park factor: amplify logits at hitter parks, compress at pitcher parks.
   const pf = parkFactor(venue);
   if (pf !== 100) {
-    const baseLo = lo;
-    const amplify = 1 + (pf - 100) / 200; // ±6% on logit for extreme parks
-    lo = baseLo * amplify;
+    const amplify = 1 + (pf - 100) / 200;
+    lo = lo * amplify;
     rationale.push(`Park factor ${pf} (${venue}) → ×${amplify.toFixed(3)} logit`);
   }
 
-  const p = 1 / (1 + Math.exp(-lo));
+  // Final probability with hard clamp to keep tails honest.
+  let p = 1 / (1 + Math.exp(-lo));
+  p = Math.min(0.9, Math.max(0.1, p));
   return { home: p, away: 1 - p, rationale };
 }
 
@@ -188,7 +225,13 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
     const ap = g.teams.away.probablePitcher;
     const hps = hp ? pitcherStats.get(hp.id) : null;
     const aps = ap ? pitcherStats.get(ap.id) : null;
-    const pred = predict(homeWinPct, awayWinPct, hps?.era ?? null, aps?.era ?? null, g.venue?.name);
+    const pred = predict({
+      home: hs,
+      away: as,
+      homeEra: hps?.era ?? null,
+      awayEra: aps?.era ?? null,
+      venue: g.venue?.name,
+    });
 
     const side = (raw: any, st: typeof hs, pitcher: any, ps: typeof hps): TeamSide => ({
       id: raw.id,
