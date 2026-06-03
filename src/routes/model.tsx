@@ -32,7 +32,7 @@ function ModelPage() {
             <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">The Math</h1>
             <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
               Diamond Edge is intentionally simple and fully transparent. Every prediction
-              ships with the exact log-odds adjustments that produced it.
+              ships with the exact percentage-point swing each factor contributed.
             </p>
           </div>
           <Link to="/" className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest hover:border-primary">
@@ -67,8 +67,10 @@ function ModelPage() {
               <span className="font-mono text-primary">3.</span> Fixed <span className="text-foreground">home-field edge</span> of <code className="font-mono text-primary">+0.18</code> log-odds (~MLB 54%).
             </li>
             <li>
-              <span className="font-mono text-primary">4.</span> <span className="text-foreground">Starting pitcher ERA</span> gap regressed to league 4.20,
-              weighted by <code className="font-mono text-primary">×0.16</code>.
+              <span className="font-mono text-primary">4.</span> <span className="text-foreground">Starting pitcher ERA</span>, Bayesian-shrunk toward the league
+              4.20 with a 30-IP prior so small April samples don't dominate, then differenced and weighted by
+              <code className="font-mono text-primary"> ×0.20</code> (≈ 5pp win-prob per 1.00 ERA gap, in line with public
+              starter-value research). Half weight when only one starter is announced.
             </li>
             <li>
               <span className="font-mono text-primary">5.</span> <span className="text-foreground">Full-staff team ERA</span> gap
@@ -144,6 +146,7 @@ games table  ←──────  predictions table (frozen at publish)
             <li>· Bullpen signal is staff-wide ERA, not leverage-weighted relief ERA.</li>
             <li>· Park factors are static priors, not season-adjusted.</li>
             <li>· No betting-market or Elo prior is blended in (would likely improve calibration further).</li>
+            <li>· Rationale "pp" values are the marginal win-prob swing at the point each factor was applied; order matters because the sigmoid is non-linear.</li>
           </ul>
         </Section>
       </main>
