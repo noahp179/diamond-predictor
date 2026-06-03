@@ -140,6 +140,49 @@ export async function fetchTeamStats(season: number): Promise<Map<number, TeamSt
   return map;
 }
 
+/**
+ * Look back 5 days from the target date and count days since each team
+ * last played. Returns a Map<teamId, restDays>.
+ */
+export async function fetchRestDays(date: string): Promise<Map<number, number>> {
+  const target = new Date(date + "T00:00:00Z");
+  const start = new Date(target);
+  start.setUTCDate(start.getUTCDate() - 5);
+  const startISO = start.toISOString().slice(0, 10);
+  const endISO = new Date(target.getTime() - 86400000).toISOString().slice(0, 10);
+  const url = `${STATS_API}/schedule?sportId=1&startDate=${startISO}&endDate=${endISO}`;
+  const map = new Map<number, number>();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return map;
+    const j: any = await res.json();
+    const lastPlayed = new Map<number, string>();
+    for (const d of j?.dates ?? []) {
+      for (const g of d?.games ?? []) {
+        const status: string = g?.status?.detailedState ?? "";
+        if (!/final|game over|completed/i.test(status)) continue;
+        const gd: string = (d.date as string) ?? (g.gameDate?.slice(0, 10) ?? "");
+        const hid = g?.teams?.home?.team?.id;
+        const aid = g?.teams?.away?.team?.id;
+        if (hid) {
+          const prev = lastPlayed.get(hid);
+          if (!prev || gd > prev) lastPlayed.set(hid, gd);
+        }
+        if (aid) {
+          const prev = lastPlayed.get(aid);
+          if (!prev || gd > prev) lastPlayed.set(aid, gd);
+        }
+      }
+    }
+    for (const [id, gd] of lastPlayed) {
+      const last = new Date(gd + "T00:00:00Z");
+      const days = Math.round((target.getTime() - last.getTime()) / 86400000) - 1;
+      map.set(id, Math.max(0, days));
+    }
+  } catch { /* ignore */ }
+  return map;
+}
+
 export async function fetchPitcherEra(
   personId: number,
   season: number,
