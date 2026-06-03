@@ -187,11 +187,17 @@ export interface PredictInputs {
  *   9. Mild calibration shrink (×0.92) toward 0.5 to combat overconfidence
  *  10. Hard clamp to [0.15, 0.85]
  */
-export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs): {
-  home: number;
-  away: number;
-  rationale: string[];
-} {
+export function predict({
+  home,
+  away,
+  homeEra,
+  awayEra,
+  venue,
+  homeStats,
+  awayStats,
+  homeRestDays,
+  awayRestDays,
+}: PredictInputs): { home: number; away: number; rationale: string[] } {
   const rationale: string[] = [];
   const logit = (p: number) => Math.log(p / (1 - p));
   const clamp = (x: number, lo = 0.2, hi = 0.8) => Math.min(hi, Math.max(lo, x));
@@ -253,16 +259,55 @@ export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs):
     rationale.push(`Park factor ${pf} (${venue}) → ×${amplify.toFixed(3)} logit`);
   }
 
-  // Final probability with hard clamp to keep tails honest.
+  // Full-staff team ERA gap (bullpen + rotation depth signal, distinct from
+  // the named starter). League anchor 4.20.
+  if (homeStats?.teamEra != null && awayStats?.teamEra != null) {
+    const adj = ((4.2 - homeStats.teamEra) - (4.2 - awayStats.teamEra)) * 0.10;
+    lo += adj;
+    rationale.push(
+      `Staff ERA ${homeStats.teamEra.toFixed(2)} vs ${awayStats.teamEra.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`,
+    );
+  }
+
+  // Team OPS gap — offensive quality. League OPS anchor .720, scale ×2.5
+  // so a .060 OPS edge ≈ 0.15 logit.
+  if (homeStats?.ops != null && awayStats?.ops != null) {
+    const adj = (homeStats.ops - awayStats.ops) * 2.5;
+    lo += adj;
+    rationale.push(
+      `Team OPS ${homeStats.ops.toFixed(3)} vs ${awayStats.ops.toFixed(3)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`,
+    );
+  }
+
+  // Rest-days edge: capped at ±2 days, 0.04 logit/day.
+  if (homeRestDays != null && awayRestDays != null) {
+    const diff = Math.max(-2, Math.min(2, homeRestDays - awayRestDays));
+    if (diff !== 0) {
+      const adj = diff * 0.04;
+      lo += adj;
+      rationale.push(`Rest days ${homeRestDays} vs ${awayRestDays} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`);
+    }
+  }
+
+  // Calibration shrink — historical hand-tuned models overshoot. Mild ×0.92
+  // shrink toward 0 logit improves Brier / log-loss without harming accuracy.
+  lo = lo * 0.92;
+
+  // Final probability with hard clamp.
   let p = 1 / (1 + Math.exp(-lo));
-  p = Math.min(0.9, Math.max(0.1, p));
+  p = Math.min(0.85, Math.max(0.15, p));
   return { home: p, away: 1 - p, rationale };
 }
 
 export async function buildPredictionsForDate(date: string): Promise<PredictedGame[]> {
   const season = parseInt(date.slice(0, 4), 10);
   const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue,linescore&startDate=${date}&endDate=${date}`;
-  const [scheduleRes, standings] = await Promise.all([fetch(scheduleUrl), fetchStandings(season)]);
+  const [scheduleRes, standings, teamStats, restMap] = await Promise.all([
+    fetch(scheduleUrl),
+    fetchStandings(season),
+    fetchTeamStats(season),
+    fetchRestDays(date),
+  ]);
   if (!scheduleRes.ok) throw new Error(`MLB schedule fetch failed: ${scheduleRes.status}`);
   const scheduleJson: any = await scheduleRes.json();
   const games = scheduleJson?.dates?.[0]?.games ?? [];
@@ -294,6 +339,10 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
       homeEra: hps?.era ?? null,
       awayEra: aps?.era ?? null,
       venue: g.venue?.name,
+      homeStats: teamStats.get(homeTeam.id),
+      awayStats: teamStats.get(awayTeam.id),
+      homeRestDays: restMap.get(homeTeam.id) ?? null,
+      awayRestDays: restMap.get(awayTeam.id) ?? null,
     });
 
     const side = (raw: any, st: typeof hs, pitcher: any, ps: typeof hps): TeamSide => ({
