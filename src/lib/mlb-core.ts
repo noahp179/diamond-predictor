@@ -2,7 +2,7 @@
 
 import { parkFactor } from "./park-factors";
 
-export const MODEL_VERSION = "baseline-v0.3";
+export const MODEL_VERSION = "baseline-v0.4";
 export const STATS_API = "https://statsapi.mlb.com/api/v1";
 
 export interface TeamSide {
@@ -48,6 +48,12 @@ interface StandingsRow {
   awayPct: number; // away-only win%
 }
 
+export interface TeamStatsRow {
+  ops: number | null; // team season OPS (offense)
+  teamEra: number | null; // full-staff ERA (captures bullpen + rotation depth)
+  teamWhip: number | null;
+}
+
 export async function fetchStandings(season: number): Promise<Map<number, StandingsRow>> {
   const url = `${STATS_API}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`;
   const res = await fetch(url);
@@ -86,6 +92,54 @@ export async function fetchStandings(season: number): Promise<Map<number, Standi
   return map;
 }
 
+/**
+ * Pull season team hitting (OPS) and pitching (full-staff ERA/WHIP) in two
+ * calls — proxies offensive quality and bullpen/staff depth beyond the
+ * named starter.
+ */
+export async function fetchTeamStats(season: number): Promise<Map<number, TeamStatsRow>> {
+  const base = `${STATS_API}/teams/stats?sportIds=1&season=${season}&stats=season`;
+  const [hitRes, pitRes] = await Promise.all([
+    fetch(`${base}&group=hitting`),
+    fetch(`${base}&group=pitching`),
+  ]);
+  const map = new Map<number, TeamStatsRow>();
+  const init = (id: number) => {
+    let r = map.get(id);
+    if (!r) {
+      r = { ops: null, teamEra: null, teamWhip: null };
+      map.set(id, r);
+    }
+    return r;
+  };
+  try {
+    if (hitRes.ok) {
+      const j: any = await hitRes.json();
+      for (const split of j?.stats?.[0]?.splits ?? []) {
+        const id = split?.team?.id;
+        if (!id) continue;
+        const ops = split?.stat?.ops != null ? parseFloat(split.stat.ops) : null;
+        init(id).ops = ops != null && Number.isFinite(ops) ? ops : null;
+      }
+    }
+  } catch { /* ignore */ }
+  try {
+    if (pitRes.ok) {
+      const j: any = await pitRes.json();
+      for (const split of j?.stats?.[0]?.splits ?? []) {
+        const id = split?.team?.id;
+        if (!id) continue;
+        const era = split?.stat?.era != null ? parseFloat(split.stat.era) : null;
+        const whip = split?.stat?.whip != null ? parseFloat(split.stat.whip) : null;
+        const row = init(id);
+        row.teamEra = era != null && Number.isFinite(era) ? era : null;
+        row.teamWhip = whip != null && Number.isFinite(whip) ? whip : null;
+      }
+    }
+  } catch { /* ignore */ }
+  return map;
+}
+
 export async function fetchPitcherEra(
   personId: number,
   season: number,
@@ -114,13 +168,24 @@ export interface PredictInputs {
   homeEra: number | null;
   awayEra: number | null;
   venue?: string | null;
+  homeStats?: TeamStatsRow;
+  awayStats?: TeamStatsRow;
+  homeRestDays?: number | null;
+  awayRestDays?: number | null;
 }
 
 /**
- * Probabilistic blend in log-odds space. Each feature contributes a
- * coefficient-weighted logit term derived from a blended team-strength
- * estimate plus matchup adjustments. Coefficients are hand-tuned from
- * public MLB priors and clamped to keep predictions in [0.10, 0.90].
+ * Probabilistic blend in log-odds space. v0.4 features:
+ *   1. Composite team strength (Pythag · W% · L10 · home/away split)
+ *   2. Run-differential/game gap
+ *   3. Home-field edge (+0.18 logit)
+ *   4. Starter ERA gap (regressed to league mean)
+ *   5. Full-staff team ERA gap  (bullpen + rotation depth proxy)
+ *   6. Team OPS gap (offensive quality, .720 league anchor)
+ *   7. Rest-days advantage (+/- 0.04 logit per day, capped at ±2)
+ *   8. Park factor as a logit multiplier
+ *   9. Mild calibration shrink (×0.92) toward 0.5 to combat overconfidence
+ *  10. Hard clamp to [0.15, 0.85]
  */
 export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs): {
   home: number;
