@@ -45,7 +45,9 @@ function ModelPage() {
         <Section title="Data sources">
           <ul className="space-y-2 font-mono text-sm">
             <li><span className="text-primary">·</span> MLB Stats API — schedule, teams, probable pitchers, live scores, final box.</li>
-            <li><span className="text-primary">·</span> MLB Stats API — season standings (W-L, win%) and pitcher season ERA.</li>
+            <li><span className="text-primary">·</span> MLB Stats API — standings (W-L, win%, L10, splits, RS/RA) and pitcher season ERA.</li>
+            <li><span className="text-primary">·</span> MLB Stats API — team season hitting (OPS) and pitching (full-staff ERA/WHIP).</li>
+            <li><span className="text-primary">·</span> MLB Stats API — prior 5 days of finals to compute per-team rest days.</li>
             <li><span className="text-primary">·</span> Static park-factor table (community-sourced averages) for venue effects.</li>
           </ul>
         </Section>
@@ -69,11 +71,28 @@ function ModelPage() {
               weighted by <code className="font-mono text-primary">×0.16</code>.
             </li>
             <li>
-              <span className="font-mono text-primary">5.</span> <span className="text-foreground">Park factor</span> as a logit multiplier
+              <span className="font-mono text-primary">5.</span> <span className="text-foreground">Full-staff team ERA</span> gap
+              (bullpen + rotation depth proxy, distinct from named starter),
+              weighted by <code className="font-mono text-primary">×0.10</code>.
+            </li>
+            <li>
+              <span className="font-mono text-primary">6.</span> <span className="text-foreground">Team OPS</span> gap (offense quality),
+              weighted by <code className="font-mono text-primary">×2.5</code>. A .060 OPS edge ≈ 0.15 logit.
+            </li>
+            <li>
+              <span className="font-mono text-primary">7.</span> <span className="text-foreground">Rest-days</span> advantage,
+              <code className="font-mono text-primary">±0.04</code> logit/day, capped at ±2 days.
+            </li>
+            <li>
+              <span className="font-mono text-primary">8.</span> <span className="text-foreground">Park factor</span> as a logit multiplier
               (<code className="font-mono text-primary">×(1 + (pf − 100)/200)</code>).
             </li>
             <li>
-              <span className="font-mono text-primary">6.</span> Sigmoid → probability, hard-clamped to <code className="font-mono text-primary">[0.10, 0.90]</code>.
+              <span className="font-mono text-primary">9.</span> <span className="text-foreground">Calibration shrink</span> ×0.92 toward
+              0 logit — hand-tuned models tend to overshoot; mild shrinkage improves Brier / log-loss.
+            </li>
+            <li>
+              <span className="font-mono text-primary">10.</span> Sigmoid → probability, hard-clamped to <code className="font-mono text-primary">[0.15, 0.85]</code>.
             </li>
           </ol>
         </Section>
@@ -120,10 +139,11 @@ games table  ←──────  predictions table (frozen at publish)
 
         <Section title="Honest limitations">
           <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>· No bullpen ERA, lineup handedness, injury, or travel/rest features yet.</li>
             <li>· Coefficients are hand-tuned, not fit by gradient descent on backtests.</li>
-            <li>· Weather (wind, temp) is not incorporated.</li>
+            <li>· No lineup handedness, injury, travel distance, or weather (wind, temp) features.</li>
+            <li>· Bullpen signal is staff-wide ERA, not leverage-weighted relief ERA.</li>
             <li>· Park factors are static priors, not season-adjusted.</li>
+            <li>· No betting-market or Elo prior is blended in (would likely improve calibration further).</li>
           </ul>
         </Section>
       </main>
