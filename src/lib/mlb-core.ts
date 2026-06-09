@@ -5,7 +5,7 @@ import { parkFactor } from "./park-factors";
 // Re-export so consumers only need one import from this module
 export { parkFactor } from "./park-factors";
 
-export const MODEL_VERSION = "baseline-v0.3";
+export const MODEL_VERSION = "baseline-v0.4";
 export const STATS_API = "https://statsapi.mlb.com/api/v1";
 
 export interface TeamSide {
@@ -53,6 +53,12 @@ export interface StandingsRow {
   awayPct: number; // away-only win%
 }
 
+export interface TeamStatsRow {
+  ops: number | null; // team season OPS (offense)
+  teamEra: number | null; // full-staff ERA (captures bullpen + rotation depth)
+  teamWhip: number | null;
+}
+
 export async function fetchStandings(season: number): Promise<Map<number, StandingsRow>> {
   const url = `${STATS_API}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`;
   const res = await fetch(url);
@@ -91,6 +97,97 @@ export async function fetchStandings(season: number): Promise<Map<number, Standi
   return map;
 }
 
+/**
+ * Pull season team hitting (OPS) and pitching (full-staff ERA/WHIP) in two
+ * calls — proxies offensive quality and bullpen/staff depth beyond the
+ * named starter.
+ */
+export async function fetchTeamStats(season: number): Promise<Map<number, TeamStatsRow>> {
+  const base = `${STATS_API}/teams/stats?sportIds=1&season=${season}&stats=season`;
+  const [hitRes, pitRes] = await Promise.all([
+    fetch(`${base}&group=hitting`),
+    fetch(`${base}&group=pitching`),
+  ]);
+  const map = new Map<number, TeamStatsRow>();
+  const init = (id: number) => {
+    let r = map.get(id);
+    if (!r) {
+      r = { ops: null, teamEra: null, teamWhip: null };
+      map.set(id, r);
+    }
+    return r;
+  };
+  try {
+    if (hitRes.ok) {
+      const j: any = await hitRes.json();
+      for (const split of j?.stats?.[0]?.splits ?? []) {
+        const id = split?.team?.id;
+        if (!id) continue;
+        const ops = split?.stat?.ops != null ? parseFloat(split.stat.ops) : null;
+        init(id).ops = ops != null && Number.isFinite(ops) ? ops : null;
+      }
+    }
+  } catch { /* ignore */ }
+  try {
+    if (pitRes.ok) {
+      const j: any = await pitRes.json();
+      for (const split of j?.stats?.[0]?.splits ?? []) {
+        const id = split?.team?.id;
+        if (!id) continue;
+        const era = split?.stat?.era != null ? parseFloat(split.stat.era) : null;
+        const whip = split?.stat?.whip != null ? parseFloat(split.stat.whip) : null;
+        const row = init(id);
+        row.teamEra = era != null && Number.isFinite(era) ? era : null;
+        row.teamWhip = whip != null && Number.isFinite(whip) ? whip : null;
+      }
+    }
+  } catch { /* ignore */ }
+  return map;
+}
+
+/**
+ * Look back 5 days from the target date and count days since each team
+ * last played. Returns a Map<teamId, restDays>.
+ */
+export async function fetchRestDays(date: string): Promise<Map<number, number>> {
+  const target = new Date(date + "T00:00:00Z");
+  const start = new Date(target);
+  start.setUTCDate(start.getUTCDate() - 5);
+  const startISO = start.toISOString().slice(0, 10);
+  const endISO = new Date(target.getTime() - 86400000).toISOString().slice(0, 10);
+  const url = `${STATS_API}/schedule?sportId=1&startDate=${startISO}&endDate=${endISO}`;
+  const map = new Map<number, number>();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return map;
+    const j: any = await res.json();
+    const lastPlayed = new Map<number, string>();
+    for (const d of j?.dates ?? []) {
+      for (const g of d?.games ?? []) {
+        const status: string = g?.status?.detailedState ?? "";
+        if (!/final|game over|completed/i.test(status)) continue;
+        const gd: string = (d.date as string) ?? (g.gameDate?.slice(0, 10) ?? "");
+        const hid = g?.teams?.home?.team?.id;
+        const aid = g?.teams?.away?.team?.id;
+        if (hid) {
+          const prev = lastPlayed.get(hid);
+          if (!prev || gd > prev) lastPlayed.set(hid, gd);
+        }
+        if (aid) {
+          const prev = lastPlayed.get(aid);
+          if (!prev || gd > prev) lastPlayed.set(aid, gd);
+        }
+      }
+    }
+    for (const [id, gd] of lastPlayed) {
+      const last = new Date(gd + "T00:00:00Z");
+      const days = Math.round((target.getTime() - last.getTime()) / 86400000) - 1;
+      map.set(id, Math.max(0, days));
+    }
+  } catch { /* ignore */ }
+  return map;
+}
+
 export async function fetchPitcherEra(
   personId: number,
   season: number,
@@ -101,13 +198,16 @@ export async function fetchPitcherEra(
   fip: number | null;
   whip: number | null;
 }> {
+): Promise<{ era: number | null; w: number | null; l: number | null; ip: number | null }> {
   try {
     const url = `${STATS_API}/people/${personId}/stats?stats=season&group=pitching&season=${season}`;
     const res = await fetch(url);
     if (!res.ok) return { era: null, w: null, l: null, fip: null, whip: null };
+    if (!res.ok) return { era: null, w: null, l: null, ip: null };
     const json: any = await res.json();
     const split = json?.stats?.[0]?.splits?.[0]?.stat;
     if (!split) return { era: null, w: null, l: null, fip: null, whip: null };
+    if (!split) return { era: null, w: null, l: null, ip: null };
     const era = split.era ? parseFloat(split.era) : null;
     const whip = split.whip ? parseFloat(split.whip) : null;
 
@@ -128,6 +228,7 @@ export async function fetchPitcherEra(
       }
     }
 
+    const ip = split.inningsPitched ? parseFloat(split.inningsPitched) : null;
     return {
       era: era != null && Number.isFinite(era) ? era : null,
       w: split.wins ?? null,
@@ -145,23 +246,55 @@ export interface PredictInputs {
   away: StandingsRow | undefined;
   homeEra: number | null;
   awayEra: number | null;
+  homeEraIp?: number | null;
+  awayEraIp?: number | null;
   venue?: string | null;
+  homeStats?: TeamStatsRow;
+  awayStats?: TeamStatsRow;
+  homeRestDays?: number | null;
+  awayRestDays?: number | null;
 }
 
 /**
- * Probabilistic blend in log-odds space. Each feature contributes a
- * coefficient-weighted logit term derived from a blended team-strength
- * estimate plus matchup adjustments. Coefficients are hand-tuned from
- * public MLB priors and clamped to keep predictions in [0.10, 0.90].
+ * Probabilistic blend in log-odds space. v0.4 features:
+ *   1. Composite team strength (Pythag · W% · L10 · home/away split)
+ *   2. Run-differential/game gap
+ *   3. Home-field edge (+0.18 logit)
+ *   4. Starter ERA gap (regressed to league mean)
+ *   5. Full-staff team ERA gap  (bullpen + rotation depth proxy)
+ *   6. Team OPS gap (offensive quality, .720 league anchor)
+ *   7. Rest-days advantage (+/- 0.04 logit per day, capped at ±2)
+ *   8. Park factor as a logit multiplier
+ *   9. Mild calibration shrink (×0.92) toward 0.5 to combat overconfidence
+ *  10. Hard clamp to [0.15, 0.85]
  */
-export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs): {
-  home: number;
-  away: number;
-  rationale: string[];
-} {
+export function predict({
+  home,
+  away,
+  homeEra,
+  awayEra,
+  homeEraIp,
+  awayEraIp,
+  venue,
+  homeStats,
+  awayStats,
+  homeRestDays,
+  awayRestDays,
+}: PredictInputs): { home: number; away: number; rationale: string[] } {
   const rationale: string[] = [];
   const logit = (p: number) => Math.log(p / (1 - p));
+  const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
   const clamp = (x: number, lo = 0.2, hi = 0.8) => Math.min(hi, Math.max(lo, x));
+
+  // Track running home win prob so rationale shows pp swings, not logits.
+  let prevP = 0.5;
+  const step = (label: string, newLogit: number) => {
+    const newP = sigmoid(newLogit);
+    const delta = (newP - prevP) * 100;
+    const sign = delta >= 0 ? "+" : "";
+    rationale.push(`${label} → ${sign}${delta.toFixed(1)}pp (home ${(newP * 100).toFixed(0)}%)`);
+    prevP = newP;
+  };
 
   // Composite team strength: 40% Pythagorean, 30% season W%, 20% L10 form,
   // 10% home/away split. Falls back to 0.5 when standings are missing.
@@ -173,8 +306,9 @@ export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs):
   const hStrength = clamp(strength(home, true));
   const aStrength = clamp(strength(away, false));
   let lo = logit(hStrength) - logit(aStrength);
-  rationale.push(
-    `Team strength: ${(hStrength * 100).toFixed(0)}% vs ${(aStrength * 100).toFixed(0)}% (Pythag·W%·L10·split blend)`,
+  step(
+    `Team strength ${(hStrength * 100).toFixed(0)}% vs ${(aStrength * 100).toFixed(0)}% (Pythag·W%·L10·split)`,
+    lo,
   );
 
   // Run-differential signal — explicitly add a small extra term so a
@@ -183,33 +317,38 @@ export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs):
     const hRdg = (home.runsScored - home.runsAllowed) / Math.max(1, home.wins + home.losses);
     const aRdg = (away.runsScored - away.runsAllowed) / Math.max(1, away.wins + away.losses);
     const diff = hRdg - aRdg;
-    const adj = diff * 0.12;
-    lo += adj;
-    rationale.push(`Run-diff/game ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`);
+    lo += diff * 0.12;
+    step(`Run-diff/game ${diff >= 0 ? "+" : ""}${diff.toFixed(2)}`, lo);
   }
 
   // Home-field edge (MLB historical ~54%).
   lo += 0.18;
-  rationale.push("Home-field edge: +0.18 logit");
+  step("Home-field edge", lo);
 
-  // Starting pitcher ERA gap, regressed toward league mean (4.20).
-  const eraTerm = (era: number | null) => (era == null ? null : 4.2 - era);
-  const ht = eraTerm(homeEra);
-  const at = eraTerm(awayEra);
+  // Starting pitcher ERA gap. Two refinements over a raw ERA diff:
+  //   • Bayesian shrink toward league mean (4.20) with a 30-IP prior, so
+  //     April small samples (e.g. 1 GS, 9.00 ERA) don't dominate the model.
+  //   • Coefficient 0.20: a one-run regressed ERA gap ≈ 5pp win-prob swing,
+  //     matching public starter-value research (FiveThirtyEight / BPro).
+  const regressEra = (era: number | null, ip: number | null | undefined): number | null => {
+    if (era == null) return null;
+    const prior = 30; // IP prior weight
+    const n = ip != null && ip > 0 ? ip : 0;
+    return (era * n + 4.2 * prior) / (n + prior);
+  };
+  const hEraReg = regressEra(homeEra, homeEraIp);
+  const aEraReg = regressEra(awayEra, awayEraIp);
+  const ht = hEraReg == null ? null : 4.2 - hEraReg;
+  const at = aEraReg == null ? null : 4.2 - aEraReg;
   if (ht != null && at != null) {
-    const adj = (ht - at) * 0.16;
-    lo += adj;
-    rationale.push(
-      `Starter ERA ${homeEra!.toFixed(2)} vs ${awayEra!.toFixed(2)} → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`,
-    );
+    lo += (ht - at) * 0.20;
+    step(`Starter ERA ${hEraReg!.toFixed(2)} vs ${aEraReg!.toFixed(2)} (regressed)`, lo);
   } else if (ht != null) {
-    const adj = ht * 0.08;
-    lo += adj;
-    rationale.push(`Home starter ERA ${homeEra!.toFixed(2)} vs lg 4.20`);
+    lo += ht * 0.10;
+    step(`Home starter ERA ${hEraReg!.toFixed(2)} vs lg 4.20`, lo);
   } else if (at != null) {
-    const adj = -at * 0.08;
-    lo += adj;
-    rationale.push(`Away starter ERA ${awayEra!.toFixed(2)} vs lg 4.20`);
+    lo += -at * 0.10;
+    step(`Away starter ERA ${aEraReg!.toFixed(2)} vs lg 4.20`, lo);
   }
 
   // Park factor: amplify logits at hitter parks, compress at pitcher parks.
@@ -217,19 +356,55 @@ export function predict({ home, away, homeEra, awayEra, venue }: PredictInputs):
   if (pf !== 100) {
     const amplify = 1 + (pf - 100) / 200;
     lo = lo * amplify;
-    rationale.push(`Park factor ${pf} (${venue}) → ×${amplify.toFixed(3)} logit`);
+    step(`Park factor ${pf} (${venue})`, lo);
   }
 
-  // Final probability with hard clamp to keep tails honest.
+  // Full-staff team ERA gap (bullpen + rotation depth signal, distinct from
+  // the named starter). League anchor 4.20.
+  if (homeStats?.teamEra != null && awayStats?.teamEra != null) {
+    lo += ((4.2 - homeStats.teamEra) - (4.2 - awayStats.teamEra)) * 0.10;
+    step(`Staff ERA ${homeStats.teamEra.toFixed(2)} vs ${awayStats.teamEra.toFixed(2)}`, lo);
+  }
+
+  // Team OPS gap — offensive quality. League OPS anchor .720, scale ×2.5
+  // so a .060 OPS edge ≈ 0.15 logit.
+  if (homeStats?.ops != null && awayStats?.ops != null) {
+    lo += (homeStats.ops - awayStats.ops) * 2.5;
+    step(`Team OPS ${homeStats.ops.toFixed(3)} vs ${awayStats.ops.toFixed(3)}`, lo);
+  }
+
+  // Rest-days edge: capped at ±2 days, 0.04 logit/day.
+  if (homeRestDays != null && awayRestDays != null) {
+    const diff = Math.max(-2, Math.min(2, homeRestDays - awayRestDays));
+    if (diff !== 0) {
+      lo += diff * 0.04;
+      step(`Rest days ${homeRestDays} vs ${awayRestDays}`, lo);
+    }
+  }
+
+  // Calibration shrink — historical hand-tuned models overshoot. Mild ×0.92
+  // shrink toward 0 logit improves Brier / log-loss without harming accuracy.
+  lo = lo * 0.92;
+  step("Calibration shrink ×0.92", lo);
+
+  // Final probability with hard clamp.
   let p = 1 / (1 + Math.exp(-lo));
-  p = Math.min(0.9, Math.max(0.1, p));
+  p = Math.min(0.85, Math.max(0.15, p));
+  if (Math.abs(p - prevP) > 0.001) {
+    rationale.push(`Clamp [15%, 85%] → home ${(p * 100).toFixed(0)}%`);
+  }
   return { home: p, away: 1 - p, rationale };
 }
 
 export async function buildPredictionsForDate(date: string): Promise<PredictedGame[]> {
   const season = parseInt(date.slice(0, 4), 10);
   const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue,linescore&startDate=${date}&endDate=${date}`;
-  const [scheduleRes, standings] = await Promise.all([fetch(scheduleUrl), fetchStandings(season)]);
+  const [scheduleRes, standings, teamStats, restMap] = await Promise.all([
+    fetch(scheduleUrl),
+    fetchStandings(season),
+    fetchTeamStats(season),
+    fetchRestDays(date),
+  ]);
   if (!scheduleRes.ok) throw new Error(`MLB schedule fetch failed: ${scheduleRes.status}`);
   const scheduleJson: any = await scheduleRes.json();
   const games = scheduleJson?.dates?.[0]?.games ?? [];
@@ -260,7 +435,13 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
       away: as,
       homeEra: hps?.era ?? null,
       awayEra: aps?.era ?? null,
+      homeEraIp: hps?.ip ?? null,
+      awayEraIp: aps?.ip ?? null,
       venue: g.venue?.name,
+      homeStats: teamStats.get(homeTeam.id),
+      awayStats: teamStats.get(awayTeam.id),
+      homeRestDays: restMap.get(homeTeam.id) ?? null,
+      awayRestDays: restMap.get(awayTeam.id) ?? null,
     });
 
     const side = (raw: any, st: typeof hs, pitcher: any, ps: typeof hps): TeamSide => ({
