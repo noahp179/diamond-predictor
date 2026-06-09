@@ -181,3 +181,117 @@ export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(asyn
 
   return { teams, modelVersion: MODEL_VERSION };
 });
+
+// Model V2: run both v0.3 and v0.4 live for a given date (no DB required).
+export const getModelV2Games = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const { buildPredictionsV4ForDate, MODEL_VERSION_V4 } = await import("./mlb-core-v4");
+    const date = data?.date ?? todayISO();
+    const games = await buildPredictionsV4ForDate(date);
+    return { date, games, modelV3: MODEL_VERSION, modelV4: MODEL_VERSION_V4 };
+  });
+
+// Backtest: run both models over recent historical dates and return metrics comparison.
+// Fetches from MLB Stats API only — no Supabase required.
+export const runBacktest = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ days: z.number().optional() }).optional())
+  .handler(async ({ data }) => {
+    const { buildPredictionsForDate } = await import("./mlb-core");
+    const { buildPredictionsV4ForDate, MODEL_VERSION_V4 } = await import("./mlb-core-v4");
+    const { offsetDate } = await import("./mlb-features");
+
+    const days = Math.min(data?.days ?? 7, 14); // cap at 14 for performance
+    const today = todayISO();
+    const endDate = offsetDate(today, -1);
+    const startDate = offsetDate(endDate, -(days - 1));
+
+    // Build date list
+    const dates: string[] = [];
+    let cur = startDate;
+    while (cur <= endDate) {
+      dates.push(cur);
+      cur = offsetDate(cur, 1);
+    }
+
+    interface GameResult {
+      date: string;
+      gameId: number;
+      home: string;
+      away: string;
+      winner: string | null;
+      v3HomeProb: number;
+      v4HomeProb: number;
+    }
+
+    const allResults: GameResult[] = [];
+
+    for (const date of dates) {
+      try {
+        const [v3Games, v4Games] = await Promise.all([
+          buildPredictionsForDate(date).catch(() => []),
+          buildPredictionsV4ForDate(date).catch(() => []),
+        ]);
+        const v4Map = new Map(v4Games.map((g: any) => [g.gameId, g]));
+        for (const g of v3Games) {
+          const v4 = v4Map.get(g.gameId) as any;
+          if (!v4) continue;
+          allResults.push({
+            date,
+            gameId: g.gameId,
+            home: g.home.name,
+            away: g.away.name,
+            winner: g.winner ?? null,
+            v3HomeProb: g.homeWinProb,
+            v4HomeProb: v4.v4WinProb,
+          });
+        }
+      } catch {
+        // Skip dates that fail (off days, API timeouts)
+      }
+    }
+
+    const settled = allResults.filter((r) => r.winner != null);
+    if (settled.length === 0) {
+      return {
+        startDate, endDate, totalGames: allResults.length, settledGames: 0,
+        v3: null, v4: null, modelV3: MODEL_VERSION, modelV4: MODEL_VERSION_V4,
+      };
+    }
+
+    const eps = 1e-7;
+    const score = (prob: number, winner: string | null) => {
+      const y = winner === "home" ? 1 : 0;
+      const p = Math.min(1 - eps, Math.max(eps, prob));
+      return {
+        correct: (prob >= 0.5 ? "home" : "away") === winner,
+        brier: (prob - y) ** 2,
+        logLoss: -(y * Math.log(p) + (1 - y) * Math.log(1 - p)),
+      };
+    };
+
+    const v3Scores = settled.map((r) => score(r.v3HomeProb, r.winner));
+    const v4Scores = settled.map((r) => score(r.v4HomeProb, r.winner));
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+
+    return {
+      startDate,
+      endDate,
+      totalGames: allResults.length,
+      settledGames: settled.length,
+      modelV3: MODEL_VERSION,
+      modelV4: MODEL_VERSION_V4,
+      v3: {
+        correct: v3Scores.filter((s) => s.correct).length,
+        accuracy: avg(v3Scores.map((s) => s.correct ? 1 : 0)),
+        brier: avg(v3Scores.map((s) => s.brier)),
+        logLoss: avg(v3Scores.map((s) => s.logLoss)),
+      },
+      v4: {
+        correct: v4Scores.filter((s) => s.correct).length,
+        accuracy: avg(v4Scores.map((s) => s.correct ? 1 : 0)),
+        brier: avg(v4Scores.map((s) => s.brier)),
+        logLoss: avg(v4Scores.map((s) => s.logLoss)),
+      },
+    };
+  });

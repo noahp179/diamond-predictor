@@ -2,6 +2,9 @@
 
 import { parkFactor } from "./park-factors";
 
+// Re-export so consumers only need one import from this module
+export { parkFactor } from "./park-factors";
+
 export const MODEL_VERSION = "baseline-v0.3";
 export const STATS_API = "https://statsapi.mlb.com/api/v1";
 
@@ -17,6 +20,8 @@ export interface TeamSide {
     era: number | null;
     wins: number | null;
     losses: number | null;
+    fip?: number | null;
+    whip?: number | null;
   } | null;
 }
 
@@ -36,7 +41,7 @@ export interface PredictedGame {
   correct?: boolean | null;
 }
 
-interface StandingsRow {
+export interface StandingsRow {
   winPct: number;
   wins: number;
   losses: number;
@@ -89,22 +94,49 @@ export async function fetchStandings(season: number): Promise<Map<number, Standi
 export async function fetchPitcherEra(
   personId: number,
   season: number,
-): Promise<{ era: number | null; w: number | null; l: number | null }> {
+): Promise<{
+  era: number | null;
+  w: number | null;
+  l: number | null;
+  fip: number | null;
+  whip: number | null;
+}> {
   try {
     const url = `${STATS_API}/people/${personId}/stats?stats=season&group=pitching&season=${season}`;
     const res = await fetch(url);
-    if (!res.ok) return { era: null, w: null, l: null };
+    if (!res.ok) return { era: null, w: null, l: null, fip: null, whip: null };
     const json: any = await res.json();
     const split = json?.stats?.[0]?.splits?.[0]?.stat;
-    if (!split) return { era: null, w: null, l: null };
+    if (!split) return { era: null, w: null, l: null, fip: null, whip: null };
     const era = split.era ? parseFloat(split.era) : null;
+    const whip = split.whip ? parseFloat(split.whip) : null;
+
+    let fip: number | null = null;
+    const ipStr = split.inningsPitched;
+    if (ipStr) {
+      const parts = ipStr.split(".");
+      const innings = parseInt(parts[0], 10) || 0;
+      const outs = parts[1] ? parseInt(parts[1], 10) : 0;
+      const ip = innings + outs / 3;
+      if (ip >= 5.0) { // Require at least 5 innings pitched to compute a stable FIP
+        const hr = split.homeRuns ?? 0;
+        const bb = split.baseOnBalls ?? 0;
+        const hbp = split.hitByPitch ?? 0;
+        const k = split.strikeOuts ?? 0;
+        // FIP = (13*HR + 3*(BB+HBP) - 2*K)/IP + 4.20 (aligned with average ERA)
+        fip = (13 * hr + 3 * (bb + hbp) - 2 * k) / ip + 4.20;
+      }
+    }
+
     return {
       era: era != null && Number.isFinite(era) ? era : null,
       w: split.wins ?? null,
       l: split.losses ?? null,
+      fip: fip != null && Number.isFinite(fip) ? fip : null,
+      whip: whip != null && Number.isFinite(whip) ? whip : null,
     };
   } catch {
-    return { era: null, w: null, l: null };
+    return { era: null, w: null, l: null, fip: null, whip: null };
   }
 }
 
@@ -244,6 +276,8 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
             era: ps?.era ?? null,
             wins: ps?.w ?? null,
             losses: ps?.l ?? null,
+            fip: ps?.fip ?? null,
+            whip: ps?.whip ?? null,
           }
         : null,
     });
@@ -272,4 +306,22 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
       winner,
     } satisfies PredictedGame;
   });
+}
+
+/**
+ * Run async tasks in sequential batches to avoid bursting the MLB API.
+ * Processes up to `batchSize` tasks concurrently, waits for each batch
+ * before starting the next. Prevents the per-date burst of 30+ simultaneous
+ * HTTP requests that can trigger anti-abuse throttling.
+ */
+export async function batchedAll<T>(
+  tasks: Array<() => Promise<T>>,
+  batchSize = 8,
+): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize).map((t) => t());
+    results.push(...(await Promise.all(batch)));
+  }
+  return results;
 }

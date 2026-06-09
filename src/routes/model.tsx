@@ -35,9 +35,17 @@ function ModelPage() {
               ships with the exact log-odds adjustments that produced it.
             </p>
           </div>
-          <Link to="/" className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest hover:border-primary">
-            ← Today's slate
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/model-v2"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+            >
+              Model V2 ✦
+            </Link>
+            <Link to="/" className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest hover:border-primary">
+              ← Today's slate
+            </Link>
+          </div>
         </div>
       </header>
 

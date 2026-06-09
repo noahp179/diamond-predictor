@@ -45,12 +45,20 @@ function HistoryPage() {
               proper scoring rules — lower is better.
             </p>
           </div>
-          <Link
-            to="/"
-            className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-          >
-            ← Today's slate
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/model-v2"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+            >
+              Model V2 ✦
+            </Link>
+            <Link
+              to="/"
+              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
+            >
+              ← Today's slate
+            </Link>
+          </div>
         </div>
         <div className="border-t border-border bg-secondary/30">
           <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-border md:grid-cols-4">

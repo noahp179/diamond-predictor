@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TeamsRouteImport } from './routes/teams'
+import { Route as ModelV2RouteImport } from './routes/model-v2'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
@@ -18,6 +19,11 @@ import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/publ
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModelV2Route = ModelV2RouteImport.update({
+  id: '/model-v2',
+  path: '/model-v2',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModelRoute = ModelRouteImport.update({
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/model-v2': typeof ModelV2Route
   '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/model-v2': typeof ModelV2Route
   '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
@@ -61,6 +69,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/model-v2': typeof ModelV2Route
   '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
@@ -70,15 +79,23 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/model'
+    | '/model-v2'
     | '/teams'
     | '/api/public/hooks/run-pipeline'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/model' | '/teams' | '/api/public/hooks/run-pipeline'
+  to:
+    | '/'
+    | '/history'
+    | '/model'
+    | '/model-v2'
+    | '/teams'
+    | '/api/public/hooks/run-pipeline'
   id:
     | '__root__'
     | '/'
     | '/history'
     | '/model'
+    | '/model-v2'
     | '/teams'
     | '/api/public/hooks/run-pipeline'
   fileRoutesById: FileRoutesById
@@ -87,6 +104,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
   ModelRoute: typeof ModelRoute
+  ModelV2Route: typeof ModelV2Route
   TeamsRoute: typeof TeamsRoute
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
 }
@@ -98,6 +116,13 @@ declare module '@tanstack/react-router' {
       path: '/teams'
       fullPath: '/teams'
       preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/model-v2': {
+      id: '/model-v2'
+      path: '/model-v2'
+      fullPath: '/model-v2'
+      preLoaderRoute: typeof ModelV2RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/model': {
@@ -135,9 +160,20 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
   ModelRoute: ModelRoute,
+  ModelV2Route: ModelV2Route,
   TeamsRoute: TeamsRoute,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
