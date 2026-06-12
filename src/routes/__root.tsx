@@ -77,14 +77,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Diamond Edge — MLB Win Probabilities" },
+      { name: "description", content: "Daily MLB win-probability predictions powered by live MLB Stats data." },
+      { name: "author", content: "Diamond Edge" },
+      { property: "og:title", content: "Diamond Edge — MLB Win Probabilities" },
+      { property: "og:description", content: "Daily MLB win-probability predictions powered by live MLB Stats data." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
@@ -106,6 +105,11 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <div className="border-t border-border pt-8">
+          <div className="mx-auto max-w-6xl px-6 py-4 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            ⚠️ Disclaimer: This site is for research and educational purposes only. The creator is not responsible for any losses, decisions, or actions taken based on the content displayed. All MLB predictions are probabilistic estimates and should not be considered financial or betting advice. Past performance does not guarantee future results.
+          </div>
+        </div>
         {children}
         <Scripts />
       </body>

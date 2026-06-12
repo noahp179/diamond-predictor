@@ -8,6 +8,17 @@ export { parkFactor } from "./park-factors";
 export const MODEL_VERSION = "baseline-v0.4";
 export const STATS_API = "https://statsapi.mlb.com/api/v1";
 
+const DEFAULT_FETCH_TIMEOUT = 15_000;
+
+export async function fetchWithTimeout(
+  url: string,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 export interface TeamSide {
   id: number;
   name: string;
@@ -61,7 +72,7 @@ export interface TeamStatsRow {
 
 export async function fetchStandings(season: number): Promise<Map<number, StandingsRow>> {
   const url = `${STATS_API}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) return new Map();
   const json: any = await res.json();
   const map = new Map<number, StandingsRow>();
@@ -105,8 +116,8 @@ export async function fetchStandings(season: number): Promise<Map<number, Standi
 export async function fetchTeamStats(season: number): Promise<Map<number, TeamStatsRow>> {
   const base = `${STATS_API}/teams/stats?sportIds=1&season=${season}&stats=season`;
   const [hitRes, pitRes] = await Promise.all([
-    fetch(`${base}&group=hitting`),
-    fetch(`${base}&group=pitching`),
+    fetchWithTimeout(`${base}&group=hitting`),
+    fetchWithTimeout(`${base}&group=pitching`),
   ]);
   const map = new Map<number, TeamStatsRow>();
   const init = (id: number) => {
@@ -158,7 +169,7 @@ export async function fetchRestDays(date: string): Promise<Map<number, number>> 
   const url = `${STATS_API}/schedule?sportId=1&startDate=${startISO}&endDate=${endISO}`;
   const map = new Map<number, number>();
   try {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return map;
     const j: any = await res.json();
     const lastPlayed = new Map<number, string>();
@@ -197,17 +208,15 @@ export async function fetchPitcherEra(
   l: number | null;
   fip: number | null;
   whip: number | null;
+  ip: number | null;
 }> {
-): Promise<{ era: number | null; w: number | null; l: number | null; ip: number | null }> {
   try {
     const url = `${STATS_API}/people/${personId}/stats?stats=season&group=pitching&season=${season}`;
-    const res = await fetch(url);
-    if (!res.ok) return { era: null, w: null, l: null, fip: null, whip: null };
-    if (!res.ok) return { era: null, w: null, l: null, ip: null };
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) return { era: null, w: null, l: null, fip: null, whip: null, ip: null };
     const json: any = await res.json();
     const split = json?.stats?.[0]?.splits?.[0]?.stat;
-    if (!split) return { era: null, w: null, l: null, fip: null, whip: null };
-    if (!split) return { era: null, w: null, l: null, ip: null };
+    if (!split) return { era: null, w: null, l: null, fip: null, whip: null, ip: null };
     const era = split.era ? parseFloat(split.era) : null;
     const whip = split.whip ? parseFloat(split.whip) : null;
 
@@ -235,9 +244,10 @@ export async function fetchPitcherEra(
       l: split.losses ?? null,
       fip: fip != null && Number.isFinite(fip) ? fip : null,
       whip: whip != null && Number.isFinite(whip) ? whip : null,
+      ip: ip != null && Number.isFinite(ip) ? ip : null,
     };
   } catch {
-    return { era: null, w: null, l: null, fip: null, whip: null };
+    return { era: null, w: null, l: null, fip: null, whip: null, ip: null };
   }
 }
 
@@ -400,7 +410,7 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
   const season = parseInt(date.slice(0, 4), 10);
   const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue,linescore&startDate=${date}&endDate=${date}`;
   const [scheduleRes, standings, teamStats, restMap] = await Promise.all([
-    fetch(scheduleUrl),
+    fetchWithTimeout(scheduleUrl),
     fetchStandings(season),
     fetchTeamStats(season),
     fetchRestDays(date),
@@ -468,8 +478,10 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
     const statusStr: string = g.status?.detailedState ?? "Scheduled";
     const isFinal = /final|game over|completed/i.test(statusStr);
     let winner: "home" | "away" | null = null;
+    let correct: boolean | null = null;
     if (isFinal && typeof home === "number" && typeof away === "number" && home !== away) {
       winner = home > away ? "home" : "away";
+      correct = (pred.home >= 0.5 ? "home" : "away") === winner;
     }
 
     return {
@@ -485,6 +497,7 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
       homeScore: home,
       awayScore: away,
       winner,
+      correct,
     } satisfies PredictedGame;
   });
 }

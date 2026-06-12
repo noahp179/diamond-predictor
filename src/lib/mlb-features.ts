@@ -3,7 +3,7 @@
 // All endpoints are free, public, no API key required: statsapi.mlb.com
 // Each function is pure/async and safe to call in parallel batches.
 
-import { STATS_API } from "./mlb-core";
+import { STATS_API, fetchWithTimeout } from "./mlb-core";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ export async function fetchTeamHitting(
 ): Promise<TeamHittingStats> {
   try {
     const url = `${STATS_API}/teams/${teamId}/stats?stats=season&group=hitting&season=${season}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return { obp: null, slg: null, ops: null };
     const json: any = await res.json();
     const stat = json?.stats?.[0]?.splits?.[0]?.stat;
@@ -90,7 +90,7 @@ export async function fetchTeamPitching(
 ): Promise<TeamPitchingStats> {
   try {
     const url = `${STATS_API}/teams/${teamId}/stats?stats=season&group=pitching&season=${season}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return { era: null, whip: null, kbb: null };
     const json: any = await res.json();
     const stat = json?.stats?.[0]?.splits?.[0]?.stat;
@@ -122,7 +122,7 @@ export async function fetchRestDays(
     const endDate = offsetDate(date, -1);
     const startDate = offsetDate(date, -9);
     const url = `${STATS_API}/schedule?teamId=${teamId}&startDate=${startDate}&endDate=${endDate}&sportId=1`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return { daysSinceLastGame: 1 };
     const json: any = await res.json();
 
@@ -155,7 +155,7 @@ export async function fetchLastNGames(
     const endDate = offsetDate(date, -1);
     const startDate = offsetDate(date, -(n * 2 + 7));
     const url = `${STATS_API}/schedule?teamId=${teamId}&startDate=${startDate}&endDate=${endDate}&sportId=1`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return { wins: 0, losses: 0, pct: 0.5 };
     const json: any = await res.json();
 
@@ -205,7 +205,7 @@ export async function fetchHeadToHead(
     const startDate = `${season}-03-01`;
     const endDate = offsetDate(date, -1);
     const url = `${STATS_API}/schedule?teamId=${homeTeamId}&opponentId=${awayTeamId}&startDate=${startDate}&endDate=${endDate}&sportId=1`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return { homeWins: 0, awayWins: 0, totalGames: 0 };
     const json: any = await res.json();
 

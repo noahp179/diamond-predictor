@@ -64,10 +64,10 @@ function TeamsPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/model-v2"
+              to="/model"
               className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
             >
-              Model V2 ✦
+              Recommended
             </Link>
             <Link
               to="/"

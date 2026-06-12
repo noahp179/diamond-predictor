@@ -378,8 +378,10 @@ export async function buildPredictionsV4ForDate(
     const statusStr: string = g.status?.detailedState ?? "Scheduled";
     const isFinal = /final|game over|completed/i.test(statusStr);
     let winner: "home" | "away" | null = null;
+    let correct: boolean | null = null;
     if (isFinal && typeof homeScore === "number" && typeof awayScore === "number" && homeScore !== awayScore) {
       winner = homeScore > awayScore ? "home" : "away";
+      correct = (v4.home >= 0.5 ? "home" : "away") === winner;
     }
 
     return {
@@ -395,6 +397,7 @@ export async function buildPredictionsV4ForDate(
       homeScore,
       awayScore,
       winner,
+      correct,
       v4WinProb: v4.home,
       v4Rationale: v4.rationale,
       features: v4Features,

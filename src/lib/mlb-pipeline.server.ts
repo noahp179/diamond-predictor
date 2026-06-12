@@ -117,7 +117,10 @@ export async function settleFinished() {
 
 async function fetchGameFinal(gameId: number) {
   try {
-    const res = await fetch(`${STATS_API}/schedule?sportId=1&gamePk=${gameId}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(`${STATS_API}/schedule?sportId=1&gamePk=${gameId}`, { signal: controller.signal });
+    clearTimeout(timeout);
     if (!res.ok) return null;
     const json: any = await res.json();
     const g = json?.dates?.[0]?.games?.[0];

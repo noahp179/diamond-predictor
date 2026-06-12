@@ -1,9 +1,9 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { getDailyGames, getMetrics, runPipeline } from "@/lib/mlb.functions";
+import { getDailyGames, getMetrics } from "@/lib/mlb.functions";
 import { GameCard } from "@/components/GameCard";
 
 export const Route = createFileRoute("/")({
@@ -23,22 +23,21 @@ function todayISO() {
 }
 
 function Index() {
-  const router = useRouter();
   const [date, setDate] = useState(todayISO());
   const fetchGames = useServerFn(getDailyGames);
-  const runPipelineFn = useServerFn(runPipeline);
   const fetchMetrics = useServerFn(getMetrics);
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ["games", date],
     queryFn: () => fetchGames({ data: { date } }),
     staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
   });
   const { data: metrics } = useQuery({
     queryKey: ["metrics"],
     queryFn: () => fetchMetrics(),
     staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
-  const [syncing, setSyncing] = useState(false);
 
   const games = data?.games ?? [];
   const settledToday = games.filter((g) => g.correct != null);
@@ -81,31 +80,10 @@ function Index() {
             </Link>
             <Link
               to="/model"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Model
-            </Link>
-            <Link
-              to="/model-v2"
               className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
             >
-              Model V2 ✦
+              Recommended
             </Link>
-            <button
-              onClick={async () => {
-                setSyncing(true);
-                try {
-                  await runPipelineFn({ data: { date } });
-                  await refetch();
-                  router.invalidate();
-                } finally {
-                  setSyncing(false);
-                }
-              }}
-              className="border border-primary bg-primary px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              {syncing || isFetching ? "Syncing…" : "Sync now"}
-            </button>
           </div>
         </div>
         <div className="border-t border-border bg-secondary/30">
@@ -123,7 +101,7 @@ function Index() {
               label="Today settled"
               value={settledToday.length ? `${correctToday}/${settledToday.length}` : "—"}
             />
-            <Stat label="Source" value={data?.source === "db" ? "Stored" : data?.source === "live" ? "Live" : "—"} />
+            <Stat label="Source" value={isFetching ? "Updating…" : data?.source === "db" ? "Stored" : data?.source === "live" ? "Live" : "—"} />
           </div>
         </div>
       </header>
