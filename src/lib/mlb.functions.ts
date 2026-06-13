@@ -15,8 +15,8 @@ export const getDailyGames = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const date = data?.date ?? todayISO();
     try {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: rows } = await supabaseAdmin
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data: rows } = await supabase
         .from("games")
         .select(
           "game_id, game_time, status, venue, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, home_score, away_score, winner, predictions(home_win_prob, away_win_prob, home_win_pct, away_win_pct, home_pitcher_name, home_pitcher_era, away_pitcher_name, away_pitcher_era, rationale, correct, model_version)",
@@ -76,14 +76,14 @@ export const getDailyGames = createServerFn({ method: "GET" })
 // Aggregate metrics for the dashboard
 export const getMetrics = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: daily } = await supabaseAdmin
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data: daily } = await supabase
       .from("daily_metrics")
       .select("*")
       .order("metric_date", { ascending: true })
       .limit(60);
 
-    const { data: totals } = await supabaseAdmin
+    const { data: totals } = await supabase
       .from("predictions")
       .select("correct, brier, log_loss, model_version")
       .not("settled_at", "is", null);
@@ -119,8 +119,8 @@ export const getMetrics = createServerFn({ method: "GET" }).handler(async () => 
 // Fetch recent settled predictions for the history page
 export const getSettledPredictions = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: predictions } = await supabaseAdmin
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data: predictions } = await supabase
       .from("predictions")
       .select(
         "game_id, home_win_prob, away_win_prob, correct, brier, log_loss, settled_at, rationale, games!inner(game_date, home_team_name, home_team_abbr, away_team_name, away_team_abbr, home_score, away_score, winner, status)"
@@ -151,9 +151,9 @@ export const runPipeline = createServerFn({ method: "POST" })
 // Per-team performance leaderboard: actual W-L from games + model accuracy per team.
 export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabase } = await import("@/integrations/supabase/client");
 
-    const { data: games } = await supabaseAdmin
+    const { data: games } = await supabase
       .from("games")
       .select(
         "game_id, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, winner, home_score, away_score, status, predictions(home_win_prob, correct, model_version)",
