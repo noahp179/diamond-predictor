@@ -38,7 +38,12 @@
   <meta name="twitter:description" content="MLB game outcome prediction app using free data sources.">
 </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <!--
+      No client script tag here on purpose: this is a TanStack Start SSR app.
+      The server renders the full document body per-request and injects its
+      own hashed asset scripts; there is no src/main.ts entry point in this
+      codebase. This file is used only as a <head> metadata template
+      (title/meta/fonts) by the Nitro renderer at build/request time.
+    -->
   </body>
 </html>
