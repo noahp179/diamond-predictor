@@ -50,6 +50,50 @@ export type Database = {
         }
         Relationships: []
       }
+      game_odds: {
+        Row: {
+          away_implied_prob: number | null
+          away_moneyline: number | null
+          created_at: string
+          fetched_at: string
+          game_id: number
+          home_implied_prob: number | null
+          home_moneyline: number | null
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          away_implied_prob?: number | null
+          away_moneyline?: number | null
+          created_at?: string
+          fetched_at?: string
+          game_id: number
+          home_implied_prob?: number | null
+          home_moneyline?: number | null
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          away_implied_prob?: number | null
+          away_moneyline?: number | null
+          created_at?: string
+          fetched_at?: string
+          game_id?: number
+          home_implied_prob?: number | null
+          home_moneyline?: number | null
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_odds_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: true
+            referencedRelation: "games"
+            referencedColumns: ["game_id"]
+          },
+        ]
+      }
       games: {
         Row: {
           away_score: number | null
