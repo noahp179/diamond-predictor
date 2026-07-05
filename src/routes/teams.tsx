@@ -64,12 +64,6 @@ function TeamsPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
               to="/"
               className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
             >
@@ -80,6 +74,25 @@ function TeamsPage() {
               className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
             >
               Track record
+            </Link>
+            <Link
+              to="/teams"
+              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
+              aria-current="page"
+            >
+              Teams
+            </Link>
+            <Link
+              to="/model"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+            >
+              Recommended
+            </Link>
+            <Link
+              to="/best-odds"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+            >
+              Best Odds
             </Link>
           </div>
         </div>

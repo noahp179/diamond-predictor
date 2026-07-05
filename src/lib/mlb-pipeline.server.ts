@@ -1,6 +1,43 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 import { buildPredictionsForDate, MODEL_VERSION, STATS_API } from "./mlb-core";
+import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
+import { fetchOddsForDate } from "./mlb-odds.server";
+
+/** Most recent `game_date` already in the DB, or null if the table is empty. */
+export async function getLastIngestedDate(): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("games")
+    .select("game_date")
+    .order("game_date", { ascending: false })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  return data[0].game_date as string;
+}
+
+function addDaysISO(dateISO: string, days: number): string {
+  const d = new Date(dateISO + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Every date strictly after the last ingested one, up through `throughDate`
+ * (inclusive), capped at `maxDays` so a long-stale DB can't trigger an
+ * unbounded backfill from a single cron tick. Self-heals gaps left by a
+ * missed or failed cron run without needing manual intervention.
+ */
+export async function findMissingDates(throughDate: string, maxDays = 10): Promise<string[]> {
+  const last = await getLastIngestedDate();
+  const start = last ? addDaysISO(last, 1) : addDaysISO(throughDate, -maxDays + 1);
+  const dates: string[] = [];
+  let cur = start;
+  while (cur <= throughDate && dates.length < maxDays) {
+    dates.push(cur);
+    cur = addDaysISO(cur, 1);
+  }
+  return dates;
+}
 
 export async function ingestAndPredict(date: string) {
   const games = await buildPredictionsForDate(date);
@@ -23,7 +60,9 @@ export async function ingestAndPredict(date: string) {
     winner: g.winner ?? null,
   }));
 
-  const { error: gErr } = await supabaseAdmin.from("games").upsert(gameRows, { onConflict: "game_id" });
+  const { error: gErr } = await supabaseAdmin
+    .from("games")
+    .upsert(gameRows, { onConflict: "game_id" });
   if (gErr) throw new Error(`games upsert: ${gErr.message}`);
 
   const predRows = games.map((g) => ({
@@ -56,16 +95,103 @@ export async function ingestAndPredict(date: string) {
     if (pErr) throw new Error(`predictions insert: ${pErr.message}`);
   }
 
-  return { date, games: games.length, newPredictions: newPreds.length };
+  // Primary model: sim-elo-v2 (Monte Carlo + multi-season Elo ensemble). Stored
+  // alongside baseline-v0.4 (kept as the comparison model on Track Record).
+  // Pitcher/record metadata is copied from the baseline game objects — those
+  // are real-world facts (who's starting, season W/L), not model-specific —
+  // so pages reading only the sim-elo-v2 row still have full display data.
+  // Failures here never block baseline ingestion.
+  let newSimPreds = 0;
+  try {
+    const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
+    const simGames = await buildSimPredictionsForDate(date);
+    const simRows = simGames
+      .filter((g) => ids.includes(g.gameId))
+      .map((g) => {
+        const base = baselineByGameId.get(g.gameId);
+        return {
+          game_id: g.gameId,
+          model_version: MODEL_VERSION_SIM,
+          home_win_prob: Number(g.ensembleProb.toFixed(4)),
+          away_win_prob: Number((1 - g.ensembleProb).toFixed(4)),
+          home_win_pct: base ? Number(base.home.winPct.toFixed(4)) : null,
+          away_win_pct: base ? Number(base.away.winPct.toFixed(4)) : null,
+          home_pitcher_id: base?.home.pitcher?.id ?? null,
+          home_pitcher_name: base?.home.pitcher?.name ?? null,
+          home_pitcher_era: base?.home.pitcher?.era ?? null,
+          away_pitcher_id: base?.away.pitcher?.id ?? null,
+          away_pitcher_name: base?.away.pitcher?.name ?? null,
+          away_pitcher_era: base?.away.pitcher?.era ?? null,
+          rationale: g.rationale,
+        };
+      });
+    const { data: existingSim } = await supabaseAdmin
+      .from("predictions")
+      .select("game_id")
+      .eq("model_version", MODEL_VERSION_SIM)
+      .in("game_id", ids);
+    const existingSimSet = new Set((existingSim ?? []).map((r) => r.game_id));
+    const freshSim = simRows.filter((p) => !existingSimSet.has(p.game_id));
+    if (freshSim.length > 0) {
+      const { error: sErr } = await supabaseAdmin.from("predictions").insert(freshSim);
+      if (sErr) throw new Error(sErr.message);
+      newSimPreds = freshSim.length;
+    }
+  } catch (err) {
+    console.error("[ingestAndPredict] sim-elo-v2 predictions failed:", err);
+  }
+
+  // Real market odds (ESPN, free/keyless). Best-effort and never blocks game
+  // or prediction ingestion — odds may not be posted yet for far-future dates,
+  // and the endpoint is unofficial.
+  let newOdds = 0;
+  try {
+    const lookups = games.map((g) => ({
+      gameId: g.gameId,
+      homeName: g.home.name,
+      awayName: g.away.name,
+      homeAbbr: g.home.abbreviation,
+      awayAbbr: g.away.abbreviation,
+    }));
+    const fetched = await fetchOddsForDate(date, lookups);
+    if (fetched.length > 0) {
+      const oddsRows = fetched.map((o) => ({
+        game_id: o.gameId,
+        provider: o.provider,
+        home_moneyline: o.homeMoneyLine,
+        away_moneyline: o.awayMoneyLine,
+        home_implied_prob: Number(o.homeImpliedProb.toFixed(4)),
+        away_implied_prob: Number(o.awayImpliedProb.toFixed(4)),
+        fetched_at: new Date().toISOString(),
+      }));
+      const { error: oErr } = await supabaseAdmin
+        .from("game_odds")
+        .upsert(oddsRows, { onConflict: "game_id" });
+      if (oErr) throw new Error(oErr.message);
+      newOdds = oddsRows.length;
+    }
+  } catch (err) {
+    console.error("[ingestAndPredict] odds fetch failed:", err);
+  }
+
+  return {
+    date,
+    games: games.length,
+    newPredictions: newPreds.length,
+    newSimPredictions: newSimPreds,
+    newOdds,
+  };
 }
 
 export async function settleFinished() {
-  // Find unsettled predictions whose game is final.
+  // Find unsettled predictions whose game is final — across every model version
+  // so shadow models (sim-elo-v1) get scored alongside the baseline.
   const { data: rows, error } = await supabaseAdmin
     .from("predictions")
-    .select("game_id, home_win_prob, away_win_prob, games!inner(status, winner, home_score, away_score, game_date)")
-    .is("settled_at", null)
-    .eq("model_version", MODEL_VERSION);
+    .select(
+      "game_id, model_version, home_win_prob, away_win_prob, games!inner(status, winner, home_score, away_score, game_date)",
+    )
+    .is("settled_at", null);
   if (error) throw new Error(`settle query: ${error.message}`);
 
   let settled = 0;
@@ -109,7 +235,7 @@ export async function settleFinished() {
         settled_at: new Date().toISOString(),
       })
       .eq("game_id", (r as any).game_id)
-      .eq("model_version", MODEL_VERSION);
+      .eq("model_version", (r as any).model_version);
     settled++;
   }
   return { settled };
@@ -119,7 +245,9 @@ async function fetchGameFinal(gameId: number) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(`${STATS_API}/schedule?sportId=1&gamePk=${gameId}`, { signal: controller.signal });
+    const res = await fetch(`${STATS_API}/schedule?sportId=1&gamePk=${gameId}`, {
+      signal: controller.signal,
+    });
     clearTimeout(timeout);
     if (!res.ok) return null;
     const json: any = await res.json();
@@ -129,7 +257,12 @@ async function fetchGameFinal(gameId: number) {
     const homeScore = g.teams?.home?.score ?? null;
     const awayScore = g.teams?.away?.score ?? null;
     let winner: "home" | "away" | null = null;
-    if (status.toLowerCase().includes("final") && typeof homeScore === "number" && typeof awayScore === "number" && homeScore !== awayScore) {
+    if (
+      status.toLowerCase().includes("final") &&
+      typeof homeScore === "number" &&
+      typeof awayScore === "number" &&
+      homeScore !== awayScore
+    ) {
       winner = homeScore > awayScore ? "home" : "away";
     }
     return { status, homeScore, awayScore, winner };
@@ -139,29 +272,32 @@ async function fetchGameFinal(gameId: number) {
 }
 
 export async function recomputeDailyMetrics() {
-  // Aggregate per game_date from predictions joined to games
+  // Aggregate per (game_date, model_version) from predictions joined to games
   const { data, error } = await supabaseAdmin
     .from("predictions")
-    .select("correct, brier, log_loss, games!inner(game_date)")
-    .eq("model_version", MODEL_VERSION)
+    .select("model_version, correct, brier, log_loss, games!inner(game_date)")
     .not("settled_at", "is", null);
   if (error) throw new Error(`metrics query: ${error.message}`);
 
-  const buckets = new Map<string, { games: number; settled: number; correct: number; brier: number; logLoss: number }>();
+  const buckets = new Map<
+    string,
+    { games: number; settled: number; correct: number; brier: number; logLoss: number }
+  >();
   for (const r of data ?? []) {
     const d = (r as any).games.game_date as string;
-    const b = buckets.get(d) ?? { games: 0, settled: 0, correct: 0, brier: 0, logLoss: 0 };
+    const key = `${d}|${(r as any).model_version}`;
+    const b = buckets.get(key) ?? { games: 0, settled: 0, correct: 0, brier: 0, logLoss: 0 };
     b.games += 1;
     b.settled += 1;
     if ((r as any).correct) b.correct += 1;
     b.brier += Number((r as any).brier ?? 0);
     b.logLoss += Number((r as any).log_loss ?? 0);
-    buckets.set(d, b);
+    buckets.set(key, b);
   }
 
-  const rows = Array.from(buckets.entries()).map(([metric_date, b]) => ({
-    metric_date,
-    model_version: MODEL_VERSION,
+  const rows = Array.from(buckets.entries()).map(([key, b]) => ({
+    metric_date: key.split("|")[0],
+    model_version: key.split("|")[1],
     games: b.games,
     settled: b.settled,
     correct: b.correct,

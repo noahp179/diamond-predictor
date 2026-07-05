@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as HistoryRouteImport } from './routes/history'
+import { Route as BestOddsRouteImport } from './routes/best-odds'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 
@@ -30,6 +31,11 @@ const HistoryRoute = HistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BestOddsRoute = BestOddsRouteImport.update({
+  id: '/best-odds',
+  path: '/best-odds',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -44,6 +50,7 @@ const ApiPublicHooksRunPipelineRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
   '/teams': typeof TeamsRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
   '/teams': typeof TeamsRoute
@@ -59,6 +67,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
   '/teams': typeof TeamsRoute
@@ -68,15 +77,23 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/best-odds'
     | '/history'
     | '/model'
     | '/teams'
     | '/api/public/hooks/run-pipeline'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/model' | '/teams' | '/api/public/hooks/run-pipeline'
+  to:
+    | '/'
+    | '/best-odds'
+    | '/history'
+    | '/model'
+    | '/teams'
+    | '/api/public/hooks/run-pipeline'
   id:
     | '__root__'
     | '/'
+    | '/best-odds'
     | '/history'
     | '/model'
     | '/teams'
@@ -85,6 +102,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BestOddsRoute: typeof BestOddsRoute
   HistoryRoute: typeof HistoryRoute
   ModelRoute: typeof ModelRoute
   TeamsRoute: typeof TeamsRoute
@@ -114,6 +132,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/best-odds': {
+      id: '/best-odds'
+      path: '/best-odds'
+      fullPath: '/best-odds'
+      preLoaderRoute: typeof BestOddsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -133,6 +158,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BestOddsRoute: BestOddsRoute,
   HistoryRoute: HistoryRoute,
   ModelRoute: ModelRoute,
   TeamsRoute: TeamsRoute,
