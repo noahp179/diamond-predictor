@@ -12,4 +12,20 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  nitro: {
+    // Nitro auto-detects the root index.html and, when it doesn't see an
+    // explicit `renderer.handler` registered, wires up its own generic
+    // "serve this static file for every route" fallback (`renderer-template`)
+    // as a catch-all `/**` route. That fallback wins over TanStack Start's
+    // real SSR routing in this nitro/tanstack-start version combo, which is
+    // exactly why every route returned the raw index.html instead of a
+    // rendered page. This app is fully SSR (loaders + server functions), so
+    // Nitro's generic static-SPA renderer is never wanted — disable it.
+    //
+    // `renderer` is a real, supported Nitro option (see
+    // node_modules/nitro/dist/_chunks/nitro.mjs) that @lovable.dev's nitro
+    // option type just doesn't list — hence the cast.
+    renderer: false,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any,
 });

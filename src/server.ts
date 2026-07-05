@@ -37,14 +37,49 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+// One-time canary: if Nitro's config ever regresses and its generic
+// static-renderer fallback wins over the real SSR router again (see
+// vite.config.ts's `nitro.renderer: false` comment for the full story), every
+// page request would silently return the raw index.html shell — a white
+// screen with a 200 status and no thrown error, which is exactly why that
+// bug was so hard to find the first time. Detect it eagerly and log loudly
+// instead of waiting for a support ticket. This marker text lives in
+// index.html's <body> comment.
+const STATIC_FALLBACK_MARKER = "No client script tag here on purpose";
+
+function logRequest(request: Request, response: Response, durationMs: number, isStaticFallback: boolean) {
+  const url = new URL(request.url);
+  const line = `[ssr] ${request.method} ${url.pathname} -> ${response.status} (${durationMs.toFixed(0)}ms)`;
+  if (isStaticFallback) {
+    console.error(
+      `${line} ⚠️ SERVED RAW index.html TEMPLATE INSTEAD OF THE RENDERED APP. ` +
+        "This means Nitro's generic static-renderer fallback has re-activated " +
+        "(see vite.config.ts nitro.renderer). The page will render as a blank " +
+        "white screen for users even though this response is a 200.",
+    );
+  } else {
+    console.log(line);
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const startedAt = Date.now();
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      let response = await handler.fetch(request, env, ctx);
+      response = await normalizeCatastrophicSsrResponse(response);
+
+      const contentType = response.headers.get("content-type") ?? "";
+      let isStaticFallback = false;
+      if (contentType.includes("text/html")) {
+        const body = await response.clone().text();
+        isStaticFallback = body.includes(STATIC_FALLBACK_MARKER);
+      }
+      logRequest(request, response, Date.now() - startedAt, isStaticFallback);
+      return response;
     } catch (error) {
-      console.error(error);
+      console.error(`[ssr] ${request.method} ${new URL(request.url).pathname} threw:`, error);
       return new Response(renderErrorPage(), {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
