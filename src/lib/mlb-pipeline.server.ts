@@ -1,4 +1,6 @@
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { supabaseAdmin as _supabaseAdmin } from "@/integrations/supabase/client.server";
+
+const supabaseAdmin = _supabaseAdmin!;
 
 import { buildPredictionsForDate, MODEL_VERSION, STATS_API } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
