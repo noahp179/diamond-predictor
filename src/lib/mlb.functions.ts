@@ -484,7 +484,10 @@ export const runPipeline = createServerFn({ method: "POST" })
     return { date, ingest, settle };
   });
 
-// Per-team performance leaderboard: actual W-L from games + model accuracy per team.
+// Per-team performance leaderboard: actual W-L from games + model accuracy per
+// team. Windowed to TRACK_RECORD_START like the Track Record page — games
+// before the reset belong to the old-model era and would misstate how the
+// current models do against each club.
 export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const { supabase } = await import("@/integrations/supabase/client");
@@ -494,6 +497,7 @@ export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(asyn
       .select(
         "game_id, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, winner, home_score, away_score, status, predictions(home_win_prob, correct, model_version)",
       )
+      .gte("game_date", TRACK_RECORD_START)
       .not("winner", "is", null);
 
     type Row = {
@@ -565,10 +569,10 @@ export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(asyn
       }))
       .sort((a, b) => b.winPct - a.winPct || b.runDiff - a.runDiff);
 
-    return { teams, modelVersion: MODEL_VERSION_SIM };
+    return { teams, modelVersion: MODEL_VERSION_SIM, trackingSince: TRACK_RECORD_START };
   } catch (err) {
     console.error("[getTeamLeaderboard] Supabase error, returning empty teams:", err);
-    return { teams: [], modelVersion: MODEL_VERSION_SIM };
+    return { teams: [], modelVersion: MODEL_VERSION_SIM, trackingSince: TRACK_RECORD_START };
   }
 });
 

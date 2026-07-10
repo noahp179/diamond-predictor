@@ -55,7 +55,11 @@ function TeamsPage() {
             </h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
               Records, run differential, and how well the model has predicted each
-              team's settled games. Model version{" "}
+              team's settled games since{" "}
+              <span className="font-mono text-foreground">
+                {data?.trackingSince ?? "the tracking reset"}
+              </span>{" "}
+              (the current-model era). Model version{" "}
               <span className="font-mono text-foreground">
                 {data?.modelVersion ?? "—"}
               </span>
@@ -104,7 +108,8 @@ function TeamsPage() {
         )}
         {!isLoading && teams.length === 0 && (
           <div className="border border-border bg-card p-10 text-center font-mono text-sm text-muted-foreground">
-            No settled games yet — run the pipeline from the home page once games finish.
+            No settled games since {data?.trackingSince ?? "the tracking reset"} — the ledger
+            starts fresh with the current models and fills in as games finish.
           </div>
         )}
         {teams.length > 0 && (
