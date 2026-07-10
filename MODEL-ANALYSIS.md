@@ -137,3 +137,76 @@ Track `sim-elo-v2` against `baseline-v0.4` live for 3–4 weeks (the shadow pipe
 this automatically; compare in `daily_metrics` by `model_version`). If the backtest ordering
 holds, promote the ensemble to the headline prediction. The next real upgrade is lineup-level
 modeling (see "Where the remaining headroom is" above).
+
+---
+
+## Round 3 — pick ranking & the market blend (`odds-blend-v1`)
+
+*Backtest run 2026-07-10 (`scripts/backtest-odds-blend.ts`) on the 187 settled games in
+Supabase (2026-05-31 → 2026-06-14). All sim-elo-v2 probabilities recomputed point-in-time
+(Elo replayed to each morning, team/starter rates via `byDateRange` ending the day before,
+starter identities from the stored prediction rows); market lines are the historical
+DraftKings moneylines via ESPN, devigged. Odds matched for 187/187 games.*
+
+Round 3 asked a different question from rounds 1–2: not "whose probability is best?" but
+**"which games should the Best Odds and Recommended pages surface?"** The old Best Odds
+page ranked by |model − market| edge — a value-betting framing. The pages now rank by
+**confidence in the outcome** (how likely the pick is to win).
+
+### Probability quality (187 games, all with market odds)
+
+| Probability | Accuracy | Brier ↓ | Log loss ↓ |
+|---|---|---|---|
+| **odds-blend-v1** (w = 0.65 market) | **56.1%** | **0.2467** | **0.6863** |
+| market only (devigged DK) | 56.1% | 0.2470 | 0.6868 |
+| sim-elo-v2 only | 53.5% | 0.2474 | 0.6879 |
+| home-always-54 | 53.5% | 0.2488 | 0.6908 |
+| stored baseline-v0.4 (n=164) | 54.9% | 0.2509 | 0.6988 |
+
+The blend `σ((1−w)·logit(model) + w·logit(market))` is never worse than either input and
+nominally beats both. The Brier curve is **flat for w ∈ [0.40, 0.80]** (all 0.2467), and
+fitting w harder is noise-chasing: split-half argmins flipped 1.0 ↔ 0.0, and walk-forward
+refitting scored 0.2478 — worse than any fixed mid-range weight. So w = 0.65 ships as a
+frozen constant. A calibration fit on the same window suggests sim-elo-v2 runs somewhat
+overconfident (best logit scale a ≈ 0.68), which the market-heavy blend already absorbs;
+no separate calibration layer ships on 187 games of evidence.
+
+### Pick strategies (top-3 per day; top-1 in parentheses)
+
+| Strategy | Claimed win prob | Hit rate | Flat 1u ROI |
+|---|---|---|---|
+| Recommended — model confidence (unchanged) | 63.4% | **64.3%** (64.3%) | +3.6% |
+| **New tab 1 — market favorite confidence** | 63.1% | 52.4% (57.1%) | −21.8% |
+| **New tab 2 — blended confidence (w=0.65)** | 62.7% | 54.8% (57.1%) | −17.7% |
+| Old Best Odds — top |edge| vs market | **54.0%** | 47.6% (42.9%) | −3.6% |
+
+The damning number for the old algorithm is the *claimed* column: ranking by disagreement
+surfaced picks that even our own model only gave a 54% chance — coin flips sold as "best
+odds" — and they hit 47.6%. The confidence rankings surface ~63% claims that behave like
+favorites should. (42-pick samples swing ±15pp; the market-favorite hit rate of 52.4% is
+a cold streak for favorites in this window — bucketed market calibration is fine: 0.5–0.6
+favorites won 54%, 0.6–0.7 won 63%, 0.7+ won 2/2 — so treat the hit-rate column as noisy
+and the claimed/Brier columns as the durable evidence. Favorites' ROI is structurally
+negative at DK prices; these are "safest bet" rankings, not +EV promises.)
+
+### What shipped
+
+- **`src/lib/mlb-blend.ts`** — `odds-blend-v1`: logit blend of sim-elo-v2 with the
+  devigged market line, w = 0.65, plus `pickProb` (confidence in the outcome).
+- **Best Odds page** — two tabs, both ranked by confidence in the outcome:
+  *Best Odds* (market's own line) and *Odds × Model* (blended). Cards show blended,
+  model, and market probabilities plus the moneyline; result badges score the tab's
+  actual pick side.
+- **Recommended page** — heroes the single **Best Game** (top-1 by model confidence,
+  which hit 64.3% in-window) with runners-up below; ranking unchanged.
+- **Track record** — the Best Odds segment is reconstructed with the new blended-confidence
+  ranking and scored with the blended probability it displays.
+- **`scripts/backtest-odds-blend.ts`** — reproducible backtest harness
+  (`npx tsx scripts/backtest-odds-blend.ts`), strictly point-in-time, read-only.
+
+### Caveat that gates the live pages
+
+The daily cron last wrote on **2026-06-15**: `game_odds` is empty and no `sim-elo-v2`
+prediction rows were ever persisted (the shadow-write shipped after the cron stopped).
+Today/tomorrow pages fall back to live computation and work; the Track Record's Best Odds
+segment stays empty until the pipeline (and its odds caching) runs again.

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
 import { fetchOddsForDate } from "./mlb-odds.server";
+import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 
 export type { PredictedGame } from "./mlb-core";
 
@@ -261,10 +262,12 @@ function finalizeTotals(
  * All-time accuracy for the primary model (sim-elo-v2), split into three
  * honest segments: every settled game, the subset that would have been a
  * "Recommended" top-3-by-confidence pick on its date, and the subset that
- * would have been a "Best Odds" top-3-by-edge pick on its date (only dates
- * with cached market odds contribute to that segment). The ranking logic
- * mirrors getRecommendedPicks / getBestOddsPicks exactly, so history is
- * reconstructed rather than approximated.
+ * would have been a "Best Odds" top-3 pick on its date — ranked, like the
+ * page, by odds-blend-v1 confidence (model ⊕ devigged market) and scored
+ * with that blended probability (only dates with cached market odds
+ * contribute). The ranking logic mirrors getRecommendedPicks /
+ * getBestOddsPicks exactly, so history is reconstructed rather than
+ * approximated.
  */
 export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(async () => {
   const empty = {
@@ -305,6 +308,11 @@ export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(
       logLoss: number;
       confidence: number;
       edge: number | null;
+      /** odds-blend-v1 numbers, scored against the outcome (null without market odds). */
+      blendedProb: number | null;
+      blendCorrect: boolean | null;
+      blendBrier: number | null;
+      blendLogLoss: number | null;
     };
     const settled: ByDate[] = [];
     for (const g of (rows ?? []) as any[]) {
@@ -316,6 +324,13 @@ export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(
       const odds = g.game_odds ?? null;
       const edge =
         odds?.home_implied_prob != null ? homeWinProb - Number(odds.home_implied_prob) : null;
+      const blendedProb =
+        odds?.home_implied_prob != null
+          ? blendWithMarket(homeWinProb, Number(odds.home_implied_prob))
+          : null;
+      const y = g.winner === "home" ? 1 : 0;
+      const eps = 1e-6;
+      const pc = blendedProb != null ? Math.min(1 - eps, Math.max(eps, blendedProb)) : null;
       settled.push({
         date: g.game_date,
         gameId: g.game_id,
@@ -330,6 +345,10 @@ export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(
         logLoss: Number(pred.log_loss ?? 0),
         confidence: Math.abs(homeWinProb - 0.5) * 2,
         edge,
+        blendedProb,
+        blendCorrect: blendedProb != null ? blendedProb >= 0.5 === (y === 1) : null,
+        blendBrier: blendedProb != null ? (blendedProb - y) ** 2 : null,
+        blendLogLoss: pc != null ? -(y * Math.log(pc) + (1 - y) * Math.log(1 - pc)) : null,
       });
     }
     if (settled.length === 0) return empty;
@@ -349,8 +368,8 @@ export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(
         .slice(0, 3)
         .forEach((g) => recommendedIds.add(g.gameId));
       [...dayGames]
-        .filter((g) => g.edge != null)
-        .sort((a, b) => Math.abs(b.edge!) - Math.abs(a.edge!))
+        .filter((g) => g.blendedProb != null)
+        .sort((a, b) => pickProb(b.blendedProb!) - pickProb(a.blendedProb!))
         .slice(0, 3)
         .forEach((g) => bestOddsIds.add(g.gameId));
     }
@@ -391,12 +410,14 @@ export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(
         totals.recommended.logLossSum += s.logLoss;
         bump(dayBuckets.recommended, s.date, s.correct, s.brier);
       }
-      if (isBestOdds) {
+      if (isBestOdds && s.blendCorrect != null) {
+        // Scored with the blended probability the Best Odds page shows,
+        // not the raw model number.
         totals.best_odds.n++;
-        totals.best_odds.correct += s.correct ? 1 : 0;
-        totals.best_odds.brierSum += s.brier;
-        totals.best_odds.logLossSum += s.logLoss;
-        bump(dayBuckets.best_odds, s.date, s.correct, s.brier);
+        totals.best_odds.correct += s.blendCorrect ? 1 : 0;
+        totals.best_odds.brierSum += s.blendBrier!;
+        totals.best_odds.logLossSum += s.blendLogLoss!;
+        bump(dayBuckets.best_odds, s.date, s.blendCorrect, s.blendBrier!);
       }
       const predictedWinner = s.homeWinProb >= 0.5 ? s.home : s.away;
       const predictedProb = s.homeWinProb >= 0.5 ? s.homeWinProb : 1 - s.homeWinProb;
@@ -594,13 +615,15 @@ export interface GameWithOdds {
   odds: GameOdds | null;
   /** Our probability minus the devigged market's, from the home side. Null with no market data. */
   edge: number | null;
+  /** Home win prob blending sim-elo-v2 with the devigged market (odds-blend-v1). Null with no market data. */
+  blendedHomeProb: number | null;
 }
 
-// True value-betting picks: our model's probability vs a real market line
-// (ESPN/DraftKings, cached in `game_odds`, refreshed here for any game that's
-// missing it or stale). Ranked by |edge| — how far our number and the
-// market's fair line disagree — not by our own confidence, which is what
-// "Recommended" already covers.
+// Best Odds picks, ranked by confidence in the outcome (how likely the pick
+// is to win), two ways: by the market's own devigged line alone, and by
+// odds-blend-v1 — the market line blended with our sim-elo-v2 prediction.
+// Market odds come from ESPN/DraftKings, cached in `game_odds` and refreshed
+// here for any game that's missing or stale.
 export const getBestOddsPicks = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
@@ -610,9 +633,12 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
       return {
         date,
         games: [] as GameWithOdds[],
-        picks: [] as GameWithOdds[],
+        marketPicks: [] as GameWithOdds[],
+        blendPicks: [] as GameWithOdds[],
         source,
         modelVersion: MODEL_VERSION_SIM,
+        blendVersion: MODEL_VERSION_BLEND,
+        blendWeight: MARKET_BLEND_WEIGHT,
       };
     }
 
@@ -678,15 +704,30 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
     const withOdds: GameWithOdds[] = games.map((game) => {
       const odds = oddsMap.get(game.gameId) ?? null;
       const edge = odds ? game.homeWinProb - odds.homeImpliedProb : null;
-      return { game, odds, edge };
+      const blendedHomeProb = odds ? blendWithMarket(game.homeWinProb, odds.homeImpliedProb) : null;
+      return { game, odds, edge, blendedHomeProb };
     });
 
-    const picks = withOdds
-      .filter((x): x is GameWithOdds & { edge: number } => x.edge != null)
-      .sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge))
+    const priced = withOdds.filter((x): x is GameWithOdds & { odds: GameOdds } => x.odds != null);
+    // Tab 1 — safest bets by the market's own line
+    const marketPicks = [...priced]
+      .sort((a, b) => pickProb(b.odds.homeImpliedProb) - pickProb(a.odds.homeImpliedProb))
+      .slice(0, 3);
+    // Tab 2 — safest bets once our prediction is blended in
+    const blendPicks = [...priced]
+      .sort((a, b) => pickProb(b.blendedHomeProb!) - pickProb(a.blendedHomeProb!))
       .slice(0, 3);
 
-    return { date, games: withOdds, picks, source, modelVersion: MODEL_VERSION_SIM };
+    return {
+      date,
+      games: withOdds,
+      marketPicks,
+      blendPicks,
+      source,
+      modelVersion: MODEL_VERSION_SIM,
+      blendVersion: MODEL_VERSION_BLEND,
+      blendWeight: MARKET_BLEND_WEIGHT,
+    };
   });
 
 // Backtest: run both models over recent historical dates and return metrics comparison.

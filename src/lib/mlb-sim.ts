@@ -271,7 +271,7 @@ export function leagueRates(teams: Map<number, TeamRates>): BattingRates {
 }
 
 /** Reshape a staff line's non-HR hits into 1B/2B/3B using league shape. */
-function reshapeStaff(staff: PitchingLine | null, lg: BattingRates): PitchingLine | null {
+export function reshapeStaff(staff: PitchingLine | null, lg: BattingRates): PitchingLine | null {
   if (!staff) return null;
   const lgHits = lg.b1 + lg.b2 + lg.b3;
   const hRate = staff.b1; // total non-HR hit rate stored by fetchAllTeamRates

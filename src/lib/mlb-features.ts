@@ -44,6 +44,17 @@ export function offsetDate(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+const SLATE_OVER_RE = /final|game over|completed|postponed|cancel|suspend/i;
+
+/**
+ * True when a day's slate is over — no game is upcoming or in progress —
+ * so the Recommended/Best Odds pages should roll over to the next day.
+ * An empty slate counts as over.
+ */
+export function slateComplete(statuses: Array<string | null | undefined>): boolean {
+  return statuses.length === 0 || statuses.every((s) => SLATE_OVER_RE.test(s ?? ""));
+}
+
 function daysBetween(from: string, to: string): number {
   const a = new Date(from + "T12:00:00Z").getTime();
   const b = new Date(to + "T12:00:00Z").getTime();
@@ -56,10 +67,7 @@ function daysBetween(from: string, to: string): number {
  * Team season batting stats: OBP, SLG, OPS.
  * Endpoint: /teams/{id}/stats?stats=season&group=hitting&season={year}
  */
-export async function fetchTeamHitting(
-  teamId: number,
-  season: number,
-): Promise<TeamHittingStats> {
+export async function fetchTeamHitting(teamId: number, season: number): Promise<TeamHittingStats> {
   try {
     const url = `${STATS_API}/teams/${teamId}/stats?stats=season&group=hitting&season=${season}`;
     const res = await fetchWithTimeout(url);
@@ -114,10 +122,7 @@ export async function fetchTeamPitching(
  * Looks back up to 8 days. Returns 1 if played yesterday (typical), 3 if not found.
  * Endpoint: /schedule?teamId={id}&startDate=...&endDate=yesterday
  */
-export async function fetchRestDays(
-  teamId: number,
-  date: string,
-): Promise<RestInfo> {
+export async function fetchRestDays(teamId: number, date: string): Promise<RestInfo> {
   try {
     const endDate = offsetDate(date, -1);
     const startDate = offsetDate(date, -9);
@@ -166,9 +171,7 @@ export async function fetchLastNGames(
 
     for (const entry of entries) {
       for (const game of [...(entry?.games ?? [])].reverse()) {
-        const isFinal = /final|game over|completed/i.test(
-          game?.status?.detailedState ?? "",
-        );
+        const isFinal = /final|game over|completed/i.test(game?.status?.detailedState ?? "");
         if (!isFinal) continue;
         const homeScore: number | null = game.teams?.home?.score ?? null;
         const awayScore: number | null = game.teams?.away?.score ?? null;
@@ -177,7 +180,8 @@ export async function fetchLastNGames(
         const teamIsHome = game.teams?.home?.team?.id === teamId;
         const homeWon = homeScore > awayScore;
         const teamWon = teamIsHome ? homeWon : !homeWon;
-        if (teamWon) wins++; else losses++;
+        if (teamWon) wins++;
+        else losses++;
 
         if (wins + losses >= n) break;
       }
@@ -215,9 +219,7 @@ export async function fetchHeadToHead(
 
     for (const entry of json?.dates ?? []) {
       for (const game of entry?.games ?? []) {
-        const isFinal = /final|game over|completed/i.test(
-          game?.status?.detailedState ?? "",
-        );
+        const isFinal = /final|game over|completed/i.test(game?.status?.detailedState ?? "");
         if (!isFinal) continue;
         const gameHomeId: number = game.teams?.home?.team?.id;
         const homeScore: number = game.teams?.home?.score ?? 0;
@@ -228,10 +230,12 @@ export async function fetchHeadToHead(
         const gameHomeWon = homeScore > awayScore;
         // Map to our home/away perspective
         if (gameHomeId === homeTeamId) {
-          if (gameHomeWon) homeWins++; else awayWins++;
+          if (gameHomeWon) homeWins++;
+          else awayWins++;
         } else {
           // Our target home team was the visiting team in this game
-          if (!gameHomeWon) homeWins++; else awayWins++;
+          if (!gameHomeWon) homeWins++;
+          else awayWins++;
         }
       }
     }
