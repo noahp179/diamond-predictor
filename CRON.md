@@ -1,5 +1,27 @@
 # Daily Cron — 3 AM Auto-sync
 
+## Local operation (while the Vercel cron is down)
+
+The cron stopped writing on 2026-06-15. Until it's revived, the same pipeline
+can run from any machine with `SUPABASE_SERVICE_ROLE_KEY` in `.env`:
+
+```bash
+scripts/run-pipeline-local.sh        # ingest & predict today (all models), settle, metrics
+```
+
+Two crontab lines keep tracking alive locally (morning: record the day's
+pre-game predictions; night: settle them) — see the script header. Predictions
+are only ever recorded for games that haven't started (hindsight guard), so a
+morning run is required to capture that day; an evening run can only settle.
+
+The pipeline stores a prediction row per model per game: `baseline-v0.4`,
+`sim-elo-v2`, `odds-blend-v1`, and `market-devig` (the devigged DraftKings
+line, as the benchmark). The Track Record page compares them from
+`TRACK_RECORD_START` (2026-07-10, `src/lib/mlb-models.ts`) forward.
+
+**When reviving the Vercel cron, redeploy first** — the deployed build predates
+the odds-blend-v1 / market-devig models and the hindsight guard.
+
 ## What it's doing
 
 Every day at 8:00 AM UTC (≈3:00 AM ET when DST is active), Vercel fires a POST to:

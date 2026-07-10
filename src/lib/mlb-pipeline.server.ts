@@ -2,9 +2,65 @@ import { supabaseAdmin as _supabaseAdmin } from "@/integrations/supabase/client.
 
 const supabaseAdmin = _supabaseAdmin!;
 
+/**
+ * True when the service-role client exists (SUPABASE_SERVICE_ROLE_KEY is in
+ * the server environment). Read paths use this to decide whether they can
+ * opportunistically ingest/settle; local dev without the key stays read-only.
+ */
+export function canWrite(): boolean {
+  return Boolean(_supabaseAdmin);
+}
+
+let lastSettleAttempt = 0;
+
+/**
+ * Settle finished games and refresh daily metrics, at most once per
+ * `minIntervalMs` per server instance. Called opportunistically from read
+ * paths (e.g. the Track Record page) so results appear without any cron —
+ * cheap when nothing is unsettled, debounced so page traffic can't stampede
+ * the MLB API.
+ */
+export async function settleIfDue(minIntervalMs = 5 * 60_000) {
+  if (!canWrite()) return null;
+  const now = Date.now();
+  if (now - lastSettleAttempt < minIntervalMs) return null;
+  lastSettleAttempt = now;
+  const res = await settleFinished();
+  if (res.settled > 0) await recomputeDailyMetrics();
+  return res;
+}
+
 import { buildPredictionsForDate, MODEL_VERSION, STATS_API } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
 import { fetchOddsForDate } from "./mlb-odds.server";
+import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
+import { MODEL_VERSION_MARKET } from "./mlb-models";
+
+/**
+ * Insert prediction rows that don't already exist for `modelVersion`,
+ * keeping any original (earlier) prediction. Returns how many were new.
+ */
+async function insertFreshPredictions(
+  rows: Array<{ game_id: number } & Record<string, unknown>>,
+  modelVersion: string,
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const ids = rows.map((r) => r.game_id);
+  const { data: existing } = await supabaseAdmin
+    .from("predictions")
+    .select("game_id")
+    .eq("model_version", modelVersion)
+    .in("game_id", ids);
+  const existingSet = new Set((existing ?? []).map((r) => r.game_id));
+  const fresh = rows.filter((r) => !existingSet.has(r.game_id));
+  if (fresh.length === 0) return 0;
+  const { error } = await supabaseAdmin.from("predictions").insert(fresh as never[]);
+  if (error) throw new Error(error.message);
+  return fresh.length;
+}
+
+/** Games in these states have started (or ended) — never "predict" them. */
+const STARTED_RE = /final|game over|completed|in progress|suspended/i;
 
 /** Most recent `game_date` already in the DB, or null if the table is empty. */
 export async function getLastIngestedDate(): Promise<string | null> {
@@ -67,7 +123,14 @@ export async function ingestAndPredict(date: string) {
     .upsert(gameRows, { onConflict: "game_id" });
   if (gErr) throw new Error(`games upsert: ${gErr.message}`);
 
-  const predRows = games.map((g) => ({
+  // Predictions are only recorded for games that haven't started. The
+  // self-heal backfill re-ingests past dates after downtime — games and odds
+  // are facts and always land, but writing "predictions" for games that were
+  // already final would be hindsight and would corrupt the track record.
+  const predictable = games.filter((g) => !STARTED_RE.test(g.status ?? ""));
+  const predictableIds = new Set(predictable.map((g) => g.gameId));
+
+  const predRows = predictable.map((g) => ({
     game_id: g.gameId,
     model_version: MODEL_VERSION,
     home_win_prob: Number(g.homeWinProb.toFixed(4)),
@@ -82,20 +145,7 @@ export async function ingestAndPredict(date: string) {
     away_pitcher_era: g.away.pitcher?.era ?? null,
     rationale: g.rationale,
   }));
-
-  // Only insert predictions that don't already exist — keep the original prediction.
-  const ids = predRows.map((p) => p.game_id);
-  const { data: existing } = await supabaseAdmin
-    .from("predictions")
-    .select("game_id")
-    .eq("model_version", MODEL_VERSION)
-    .in("game_id", ids);
-  const existingSet = new Set((existing ?? []).map((r) => r.game_id));
-  const newPreds = predRows.filter((p) => !existingSet.has(p.game_id));
-  if (newPreds.length > 0) {
-    const { error: pErr } = await supabaseAdmin.from("predictions").insert(newPreds);
-    if (pErr) throw new Error(`predictions insert: ${pErr.message}`);
-  }
+  const newPreds = await insertFreshPredictions(predRows, MODEL_VERSION);
 
   // Primary model: sim-elo-v2 (Monte Carlo + multi-season Elo ensemble). Stored
   // alongside baseline-v0.4 (kept as the comparison model on Track Record).
@@ -104,11 +154,13 @@ export async function ingestAndPredict(date: string) {
   // so pages reading only the sim-elo-v2 row still have full display data.
   // Failures here never block baseline ingestion.
   let newSimPreds = 0;
+  const simProbByGame = new Map<number, number>();
   try {
     const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
     const simGames = await buildSimPredictionsForDate(date);
+    for (const g of simGames) simProbByGame.set(g.gameId, g.ensembleProb);
     const simRows = simGames
-      .filter((g) => ids.includes(g.gameId))
+      .filter((g) => predictableIds.has(g.gameId))
       .map((g) => {
         const base = baselineByGameId.get(g.gameId);
         return {
@@ -127,18 +179,7 @@ export async function ingestAndPredict(date: string) {
           rationale: g.rationale,
         };
       });
-    const { data: existingSim } = await supabaseAdmin
-      .from("predictions")
-      .select("game_id")
-      .eq("model_version", MODEL_VERSION_SIM)
-      .in("game_id", ids);
-    const existingSimSet = new Set((existingSim ?? []).map((r) => r.game_id));
-    const freshSim = simRows.filter((p) => !existingSimSet.has(p.game_id));
-    if (freshSim.length > 0) {
-      const { error: sErr } = await supabaseAdmin.from("predictions").insert(freshSim);
-      if (sErr) throw new Error(sErr.message);
-      newSimPreds = freshSim.length;
-    }
+    newSimPreds = await insertFreshPredictions(simRows, MODEL_VERSION_SIM);
   } catch (err) {
     console.error("[ingestAndPredict] sim-elo-v2 predictions failed:", err);
   }
@@ -147,6 +188,7 @@ export async function ingestAndPredict(date: string) {
   // or prediction ingestion — odds may not be posted yet for far-future dates,
   // and the endpoint is unofficial.
   let newOdds = 0;
+  const marketProbByGame = new Map<number, number>(); // devigged home implied prob
   try {
     const lookups = games.map((g) => ({
       gameId: g.gameId,
@@ -171,16 +213,77 @@ export async function ingestAndPredict(date: string) {
         .upsert(oddsRows, { onConflict: "game_id" });
       if (oErr) throw new Error(oErr.message);
       newOdds = oddsRows.length;
+      for (const o of fetched) marketProbByGame.set(o.gameId, o.homeImpliedProb);
     }
   } catch (err) {
     console.error("[ingestAndPredict] odds fetch failed:", err);
   }
 
+  // If the live fetch missed a game the cache already has (e.g. a re-run
+  // after a partial failure), use the cached line for the odds-based models.
+  try {
+    const uncovered = Array.from(predictableIds).filter((id) => !marketProbByGame.has(id));
+    if (uncovered.length > 0) {
+      const { data: cached } = await supabaseAdmin
+        .from("game_odds")
+        .select("game_id, home_implied_prob")
+        .in("game_id", uncovered);
+      for (const r of cached ?? []) {
+        if (r.home_implied_prob != null)
+          marketProbByGame.set(r.game_id, Number(r.home_implied_prob));
+      }
+    }
+  } catch (err) {
+    console.error("[ingestAndPredict] cached odds lookup failed:", err);
+  }
+
+  // Odds-based models, tracked alongside the rest on Track Record:
+  //   market-devig   — the devigged DraftKings line itself (the benchmark)
+  //   odds-blend-v1  — sim-elo-v2 blended with that line (Best Odds tab 2)
+  // Rows exist only for games whose odds were posted at prediction time.
+  let newMarketPreds = 0;
+  let newBlendPreds = 0;
+  try {
+    const marketRows: Array<{ game_id: number } & Record<string, unknown>> = [];
+    const blendRows: Array<{ game_id: number } & Record<string, unknown>> = [];
+    for (const g of predictable) {
+      const market = marketProbByGame.get(g.gameId);
+      if (market == null) continue;
+      marketRows.push({
+        game_id: g.gameId,
+        model_version: MODEL_VERSION_MARKET,
+        home_win_prob: Number(market.toFixed(4)),
+        away_win_prob: Number((1 - market).toFixed(4)),
+        rationale: [`DraftKings devigged line: home ${(market * 100).toFixed(1)}%`],
+      });
+      const sim = simProbByGame.get(g.gameId);
+      if (sim == null) continue;
+      const blended = blendWithMarket(sim, market);
+      blendRows.push({
+        game_id: g.gameId,
+        model_version: MODEL_VERSION_BLEND,
+        home_win_prob: Number(blended.toFixed(4)),
+        away_win_prob: Number((1 - blended).toFixed(4)),
+        rationale: [
+          `sim-elo-v2 ${(sim * 100).toFixed(1)}% ⊕ market ${(market * 100).toFixed(1)}% ` +
+            `(w=${MARKET_BLEND_WEIGHT}) → home ${(blended * 100).toFixed(1)}%`,
+        ],
+      });
+    }
+    newMarketPreds = await insertFreshPredictions(marketRows, MODEL_VERSION_MARKET);
+    newBlendPreds = await insertFreshPredictions(blendRows, MODEL_VERSION_BLEND);
+  } catch (err) {
+    console.error("[ingestAndPredict] odds-based model predictions failed:", err);
+  }
+
   return {
     date,
     games: games.length,
-    newPredictions: newPreds.length,
+    predictable: predictable.length,
+    newPredictions: newPreds,
     newSimPredictions: newSimPreds,
+    newBlendPredictions: newBlendPreds,
+    newMarketPredictions: newMarketPreds,
     newOdds,
   };
 }
@@ -197,6 +300,9 @@ export async function settleFinished() {
   if (error) throw new Error(`settle query: ${error.message}`);
 
   let settled = 0;
+  // Several model versions share each game — fetch/refresh a game at most
+  // once per run, not once per prediction row.
+  const liveByGame = new Map<number, Awaited<ReturnType<typeof fetchGameFinal>>>();
   for (const r of rows ?? []) {
     const g: any = (r as any).games;
     if (!g) continue;
@@ -205,18 +311,24 @@ export async function settleFinished() {
     let winner: "home" | "away" | null = isFinal ? (g.winner ?? null) : null;
 
     if (!winner) {
-      const live = await fetchGameFinal((r as any).game_id);
-      if (!live) continue;
-      await supabaseAdmin
-        .from("games")
-        .update({
-          status: live.status,
-          home_score: live.homeScore,
-          away_score: live.awayScore,
-          winner: live.winner,
-        })
-        .eq("game_id", (r as any).game_id);
-      if (!live.winner) continue;
+      const gameId = (r as any).game_id as number;
+      let live = liveByGame.get(gameId);
+      if (live === undefined) {
+        live = await fetchGameFinal(gameId);
+        liveByGame.set(gameId, live);
+        if (live) {
+          await supabaseAdmin
+            .from("games")
+            .update({
+              status: live.status,
+              home_score: live.homeScore,
+              away_score: live.awayScore,
+              winner: live.winner,
+            })
+            .eq("game_id", gameId);
+        }
+      }
+      if (!live?.winner) continue;
       winner = live.winner;
     }
 

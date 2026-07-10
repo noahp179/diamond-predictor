@@ -5,6 +5,7 @@ import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./ml
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
+import { TRACK_RECORD_START, TRACKED_MODELS } from "./mlb-models";
 
 export type { PredictedGame } from "./mlb-core";
 
@@ -224,7 +225,15 @@ export interface SegmentDayRow {
   brier: number | null;
 }
 
-export interface SegmentedGame {
+/** One model's settled numbers (or pending prediction) on one game. */
+export interface ModelGameScore {
+  prob: number; // home win probability
+  correct: boolean | null; // null = not settled yet
+  brier: number | null;
+  logLoss: number | null;
+}
+
+export interface TrackedGame {
   gameId: number;
   date: string;
   home: string;
@@ -232,14 +241,21 @@ export interface SegmentedGame {
   homeScore: number | null;
   awayScore: number | null;
   winner: string | null;
-  predictedWinner: string;
-  predictedProb: number;
-  correct: boolean | null;
-  brier: number | null;
-  logLoss: number | null;
-  edge: number | null;
+  /** Stored (last pre-game) moneylines — null when no line was cached. */
+  homeMoneyline: number | null;
+  awayMoneyline: number | null;
   isRecommended: boolean;
   isBestOdds: boolean;
+  /** Scores keyed by model version — only versions with a row on this game. */
+  models: Record<string, ModelGameScore>;
+}
+
+export interface ModelTrack {
+  version: string;
+  settled: SegmentTotals;
+  /** Predictions recorded but not yet settled (today's slate). */
+  pending: number;
+  daily: SegmentDayRow[];
 }
 
 function emptyTotals(): SegmentTotals {
@@ -259,27 +275,24 @@ function finalizeTotals(
 }
 
 /**
- * All-time accuracy for the primary model (sim-elo-v2), split into three
- * honest segments: every settled game, the subset that would have been a
- * "Recommended" top-3-by-confidence pick on its date, and the subset that
- * would have been a "Best Odds" top-3 pick on its date — ranked, like the
- * page, by odds-blend-v1 confidence (model ⊕ devigged market) and scored
- * with that blended probability (only dates with cached market odds
- * contribute). The ranking logic mirrors getRecommendedPicks /
- * getBestOddsPicks exactly, so history is reconstructed rather than
- * approximated.
+ * Track record from TRACK_RECORD_START forward, for every model version the
+ * pipeline stores (sim-elo-v2, odds-blend-v1, market-devig, baseline-v0.4),
+ * each scored identically at settlement. Games before the start date are the
+ * baseline-only era (cron outage, no odds cached) and are excluded so the
+ * models compare on the same slate.
+ *
+ * Also reconstructs the primary model's page-pick segments within the window:
+ * "Recommended" (top-3 by sim-elo-v2 confidence per day) and "Best Odds"
+ * (top-3 by stored odds-blend-v1 confidence per day, scored with the blend's
+ * own numbers) — mirroring getRecommendedPicks / getBestOddsPicks.
  */
-export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(async () => {
+export const getTrackRecord = createServerFn({ method: "GET" }).handler(async () => {
   const empty = {
+    trackingSince: TRACK_RECORD_START,
+    primaryModel: MODEL_VERSION_SIM,
+    models: [] as ModelTrack[],
     segments: { all: emptyTotals(), recommended: emptyTotals(), best_odds: emptyTotals() },
-    daily: {
-      all: [] as SegmentDayRow[],
-      recommended: [] as SegmentDayRow[],
-      best_odds: [] as SegmentDayRow[],
-    },
-    games: [] as SegmentedGame[],
-    modelVersion: MODEL_VERSION_SIM,
-    comparisonBrier: null as number | null,
+    games: [] as TrackedGame[],
   };
   try {
     const { supabase } = await import("@/integrations/supabase/client");
@@ -287,200 +300,173 @@ export const getTrackRecordSegments = createServerFn({ method: "GET" }).handler(
       .from("games")
       .select(
         "game_id, game_date, home_team_abbr, away_team_abbr, home_score, away_score, winner, " +
-          "predictions(model_version, home_win_prob, correct, brier, log_loss, settled_at), " +
-          "game_odds(home_implied_prob, away_implied_prob)",
+          "game_odds(home_moneyline, away_moneyline), " +
+          "predictions(model_version, home_win_prob, correct, brier, log_loss, settled_at)",
       )
-      .not("winner", "is", null)
+      .gte("game_date", TRACK_RECORD_START)
       .order("game_date", { ascending: true });
     if (error) throw error;
 
-    type ByDate = {
-      date: string;
-      gameId: number;
-      home: string;
-      away: string;
-      homeScore: number | null;
-      awayScore: number | null;
-      winner: string;
-      homeWinProb: number;
-      correct: boolean;
-      brier: number;
-      logLoss: number;
-      confidence: number;
-      edge: number | null;
-      /** odds-blend-v1 numbers, scored against the outcome (null without market odds). */
-      blendedProb: number | null;
-      blendCorrect: boolean | null;
-      blendBrier: number | null;
-      blendLogLoss: number | null;
+    type Acc = SegmentTotals & { brierSum: number; logLossSum: number };
+    const mkAcc = (): Acc => ({ ...emptyTotals(), brierSum: 0, logLossSum: 0 });
+    const bumpAcc = (a: Acc, s: ModelGameScore) => {
+      a.n++;
+      if (s.correct) a.correct++;
+      a.brierSum += s.brier ?? 0;
+      a.logLossSum += s.logLoss ?? 0;
     };
-    const settled: ByDate[] = [];
+
+    const perModel = new Map<
+      string,
+      {
+        totals: Acc;
+        pending: number;
+        days: Map<string, { n: number; correct: number; brierSum: number }>;
+      }
+    >();
+    const ensureModel = (v: string) => {
+      let m = perModel.get(v);
+      if (!m) {
+        m = { totals: mkAcc(), pending: 0, days: new Map() };
+        perModel.set(v, m);
+      }
+      return m;
+    };
+    for (const m of TRACKED_MODELS) ensureModel(m.version);
+
+    const games: TrackedGame[] = [];
     for (const g of (rows ?? []) as any[]) {
-      const pred = (g.predictions ?? []).find(
-        (p: any) => p.model_version === MODEL_VERSION_SIM && p.settled_at != null,
-      );
-      if (!pred) continue;
-      const homeWinProb = Number(pred.home_win_prob);
-      const odds = g.game_odds ?? null;
-      const edge =
-        odds?.home_implied_prob != null ? homeWinProb - Number(odds.home_implied_prob) : null;
-      const blendedProb =
-        odds?.home_implied_prob != null
-          ? blendWithMarket(homeWinProb, Number(odds.home_implied_prob))
-          : null;
-      const y = g.winner === "home" ? 1 : 0;
-      const eps = 1e-6;
-      const pc = blendedProb != null ? Math.min(1 - eps, Math.max(eps, blendedProb)) : null;
-      settled.push({
-        date: g.game_date,
+      const winner: string | null = g.winner ?? null;
+      const scores: Record<string, ModelGameScore> = {};
+      for (const p of (g.predictions ?? []) as any[]) {
+        const m = ensureModel(p.model_version);
+        if (p.settled_at != null && winner) {
+          const s: ModelGameScore = {
+            prob: Number(p.home_win_prob),
+            correct: !!p.correct,
+            brier: p.brier != null ? Number(p.brier) : null,
+            logLoss: p.log_loss != null ? Number(p.log_loss) : null,
+          };
+          scores[p.model_version] = s;
+          bumpAcc(m.totals, s);
+          const day = m.days.get(g.game_date) ?? { n: 0, correct: 0, brierSum: 0 };
+          day.n++;
+          if (s.correct) day.correct++;
+          day.brierSum += s.brier ?? 0;
+          m.days.set(g.game_date, day);
+        } else if (p.settled_at == null) {
+          m.pending++;
+          scores[p.model_version] = {
+            prob: Number(p.home_win_prob),
+            correct: null,
+            brier: null,
+            logLoss: null,
+          };
+        }
+      }
+      // game_odds is one row per game; PostgREST returns the embed as an
+      // object, but tolerate the array shape too.
+      const odds = Array.isArray(g.game_odds) ? g.game_odds[0] : g.game_odds;
+      games.push({
         gameId: g.game_id,
+        date: g.game_date,
         home: g.home_team_abbr,
         away: g.away_team_abbr,
         homeScore: g.home_score,
         awayScore: g.away_score,
-        winner: g.winner,
-        homeWinProb,
-        correct: !!pred.correct,
-        brier: Number(pred.brier ?? 0),
-        logLoss: Number(pred.log_loss ?? 0),
-        confidence: Math.abs(homeWinProb - 0.5) * 2,
-        edge,
-        blendedProb,
-        blendCorrect: blendedProb != null ? blendedProb >= 0.5 === (y === 1) : null,
-        blendBrier: blendedProb != null ? (blendedProb - y) ** 2 : null,
-        blendLogLoss: pc != null ? -(y * Math.log(pc) + (1 - y) * Math.log(1 - pc)) : null,
+        winner,
+        homeMoneyline: odds?.home_moneyline ?? null,
+        awayMoneyline: odds?.away_moneyline ?? null,
+        isRecommended: false,
+        isBestOdds: false,
+        models: scores,
       });
     }
-    if (settled.length === 0) return empty;
 
-    const byDate = new Map<string, ByDate[]>();
-    for (const s of settled) {
-      const arr = byDate.get(s.date) ?? [];
-      arr.push(s);
-      byDate.set(s.date, arr);
+    // ── Page-pick segments for the primary model, reconstructed per day.
+    const byDate = new Map<string, TrackedGame[]>();
+    for (const tg of games) {
+      if (tg.winner == null) continue; // picks are judged on settled games
+      const arr = byDate.get(tg.date) ?? [];
+      arr.push(tg);
+      byDate.set(tg.date, arr);
     }
-
     const recommendedIds = new Set<number>();
     const bestOddsIds = new Set<number>();
     for (const dayGames of byDate.values()) {
-      [...dayGames]
-        .sort((a, b) => b.confidence - a.confidence)
+      dayGames
+        .filter((tg) => tg.models[MODEL_VERSION_SIM]?.correct != null)
+        .sort(
+          (a, b) =>
+            pickProb(b.models[MODEL_VERSION_SIM].prob) - pickProb(a.models[MODEL_VERSION_SIM].prob),
+        )
         .slice(0, 3)
-        .forEach((g) => recommendedIds.add(g.gameId));
-      [...dayGames]
-        .filter((g) => g.blendedProb != null)
-        .sort((a, b) => pickProb(b.blendedProb!) - pickProb(a.blendedProb!))
+        .forEach((tg) => recommendedIds.add(tg.gameId));
+      dayGames
+        .filter((tg) => tg.models[MODEL_VERSION_BLEND]?.correct != null)
+        .sort(
+          (a, b) =>
+            pickProb(b.models[MODEL_VERSION_BLEND].prob) -
+            pickProb(a.models[MODEL_VERSION_BLEND].prob),
+        )
         .slice(0, 3)
-        .forEach((g) => bestOddsIds.add(g.gameId));
+        .forEach((tg) => bestOddsIds.add(tg.gameId));
     }
 
-    const acc = () => ({ ...emptyTotals(), brierSum: 0, logLossSum: 0 });
-    const totals = { all: acc(), recommended: acc(), best_odds: acc() };
-    const dayBuckets = {
-      all: new Map<string, { n: number; correct: number; brierSum: number }>(),
-      recommended: new Map<string, { n: number; correct: number; brierSum: number }>(),
-      best_odds: new Map<string, { n: number; correct: number; brierSum: number }>(),
-    };
-    const bump = (
-      bucket: Map<string, { n: number; correct: number; brierSum: number }>,
-      date: string,
-      correct: boolean,
-      brier: number,
-    ) => {
-      const b = bucket.get(date) ?? { n: 0, correct: 0, brierSum: 0 };
-      b.n += 1;
-      if (correct) b.correct += 1;
-      b.brierSum += brier;
-      bucket.set(date, b);
-    };
-
-    const games: SegmentedGame[] = [];
-    for (const s of settled) {
-      const isRecommended = recommendedIds.has(s.gameId);
-      const isBestOdds = bestOddsIds.has(s.gameId);
-      totals.all.n++;
-      totals.all.correct += s.correct ? 1 : 0;
-      totals.all.brierSum += s.brier;
-      totals.all.logLossSum += s.logLoss;
-      bump(dayBuckets.all, s.date, s.correct, s.brier);
-      if (isRecommended) {
-        totals.recommended.n++;
-        totals.recommended.correct += s.correct ? 1 : 0;
-        totals.recommended.brierSum += s.brier;
-        totals.recommended.logLossSum += s.logLoss;
-        bump(dayBuckets.recommended, s.date, s.correct, s.brier);
+    const segTotals = { all: mkAcc(), recommended: mkAcc(), best_odds: mkAcc() };
+    for (const tg of games) {
+      tg.isRecommended = recommendedIds.has(tg.gameId);
+      tg.isBestOdds = bestOddsIds.has(tg.gameId);
+      const sim = tg.models[MODEL_VERSION_SIM];
+      if (sim?.correct != null) {
+        bumpAcc(segTotals.all, sim);
+        if (tg.isRecommended) bumpAcc(segTotals.recommended, sim);
       }
-      if (isBestOdds && s.blendCorrect != null) {
-        // Scored with the blended probability the Best Odds page shows,
-        // not the raw model number.
-        totals.best_odds.n++;
-        totals.best_odds.correct += s.blendCorrect ? 1 : 0;
-        totals.best_odds.brierSum += s.blendBrier!;
-        totals.best_odds.logLossSum += s.blendLogLoss!;
-        bump(dayBuckets.best_odds, s.date, s.blendCorrect, s.blendBrier!);
-      }
-      const predictedWinner = s.homeWinProb >= 0.5 ? s.home : s.away;
-      const predictedProb = s.homeWinProb >= 0.5 ? s.homeWinProb : 1 - s.homeWinProb;
-      games.push({
-        gameId: s.gameId,
-        date: s.date,
-        home: s.home,
-        away: s.away,
-        homeScore: s.homeScore,
-        awayScore: s.awayScore,
-        winner: s.winner,
-        predictedWinner,
-        predictedProb,
-        correct: s.correct,
-        brier: s.brier,
-        logLoss: s.logLoss,
-        edge: s.edge,
-        isRecommended,
-        isBestOdds,
-      });
+      // Best Odds picks are scored with the blend's own stored numbers.
+      const blend = tg.models[MODEL_VERSION_BLEND];
+      if (tg.isBestOdds && blend?.correct != null) bumpAcc(segTotals.best_odds, blend);
     }
 
-    const toDayRows = (
-      m: Map<string, { n: number; correct: number; brierSum: number }>,
-    ): SegmentDayRow[] =>
-      Array.from(m.entries())
-        .map(([date, b]) => ({
-          date,
-          n: b.n,
-          accuracy: b.n > 0 ? b.correct / b.n : null,
-          brier: b.n > 0 ? b.brierSum / b.n : null,
-        }))
-        .sort((a, b) => (a.date < b.date ? -1 : 1));
-
-    // Comparison baseline shown alongside the primary model's numbers.
-    const { data: baselineTotals } = await supabase
-      .from("predictions")
-      .select("brier")
-      .eq("model_version", MODEL_VERSION)
-      .not("settled_at", "is", null);
-    const comparisonBrier =
-      baselineTotals && baselineTotals.length > 0
-        ? baselineTotals.reduce((a: number, t: any) => a + Number(t.brier ?? 0), 0) /
-          baselineTotals.length
-        : null;
+    const knownVersions = TRACKED_MODELS.map((m) => m.version);
+    const orderedVersions = [
+      ...knownVersions,
+      ...Array.from(perModel.keys()).filter((v) => !knownVersions.includes(v)),
+    ];
+    const models: ModelTrack[] = orderedVersions
+      .map((version) => {
+        const m = perModel.get(version)!;
+        return {
+          version,
+          settled: finalizeTotals(m.totals),
+          pending: m.pending,
+          daily: Array.from(m.days.entries())
+            .map(([date, b]) => ({
+              date,
+              n: b.n,
+              accuracy: b.n > 0 ? b.correct / b.n : null,
+              brier: b.n > 0 ? b.brierSum / b.n : null,
+            }))
+            .sort((a, b) => (a.date < b.date ? -1 : 1)),
+        };
+      })
+      // Hide versions with no activity in the window (e.g. retired baselines).
+      .filter((m) => m.settled.n > 0 || m.pending > 0 || knownVersions.includes(m.version));
 
     return {
+      trackingSince: TRACK_RECORD_START,
+      primaryModel: MODEL_VERSION_SIM,
+      models,
       segments: {
-        all: finalizeTotals(totals.all),
-        recommended: finalizeTotals(totals.recommended),
-        best_odds: finalizeTotals(totals.best_odds),
+        all: finalizeTotals(segTotals.all),
+        recommended: finalizeTotals(segTotals.recommended),
+        best_odds: finalizeTotals(segTotals.best_odds),
       },
-      daily: {
-        all: toDayRows(dayBuckets.all),
-        recommended: toDayRows(dayBuckets.recommended),
-        best_odds: toDayRows(dayBuckets.best_odds),
-      },
-      games: games.sort((a, b) => (a.date < b.date ? 1 : -1)),
-      modelVersion: MODEL_VERSION_SIM,
-      comparisonBrier,
+      games: games
+        .filter((tg) => Object.keys(tg.models).length > 0)
+        .sort((a, b) => (a.date < b.date ? 1 : -1)),
     };
   } catch (err) {
-    console.error("[getTrackRecordSegments] error:", err);
+    console.error("[getTrackRecord] error:", err);
     return empty;
   }
 });
