@@ -134,6 +134,8 @@ async function loadGamesForDate(
 export const getDailyGames = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
+    const { settleIfDue } = await import("./mlb-pipeline.server");
+    await settleIfDue().catch((err) => console.error("[getDailyGames] settleIfDue failed:", err));
     const date = data?.date ?? todayISO();
     const { games, source } = await loadGamesForDate(date);
     return { date, games, source };
@@ -142,6 +144,8 @@ export const getDailyGames = createServerFn({ method: "GET" })
 // Aggregate metrics for the dashboard
 export const getMetrics = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const { settleIfDue } = await import("./mlb-pipeline.server");
+    await settleIfDue().catch((err) => console.error("[getMetrics] settleIfDue failed:", err));
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: daily } = await supabase
       .from("daily_metrics")
@@ -193,6 +197,10 @@ export const getMetrics = createServerFn({ method: "GET" }).handler(async () => 
 // Fetch recent settled predictions for the history page
 export const getSettledPredictions = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const { settleIfDue } = await import("./mlb-pipeline.server");
+    await settleIfDue().catch((err) =>
+      console.error("[getSettledPredictions] settleIfDue failed:", err),
+    );
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: predictions } = await supabase
       .from("predictions")
@@ -295,6 +303,8 @@ export const getTrackRecord = createServerFn({ method: "GET" }).handler(async ()
     games: [] as TrackedGame[],
   };
   try {
+    const { settleIfDue } = await import("./mlb-pipeline.server");
+    await settleIfDue().catch((err) => console.error("[getTrackRecord] settleIfDue failed:", err));
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: rows, error } = await supabase
       .from("games")
@@ -490,6 +500,10 @@ export const runPipeline = createServerFn({ method: "POST" })
 // current models do against each club.
 export const getTeamLeaderboard = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const { settleIfDue } = await import("./mlb-pipeline.server");
+    await settleIfDue().catch((err) =>
+      console.error("[getTeamLeaderboard] settleIfDue failed:", err),
+    );
     const { supabase } = await import("@/integrations/supabase/client");
 
     const { data: games } = await supabase

@@ -32,12 +32,13 @@ let lastSettleAttempt = 0;
 
 /**
  * Settle finished games and refresh daily metrics, at most once per
- * `minIntervalMs` per server instance. Called opportunistically from read
- * paths (e.g. the Track Record page) so results appear without any cron —
- * cheap when nothing is unsettled, debounced so page traffic can't stampede
- * the MLB API.
+ * `minIntervalMs` per server instance. Called opportunistically from every
+ * read path that renders scores/predictions (index, metrics, track record,
+ * history, team leaderboard) so results appear as soon as someone loads the
+ * app — no cron, no manual trigger required — cheap when nothing is
+ * unsettled, debounced so page traffic can't stampede the MLB API.
  */
-export async function settleIfDue(minIntervalMs = 5 * 60_000) {
+export async function settleIfDue(minIntervalMs = 2 * 60_000) {
   if (!canWrite()) return null;
   const now = Date.now();
   if (now - lastSettleAttempt < minIntervalMs) return null;
