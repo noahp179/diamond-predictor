@@ -28,23 +28,70 @@ function assertWritable(): void {
   }
 }
 
-let lastSettleAttempt = 0;
+/**
+ * The full daily cycle: self-heal every date missed since the last
+ * successful run (capped at 10 days so a long-stale DB can't trigger a
+ * runaway backfill), settle any finished games, recompute daily_metrics,
+ * then ingest/predict today's slate. This is "what a pipeline run does" —
+ * the Vercel cron route and the opportunistic self-heal below both call
+ * this single implementation instead of duplicating it.
+ */
+export async function runFullPipelineCycle() {
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const missing = await findMissingDates(yesterday);
+  const ingestResults: Record<string, unknown> = {};
+  const ingestErrors: Record<string, string> = {};
+  for (const date of missing) {
+    try {
+      ingestResults[date] = await ingestAndPredict(date);
+    } catch (err) {
+      // One bad date (API hiccup, off-day) shouldn't abort the whole catch-up.
+      ingestErrors[date] = err instanceof Error ? err.message : String(err);
+      console.error(`[pipeline] ingest failed for ${date}`, err);
+    }
+  }
+  const settle = await settleFinished();
+  const metrics = await recomputeDailyMetrics();
+  // Pre-load today's schedule so the front-end can read from the DB quickly.
+  const ingestToday = await ingestAndPredict(today).catch((err) => {
+    console.error("[pipeline] ingest failed for today", err);
+    return null;
+  });
+  return {
+    yesterday,
+    today,
+    backfilledDates: missing,
+    ingestResults,
+    ingestErrors,
+    ingestToday,
+    settle,
+    metrics,
+  };
+}
+
+let lastPipelineAttempt = 0;
 
 /**
- * Settle finished games and refresh daily metrics, at most once per
- * `minIntervalMs` per server instance. Called opportunistically from read
- * paths (e.g. the Track Record page) so results appear without any cron —
- * cheap when nothing is unsettled, debounced so page traffic can't stampede
- * the MLB API.
+ * Runs the full pipeline cycle at most once per `minIntervalMs` per server
+ * instance. Called opportunistically from every read path that renders
+ * scores/predictions (index, metrics, track record, history, team
+ * leaderboard) so a day's predictions get recorded and finished games get
+ * scored purely from ordinary site traffic — no cron, no manual trigger
+ * required. Debounced so page traffic can't stampede the MLB API; a run
+ * that fails is logged and swallowed so it never breaks the page's own read.
  */
-export async function settleIfDue(minIntervalMs = 5 * 60_000) {
+export async function runPipelineIfDue(minIntervalMs = 2 * 60_000) {
   if (!canWrite()) return null;
   const now = Date.now();
-  if (now - lastSettleAttempt < minIntervalMs) return null;
-  lastSettleAttempt = now;
-  const res = await settleFinished();
-  if (res.settled > 0) await recomputeDailyMetrics();
-  return res;
+  if (now - lastPipelineAttempt < minIntervalMs) return null;
+  lastPipelineAttempt = now;
+  try {
+    return await runFullPipelineCycle();
+  } catch (err) {
+    console.error("[runPipelineIfDue] pipeline failed", err);
+    return null;
+  }
 }
 
 import { buildPredictionsForDate, MODEL_VERSION, STATS_API } from "./mlb-core";
