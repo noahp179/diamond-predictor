@@ -1,11 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import {
-  findMissingDates,
-  ingestAndPredict,
-  recomputeDailyMetrics,
-  settleFinished,
-} from "@/lib/mlb-pipeline.server";
+import { runFullPipelineCycle } from "@/lib/mlb-pipeline.server";
 
 function verifyCronSecret(request: Request): Response | null {
   const expected = process.env.CRON_SECRET;
@@ -39,53 +34,15 @@ export const Route = createFileRoute("/api/public/hooks/run-pipeline")({
         const authErr = verifyCronSecret(request);
         if (authErr) return authErr;
 
-        const today = new Date().toISOString().slice(0, 10);
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
         const startedAt = new Date().toISOString();
-        console.log(
-          `[cron] pipeline started at ${startedAt} for yesterday=${yesterday}, today=${today}`,
-        );
+        console.log(`[cron] pipeline started at ${startedAt}`);
         try {
-          // 1. Self-heal: ingest every date missed since the last successful run,
-          // not just yesterday. A single successful tick closes any gap left by
-          // downtime, a failed deploy, or a skipped cron — capped at 10 days so a
-          // long-stale DB can't trigger a runaway backfill from one request.
-          const missing = await findMissingDates(yesterday);
-          const ingestResults: Record<string, unknown> = {};
-          const ingestErrors: Record<string, string> = {};
-          for (const date of missing) {
-            try {
-              ingestResults[date] = await ingestAndPredict(date);
-            } catch (err) {
-              // One bad date (API hiccup, off-day) shouldn't abort the whole catch-up.
-              ingestErrors[date] = err instanceof Error ? err.message : String(err);
-              console.error(`[cron] ingest failed for ${date}`, err);
-            }
-          }
-          const settle = await settleFinished();
-          const metrics = await recomputeDailyMetrics();
-          // 2. Pre-load today's schedule so the front-end can read from the DB quickly
-          const ingestToday = await ingestAndPredict(today).catch((err) => {
-            console.error("[cron] ingest failed for today", err);
-            return null;
-          });
+          const result = await runFullPipelineCycle();
           const finishedAt = new Date().toISOString();
           console.log(
-            `[cron] pipeline finished at ${finishedAt}, backfilled=${missing.join(",") || "none"}`,
+            `[cron] pipeline finished at ${finishedAt}, backfilled=${result.backfilledDates.join(",") || "none"}`,
           );
-          return Response.json({
-            ok: true,
-            yesterday,
-            today,
-            startedAt,
-            finishedAt,
-            backfilledDates: missing,
-            ingestResults,
-            ingestErrors,
-            ingestToday,
-            settle,
-            metrics,
-          });
+          return Response.json({ ok: true, startedAt, finishedAt, ...result });
         } catch (err) {
           console.error("[cron] pipeline failed", err);
           return Response.json(
