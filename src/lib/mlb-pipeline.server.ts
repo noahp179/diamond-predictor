@@ -11,6 +11,23 @@ export function canWrite(): boolean {
   return Boolean(_supabaseAdmin);
 }
 
+/**
+ * Every write entry point below calls this first. Without it, a missing/
+ * misconfigured SUPABASE_SERVICE_ROLE_KEY surfaces as a bare
+ * "Cannot read properties of undefined (reading 'from')" — which is what the
+ * cron job has been throwing since it stopped writing on 2026-06-15, with no
+ * indication of what's actually wrong.
+ */
+function assertWritable(): void {
+  if (!canWrite()) {
+    throw new Error(
+      "supabaseAdmin is undefined — SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are missing or " +
+        "invalid in this server environment. Set them in Vercel → Project Settings → " +
+        "Environment Variables (server-side, not VITE_-prefixed) and redeploy.",
+    );
+  }
+}
+
 let lastSettleAttempt = 0;
 
 /**
@@ -64,6 +81,7 @@ const STARTED_RE = /final|game over|completed|in progress|suspended/i;
 
 /** Most recent `game_date` already in the DB, or null if the table is empty. */
 export async function getLastIngestedDate(): Promise<string | null> {
+  assertWritable();
   const { data, error } = await supabaseAdmin
     .from("games")
     .select("game_date")
@@ -98,6 +116,7 @@ export async function findMissingDates(throughDate: string, maxDays = 10): Promi
 }
 
 export async function ingestAndPredict(date: string) {
+  assertWritable();
   const games = await buildPredictionsForDate(date);
   if (games.length === 0) return { date, inserted: 0 };
 
@@ -289,6 +308,7 @@ export async function ingestAndPredict(date: string) {
 }
 
 export async function settleFinished() {
+  assertWritable();
   // Find unsettled predictions whose game is final — across every model version
   // so shadow models (sim-elo-v1) get scored alongside the baseline.
   const { data: rows, error } = await supabaseAdmin
@@ -386,6 +406,7 @@ async function fetchGameFinal(gameId: number) {
 }
 
 export async function recomputeDailyMetrics() {
+  assertWritable();
   // Aggregate per (game_date, model_version) from predictions joined to games
   const { data, error } = await supabaseAdmin
     .from("predictions")
