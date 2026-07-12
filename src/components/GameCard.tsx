@@ -61,6 +61,17 @@ export function GameCard({ game }: { game: PredictedGame }) {
             style={{ width: `${game.homeWinProb * 100}%` }}
           />
         </div>
+
+        {/* secondary model (sim-recent-v1) — shown under the primary line */}
+        {game.altModel && (
+          <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
+            <span>{game.altModel.label}</span>
+            <span>
+              {game.away.abbreviation} {pct(game.altModel.awayWinProb)} ·{" "}
+              {pct(game.altModel.homeWinProb)} {game.home.abbreviation}
+            </span>
+          </div>
+        )}
       </div>
 
       <details className="border-t border-border bg-background/30 px-5 py-3 text-sm">

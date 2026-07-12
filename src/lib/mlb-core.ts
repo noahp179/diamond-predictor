@@ -50,6 +50,11 @@ export interface PredictedGame {
   awayScore?: number | null;
   winner?: "home" | "away" | null;
   correct?: boolean | null;
+  /**
+   * Optional secondary model's win probabilities for the same game, shown
+   * beside the primary number on the card. Currently carries sim-recent-v1.
+   */
+  altModel?: { label: string; homeWinProb: number; awayWinProb: number } | null;
 }
 
 export interface StandingsRow {

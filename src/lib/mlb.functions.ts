@@ -3,9 +3,10 @@ import { z } from "zod";
 
 import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
+import { buildRecentFormPredictionsForDate } from "./mlb-recent-form";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
-import { TRACK_RECORD_START, TRACKED_MODELS } from "./mlb-models";
+import { TRACK_RECORD_START, TRACKED_MODELS, MODEL_VERSION_RECENT } from "./mlb-models";
 
 export type { PredictedGame } from "./mlb-core";
 
@@ -41,6 +42,31 @@ function mergeSimIntoBaseline(
 }
 
 /**
+ * Attach sim-recent-v1's win probabilities to each game as the secondary
+ * (altModel) display number. Used on the live fallback path so today's slate
+ * shows both models even before the cron has stored rows.
+ */
+function attachRecentForm(
+  games: PredictedGame[],
+  recentGames: Awaited<ReturnType<typeof buildRecentFormPredictionsForDate>>,
+): PredictedGame[] {
+  if (recentGames.length === 0) return games;
+  const byId = new Map(recentGames.map((g) => [g.gameId, g]));
+  return games.map((g) => {
+    const r = byId.get(g.gameId);
+    if (!r) return g;
+    return {
+      ...g,
+      altModel: {
+        label: MODEL_VERSION_RECENT,
+        homeWinProb: r.ensembleProb,
+        awayWinProb: 1 - r.ensembleProb,
+      },
+    };
+  });
+}
+
+/**
  * Canonical game list for a date: DB rows preferring sim-elo-v2 (falling back
  * to baseline-v0.4 per game if a sim row is somehow missing), or — if the DB
  * has nothing for this date yet — a live computation using the same primary
@@ -68,6 +94,7 @@ async function loadGamesForDate(
           preds.find((x: any) => x.model_version === MODEL_VERSION_SIM) ??
           preds.find((x: any) => x.model_version === MODEL_VERSION) ??
           preds[0];
+        const recent = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT);
         return {
           gameId: r.game_id,
           date: r.game_time,
@@ -112,6 +139,14 @@ async function loadGamesForDate(
           awayScore: r.away_score,
           winner: r.winner,
           correct: p?.correct ?? null,
+          altModel:
+            recent && recent.home_win_prob != null
+              ? {
+                  label: MODEL_VERSION_RECENT,
+                  homeWinProb: Number(recent.home_win_prob),
+                  awayWinProb: Number(recent.away_win_prob),
+                }
+              : null,
         };
       });
       return { games, source: "db" };
@@ -121,12 +156,15 @@ async function loadGamesForDate(
     console.error("[loadGamesForDate] Supabase error, falling back to live API:", err);
   }
 
-  // Fallback: compute live (no persistence) — baseline for metadata, sim-elo-v2 for the probability
-  const [baseGames, simGames] = await Promise.all([
+  // Fallback: compute live (no persistence) — baseline for metadata, sim-elo-v2
+  // for the primary probability, sim-recent-v1 for the secondary display number.
+  const [baseGames, simGames, recentGames] = await Promise.all([
     buildPredictionsForDate(date),
     buildSimPredictionsForDate(date).catch(() => []),
+    buildRecentFormPredictionsForDate(date).catch(() => []),
   ]);
-  const games = simGames.length > 0 ? mergeSimIntoBaseline(baseGames, simGames) : baseGames;
+  const merged = simGames.length > 0 ? mergeSimIntoBaseline(baseGames, simGames) : baseGames;
+  const games = attachRecentForm(merged, recentGames);
   return { games, source: "live" };
 }
 
