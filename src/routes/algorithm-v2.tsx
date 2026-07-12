@@ -3,45 +3,47 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { getDailyGames, getMetrics } from "@/lib/mlb.functions";
+import { getV3DailyGames, getMetrics } from "@/lib/mlb.functions";
+import { MODEL_VERSION_V3 } from "@/lib/mlb-v3";
 import { GameCard } from "@/components/GameCard";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/algorithm-v2")({
   head: () => ({
     meta: [
-      { title: "Diamond Edge — MLB Win Probabilities" },
+      { title: "Algorithm V2 (sim-elo-v3) — Diamond Edge" },
       {
         name: "description",
         content:
-          "Daily MLB matchups with transparent win-probability predictions powered by live MLB Stats data.",
+          "Algorithm V2 (sim-elo-v3): the simulator fed schedule-strength-adjusted rates plus a game-context layer (streaks, rest, travel, bullpen stress). Tracked live against the headline model.",
       },
-      { property: "og:title", content: "Diamond Edge — MLB Win Probabilities" },
+      { property: "og:title", content: "Algorithm V2 (sim-elo-v3) — Diamond Edge" },
       {
         property: "og:description",
-        content: "Daily MLB matchups with transparent win-probability predictions.",
+        content:
+          "Schedule-strength-adjusted Monte Carlo + game-context predictions, tracked live against sim-elo-v2.",
       },
     ],
   }),
-  component: Index,
+  component: AlgorithmV2Page,
 });
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function Index() {
+function AlgorithmV2Page() {
   const [date, setDate] = useState(todayISO());
-  const fetchGames = useServerFn(getDailyGames);
+  const fetchGames = useServerFn(getV3DailyGames);
   const fetchMetrics = useServerFn(getMetrics);
   const { data, isLoading, isError, isFetching } = useQuery({
-    queryKey: ["games", date],
+    queryKey: ["v3-games", date],
     queryFn: () => fetchGames({ data: { date } }),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
   const { data: metrics } = useQuery({
-    queryKey: ["metrics"],
-    queryFn: () => fetchMetrics(),
+    queryKey: ["metrics", MODEL_VERSION_V3],
+    queryFn: () => fetchMetrics({ data: { modelVersion: MODEL_VERSION_V3 } }),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -56,15 +58,22 @@ function Index() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-6 px-6 py-10">
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-              Diamond Edge · MLB Forecast
+              Diamond Edge · sim-elo-v3 · Candidate model
             </div>
-            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Today's Slate</h1>
-            <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              Live matchups from the MLB Stats API. Win probabilities blend season form, home-field,
-              and starting-pitcher ERA into a transparent baseline model.
+            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Algorithm V2</h1>
+            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+              The Monte Carlo simulator fed <strong>schedule-strength-adjusted</strong> rates —
+              batting corrected for the pitching it faced, pitching for the lineups it drew, and
+              every rate de-parked — plus a capped <strong>game-context</strong> layer (win streaks,
+              recent form, rest, travel, time-zone shifts, bullpen stress). Built on top of the
+              headline sim-elo-v2 and tracked against it on the{" "}
+              <Link to="/history" className="text-primary underline-offset-2 hover:underline">
+                Track Record
+              </Link>
+              .
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input
               type="date"
               value={date}
@@ -78,6 +87,13 @@ function Index() {
               Today's slate
             </Link>
             <Link
+              to="/algorithm-v2"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+              aria-current="page"
+            >
+              Algorithm V2
+            </Link>
+            <Link
               to="/history"
               className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
             >
@@ -89,24 +105,6 @@ function Index() {
             >
               Teams
             </Link>
-            <Link
-              to="/algorithm-v2"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Algorithm V2
-            </Link>
-            <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
-              to="/best-odds"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Best Odds
-            </Link>
           </div>
         </div>
         <div className="border-t border-border bg-secondary/30">
@@ -117,26 +115,25 @@ function Index() {
               value={metrics?.accuracy != null ? `${(metrics.accuracy * 100).toFixed(1)}%` : "—"}
             />
             <Stat
-              label="Today settled"
-              value={settledToday.length ? `${correctToday}/${settledToday.length}` : "—"}
+              label="Brier (settled)"
+              value={metrics?.brier != null ? metrics.brier.toFixed(4) : "—"}
             />
             <Stat
-              label="Source"
-              value={
-                isFetching
-                  ? "Updating…"
-                  : data?.source === "db"
-                    ? "Stored"
-                    : data?.source === "live"
-                      ? "Live"
-                      : "—"
-              }
+              label="Today settled"
+              value={settledToday.length ? `${correctToday}/${settledToday.length}` : "—"}
             />
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-10">
+        {metrics != null && metrics.settled === 0 && (
+          <div className="mb-6 border border-primary/40 bg-primary/5 px-5 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            Shadow model · sim-elo-v3 records a prediction on every slate and is scored at
+            settlement alongside sim-elo-v2. No games have settled yet — probabilities below are{" "}
+            {data?.source === "live" ? "computed live" : "from the daily run"}.
+          </div>
+        )}
         {isLoading && <SkeletonGrid />}
         {isError && (
           <div className="border border-destructive/40 bg-destructive/10 p-6 font-mono text-sm text-destructive-foreground">
@@ -160,7 +157,8 @@ function Index() {
 
       <footer className="border-t border-border">
         <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Data · MLB Stats API (statsapi.mlb.com) · Not affiliated with MLB
+          sim-elo-v3 · Monte Carlo × multi-season Elo, schedule-strength-adjusted + game context ·
+          Source: MLB Stats API · Not affiliated with MLB
         </div>
       </footer>
     </div>
