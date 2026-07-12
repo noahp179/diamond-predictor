@@ -17,12 +17,26 @@ export const TRACK_RECORD_START = "2026-07-10";
 /** The devigged DraftKings line stored as a reference "model" — the benchmark to beat. */
 export const MODEL_VERSION_MARKET = "market-devig";
 
+/**
+ * Experimental: the sim-elo-v2 engine (unchanged) fed trailing 21/45-day
+ * form instead of season-to-date rates. Tests whether recent form beats a
+ * season average — tracked side by side with sim-elo-v2, never replaces it.
+ * See src/lib/mlb-recent-form.ts. Unvalidated at ship time — no backtest has
+ * been run against this build yet.
+ */
+export const MODEL_VERSION_RECENT = "sim-recent-v1";
+
 /** Display order and labels for every tracked model. */
 export const TRACKED_MODELS: Array<{ version: string; label: string; note: string }> = [
   {
     version: "sim-elo-v2",
     label: "sim-elo-v2",
     note: "Monte Carlo sim × multi-season Elo — the headline model",
+  },
+  {
+    version: MODEL_VERSION_RECENT,
+    label: "sim-recent-v1",
+    note: "sim-elo-v2 engine, trailing 21-day form instead of season rates — experimental",
   },
   {
     version: MODEL_VERSION_BLEND,
