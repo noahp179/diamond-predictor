@@ -96,6 +96,7 @@ export async function runPipelineIfDue(minIntervalMs = 2 * 60_000) {
 
 import { buildPredictionsForDate, MODEL_VERSION, STATS_API } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
+import { buildV3PredictionsForDate, MODEL_VERSION_V3 } from "./mlb-v3";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 import { MODEL_VERSION_MARKET } from "./mlb-models";
@@ -250,6 +251,41 @@ export async function ingestAndPredict(date: string) {
     console.error("[ingestAndPredict] sim-elo-v2 predictions failed:", err);
   }
 
+  // Shadow model: sim-elo-v3 ("Algorithm V2") — the sim fed schedule-adjusted
+  // rates (opponent strength + park deconvolution) plus a capped game-context
+  // logit delta (streaks, form, rest, travel, pen stress). Written alongside
+  // sim-elo-v2 and settled/scored by the same per-model machinery, so live
+  // evidence accumulates from day one without touching the headline pages.
+  // Failures never block anything upstream.
+  let newV3Preds = 0;
+  try {
+    const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
+    const v3Games = await buildV3PredictionsForDate(date);
+    const v3Rows = v3Games
+      .filter((g) => predictableIds.has(g.gameId))
+      .map((g) => {
+        const base = baselineByGameId.get(g.gameId);
+        return {
+          game_id: g.gameId,
+          model_version: MODEL_VERSION_V3,
+          home_win_prob: Number(g.finalProb.toFixed(4)),
+          away_win_prob: Number((1 - g.finalProb).toFixed(4)),
+          home_win_pct: base ? Number(base.home.winPct.toFixed(4)) : null,
+          away_win_pct: base ? Number(base.away.winPct.toFixed(4)) : null,
+          home_pitcher_id: base?.home.pitcher?.id ?? null,
+          home_pitcher_name: base?.home.pitcher?.name ?? null,
+          home_pitcher_era: base?.home.pitcher?.era ?? null,
+          away_pitcher_id: base?.away.pitcher?.id ?? null,
+          away_pitcher_name: base?.away.pitcher?.name ?? null,
+          away_pitcher_era: base?.away.pitcher?.era ?? null,
+          rationale: g.rationale,
+        };
+      });
+    newV3Preds = await insertFreshPredictions(v3Rows, MODEL_VERSION_V3);
+  } catch (err) {
+    console.error("[ingestAndPredict] sim-elo-v3 predictions failed:", err);
+  }
+
   // Real market odds (ESPN, free/keyless). Best-effort and never blocks game
   // or prediction ingestion — odds may not be posted yet for far-future dates,
   // and the endpoint is unofficial.
@@ -348,6 +384,7 @@ export async function ingestAndPredict(date: string) {
     predictable: predictable.length,
     newPredictions: newPreds,
     newSimPredictions: newSimPreds,
+    newV3Predictions: newV3Preds,
     newBlendPredictions: newBlendPreds,
     newMarketPredictions: newMarketPreds,
     newOdds,
