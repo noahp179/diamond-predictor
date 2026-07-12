@@ -1,4 +1,4 @@
-# Daily Cron — 3 AM Auto-sync
+How# Daily Cron — 3 AM Auto-sync
 
 ## Local operation (while the Vercel cron is down)
 
@@ -6,7 +6,7 @@ The cron stopped writing on 2026-06-15. Until it's revived, the same pipeline
 can run from any machine with `SUPABASE_SERVICE_ROLE_KEY` in `.env`:
 
 ```bash
-scripts/run-pipeline-local.sh        # ingest & predict today (all models), settle, metrics
+scripts/run-pipeline-local.sh        # ingest & predict today (all models), settle, metrics 
 ```
 
 Two crontab lines keep tracking alive locally (morning: record the day's
