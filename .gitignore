@@ -34,3 +34,5 @@ dist-ssr
 *.sln
 *.sw?
 .env
+# backtest disk cache (scripts/backtest-v3.ts)
+.backtest-cache/

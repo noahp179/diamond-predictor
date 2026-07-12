@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
+import { buildV3PredictionsForDate, MODEL_VERSION_V3 } from "./mlb-v3";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 import { TRACK_RECORD_START, TRACKED_MODELS } from "./mlb-models";
@@ -41,6 +42,94 @@ function mergeSimIntoBaseline(
 }
 
 /**
+ * Overlay live sim-elo-v3 (Algorithm V2) probabilities onto baseline
+ * PredictedGame objects. Same idea as mergeSimIntoBaseline but takes the v3
+ * ensemble+context `finalProb` and its richer rationale.
+ */
+function mergeV3IntoBaseline(
+  baseGames: PredictedGame[],
+  v3Games: Awaited<ReturnType<typeof buildV3PredictionsForDate>>,
+): PredictedGame[] {
+  const v3ByGameId = new Map(v3Games.map((g) => [g.gameId, g]));
+  return baseGames.map((g) => {
+    const v3 = v3ByGameId.get(g.gameId);
+    if (!v3) return g;
+    const homeWinProb = v3.finalProb;
+    const awayWinProb = 1 - v3.finalProb;
+    const correct =
+      g.winner &&
+      typeof g.homeScore === "number" &&
+      typeof g.awayScore === "number" &&
+      g.homeScore !== g.awayScore
+        ? (homeWinProb >= 0.5 ? "home" : "away") === g.winner
+        : (g.correct ?? null);
+    return { ...g, homeWinProb, awayWinProb, rationale: v3.rationale, correct };
+  });
+}
+
+/** Turn joined games+predictions rows into PredictedGame, picking the first
+ * available model version from `preferred` per game (falling back to any row). */
+function mapDbRowsToGames(rows: any[], preferred: string[]): PredictedGame[] {
+  return rows.map((r: any) => {
+    const preds: any[] = r.predictions ?? [];
+    let p: any = undefined;
+    for (const v of preferred) {
+      p = preds.find((x: any) => x.model_version === v);
+      if (p) break;
+    }
+    p = p ?? preds[0];
+    return {
+      gameId: r.game_id,
+      date: r.game_time,
+      status: r.status,
+      venue: r.venue ?? "—",
+      home: {
+        id: r.home_team_id,
+        name: r.home_team_name,
+        abbreviation: r.home_team_abbr,
+        record: "—",
+        winPct: Number(p?.home_win_pct ?? 0.5),
+        pitcher: p?.home_pitcher_name
+          ? {
+              id: null,
+              name: p.home_pitcher_name,
+              era: p.home_pitcher_era != null ? Number(p.home_pitcher_era) : null,
+              wins: null,
+              losses: null,
+            }
+          : null,
+      },
+      away: {
+        id: r.away_team_id,
+        name: r.away_team_name,
+        abbreviation: r.away_team_abbr,
+        record: "—",
+        winPct: Number(p?.away_win_pct ?? 0.5),
+        pitcher: p?.away_pitcher_name
+          ? {
+              id: null,
+              name: p.away_pitcher_name,
+              era: p.away_pitcher_era != null ? Number(p.away_pitcher_era) : null,
+              wins: null,
+              losses: null,
+            }
+          : null,
+      },
+      homeWinProb: Number(p?.home_win_prob ?? 0.5),
+      awayWinProb: Number(p?.away_win_prob ?? 0.5),
+      rationale: Array.isArray(p?.rationale) ? (p.rationale as string[]) : [],
+      homeScore: r.home_score,
+      awayScore: r.away_score,
+      winner: r.winner,
+      correct: p?.correct ?? null,
+    } satisfies PredictedGame;
+  });
+}
+
+const GAMES_SELECT =
+  "game_id, game_time, status, venue, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, home_score, away_score, winner, predictions(home_win_prob, away_win_prob, home_win_pct, away_win_pct, home_pitcher_name, home_pitcher_era, away_pitcher_name, away_pitcher_era, rationale, correct, model_version)";
+
+/**
  * Canonical game list for a date: DB rows preferring sim-elo-v2 (falling back
  * to baseline-v0.4 per game if a sim row is somehow missing), or — if the DB
  * has nothing for this date yet — a live computation using the same primary
@@ -55,66 +144,12 @@ async function loadGamesForDate(
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: rows } = await supabase
       .from("games")
-      .select(
-        "game_id, game_time, status, venue, home_team_id, home_team_name, home_team_abbr, away_team_id, away_team_name, away_team_abbr, home_score, away_score, winner, predictions(home_win_prob, away_win_prob, home_win_pct, away_win_pct, home_pitcher_name, home_pitcher_era, away_pitcher_name, away_pitcher_era, rationale, correct, model_version)",
-      )
+      .select(GAMES_SELECT)
       .eq("game_date", date)
       .order("game_time", { ascending: true });
 
     if (rows && rows.length > 0) {
-      const games: PredictedGame[] = rows.map((r: any) => {
-        const preds: any[] = r.predictions ?? [];
-        const p =
-          preds.find((x: any) => x.model_version === MODEL_VERSION_SIM) ??
-          preds.find((x: any) => x.model_version === MODEL_VERSION) ??
-          preds[0];
-        return {
-          gameId: r.game_id,
-          date: r.game_time,
-          status: r.status,
-          venue: r.venue ?? "—",
-          home: {
-            id: r.home_team_id,
-            name: r.home_team_name,
-            abbreviation: r.home_team_abbr,
-            record: "—",
-            winPct: Number(p?.home_win_pct ?? 0.5),
-            pitcher: p?.home_pitcher_name
-              ? {
-                  id: null,
-                  name: p.home_pitcher_name,
-                  era: p.home_pitcher_era != null ? Number(p.home_pitcher_era) : null,
-                  wins: null,
-                  losses: null,
-                }
-              : null,
-          },
-          away: {
-            id: r.away_team_id,
-            name: r.away_team_name,
-            abbreviation: r.away_team_abbr,
-            record: "—",
-            winPct: Number(p?.away_win_pct ?? 0.5),
-            pitcher: p?.away_pitcher_name
-              ? {
-                  id: null,
-                  name: p.away_pitcher_name,
-                  era: p.away_pitcher_era != null ? Number(p.away_pitcher_era) : null,
-                  wins: null,
-                  losses: null,
-                }
-              : null,
-          },
-          homeWinProb: Number(p?.home_win_prob ?? 0.5),
-          awayWinProb: Number(p?.away_win_prob ?? 0.5),
-          rationale: Array.isArray(p?.rationale) ? (p.rationale as string[]) : [],
-          homeScore: r.home_score,
-          awayScore: r.away_score,
-          winner: r.winner,
-          correct: p?.correct ?? null,
-        };
-      });
-      return { games, source: "db" };
+      return { games: mapDbRowsToGames(rows, [MODEL_VERSION_SIM, MODEL_VERSION]), source: "db" };
     }
   } catch (err) {
     // Supabase unavailable or error; fall back to live computation
@@ -130,69 +165,134 @@ async function loadGamesForDate(
   return { games, source: "live" };
 }
 
+/**
+ * Game list for a date scored by sim-elo-v3 (Algorithm V2). Prefers stored v3
+ * prediction rows; if the DB has none for this date yet (e.g. today before the
+ * cron, or a pre-v3 backfilled date), computes v3 live and overlays it on the
+ * baseline display metadata. Falls back to the shared sim-elo-v2 loader only
+ * if the live v3 build itself fails, so the page always renders something.
+ */
+async function loadV3GamesForDate(
+  date: string,
+): Promise<{ games: PredictedGame[]; source: "db" | "live" }> {
+  try {
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data: rows } = await supabase
+      .from("games")
+      .select(GAMES_SELECT)
+      .eq("game_date", date)
+      .order("game_time", { ascending: true });
+
+    if (rows && rows.length > 0) {
+      const anyV3 = rows.some((r: any) =>
+        (r.predictions ?? []).some((p: any) => p.model_version === MODEL_VERSION_V3),
+      );
+      // Only serve from the DB when v3 rows actually exist for this slate;
+      // otherwise fall through to a live v3 computation rather than silently
+      // showing sim-elo-v2 numbers on the Algorithm V2 page.
+      if (anyV3) {
+        return {
+          games: mapDbRowsToGames(rows, [MODEL_VERSION_V3, MODEL_VERSION_SIM, MODEL_VERSION]),
+          source: "db",
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[loadV3GamesForDate] Supabase error, falling back to live API:", err);
+  }
+
+  const [baseGames, v3Games] = await Promise.all([
+    buildPredictionsForDate(date),
+    buildV3PredictionsForDate(date).catch(() => []),
+  ]);
+  const games = v3Games.length > 0 ? mergeV3IntoBaseline(baseGames, v3Games) : baseGames;
+  return { games, source: "live" };
+}
+
 // Read-side: prefer DB (populated by the cron); fall back to live MLB API.
 export const getDailyGames = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
-    await runPipelineIfDue().catch((err) => console.error("[getDailyGames] runPipelineIfDue failed:", err));
+    await runPipelineIfDue().catch((err) =>
+      console.error("[getDailyGames] runPipelineIfDue failed:", err),
+    );
     const date = data?.date ?? todayISO();
     const { games, source } = await loadGamesForDate(date);
     return { date, games, source };
   });
 
-// Aggregate metrics for the dashboard
-export const getMetrics = createServerFn({ method: "GET" }).handler(async () => {
-  try {
+// Read-side for the Algorithm V2 page: same slate, scored by sim-elo-v3.
+export const getV3DailyGames = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
-    await runPipelineIfDue().catch((err) => console.error("[getMetrics] runPipelineIfDue failed:", err));
-    const { supabase } = await import("@/integrations/supabase/client");
-    const { data: daily } = await supabase
-      .from("daily_metrics")
-      .select("*")
-      .eq("model_version", MODEL_VERSION_SIM)
-      .order("metric_date", { ascending: true })
-      .limit(60);
+    await runPipelineIfDue().catch((err) =>
+      console.error("[getV3DailyGames] runPipelineIfDue failed:", err),
+    );
+    const date = data?.date ?? todayISO();
+    const { games, source } = await loadV3GamesForDate(date);
+    return { date, games, source, modelVersion: MODEL_VERSION_V3 };
+  });
 
-    const { data: totals } = await supabase
-      .from("predictions")
-      .select("correct, brier, log_loss, model_version")
-      .eq("model_version", MODEL_VERSION_SIM)
-      .not("settled_at", "is", null);
+// Aggregate metrics for the dashboard. Defaults to the headline model
+// (sim-elo-v2); the Algorithm V2 page passes { modelVersion: "sim-elo-v3" }.
+export const getMetrics = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ modelVersion: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const modelVersion = data?.modelVersion ?? MODEL_VERSION_SIM;
+    try {
+      const { runPipelineIfDue } = await import("./mlb-pipeline.server");
+      await runPipelineIfDue().catch((err) =>
+        console.error("[getMetrics] runPipelineIfDue failed:", err),
+      );
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data: daily } = await supabase
+        .from("daily_metrics")
+        .select("*")
+        .eq("model_version", modelVersion)
+        .order("metric_date", { ascending: true })
+        .limit(60);
 
-    const settled = totals?.length ?? 0;
-    const correct = totals?.filter((t: any) => t.correct).length ?? 0;
-    const brier =
-      settled > 0
-        ? totals!.reduce((a: number, t: any) => a + Number(t.brier ?? 0), 0) / settled
-        : null;
-    const logLoss =
-      settled > 0
-        ? totals!.reduce((a: number, t: any) => a + Number(t.log_loss ?? 0), 0) / settled
-        : null;
+      const { data: totals } = await supabase
+        .from("predictions")
+        .select("correct, brier, log_loss, model_version")
+        .eq("model_version", modelVersion)
+        .not("settled_at", "is", null);
 
-    return {
-      modelVersion: MODEL_VERSION_SIM,
-      settled,
-      correct,
-      accuracy: settled > 0 ? correct / settled : null,
-      brier,
-      logLoss,
-      daily: daily ?? [],
-    };
-  } catch (err) {
-    console.error("[getMetrics] Supabase error, returning empty metrics:", err);
-    return {
-      modelVersion: MODEL_VERSION_SIM,
-      settled: 0,
-      correct: 0,
-      accuracy: null,
-      brier: null,
-      logLoss: null,
-      daily: [],
-    };
-  }
-});
+      const settled = totals?.length ?? 0;
+      const correct = totals?.filter((t: any) => t.correct).length ?? 0;
+      const brier =
+        settled > 0
+          ? totals!.reduce((a: number, t: any) => a + Number(t.brier ?? 0), 0) / settled
+          : null;
+      const logLoss =
+        settled > 0
+          ? totals!.reduce((a: number, t: any) => a + Number(t.log_loss ?? 0), 0) / settled
+          : null;
+
+      return {
+        modelVersion,
+        settled,
+        correct,
+        accuracy: settled > 0 ? correct / settled : null,
+        brier,
+        logLoss,
+        daily: daily ?? [],
+      };
+    } catch (err) {
+      console.error("[getMetrics] Supabase error, returning empty metrics:", err);
+      return {
+        modelVersion,
+        settled: 0,
+        correct: 0,
+        accuracy: null,
+        brier: null,
+        logLoss: null,
+        daily: [],
+      };
+    }
+  });
 
 // Fetch recent settled predictions for the history page
 export const getSettledPredictions = createServerFn({ method: "GET" }).handler(async () => {
@@ -304,7 +404,9 @@ export const getTrackRecord = createServerFn({ method: "GET" }).handler(async ()
   };
   try {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
-    await runPipelineIfDue().catch((err) => console.error("[getTrackRecord] runPipelineIfDue failed:", err));
+    await runPipelineIfDue().catch((err) =>
+      console.error("[getTrackRecord] runPipelineIfDue failed:", err),
+    );
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: rows, error } = await supabase
       .from("games")

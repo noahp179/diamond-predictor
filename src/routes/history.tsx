@@ -171,6 +171,12 @@ function HistoryPage() {
               Teams
             </Link>
             <Link
+              to="/algorithm-v2"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+            >
+              Algorithm V2
+            </Link>
+            <Link
               to="/model"
               className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
             >
@@ -352,8 +358,8 @@ function HistoryPage() {
                 </>
               ) : (
                 <div className="flex h-40 items-center justify-center text-muted-foreground">
-                  No settled picks with a stored line yet — returns plot once games with cached
-                  odds go final.
+                  No settled picks with a stored line yet — returns plot once games with cached odds
+                  go final.
                 </div>
               )}
             </ChartCard>

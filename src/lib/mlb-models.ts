@@ -25,6 +25,11 @@ export const TRACKED_MODELS: Array<{ version: string; label: string; note: strin
     note: "Monte Carlo sim × multi-season Elo — the headline model",
   },
   {
+    version: "sim-elo-v3",
+    label: "sim-elo-v3 (Algorithm V2)",
+    note: "Shadow candidate: schedule-strength-adjusted sim + game-context layer",
+  },
+  {
     version: MODEL_VERSION_BLEND,
     label: "odds-blend-v1",
     note: "sim-elo-v2 blended with the market line (Best Odds tab 2)",

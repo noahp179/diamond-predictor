@@ -210,3 +210,195 @@ The daily cron last wrote on **2026-06-15**: `game_odds` is empty and no `sim-el
 prediction rows were ever persisted (the shadow-write shipped after the cron stopped).
 Today/tomorrow pages fall back to live computation and work; the Track Record's Best Odds
 segment stays empty until the pipeline (and its odds caching) runs again.
+
+---
+
+## Round 4 — Algorithm V2 (`sim-elo-v3`): schedule strength, streaks, and game context
+
+*Built 2026-07-12. Code-complete and unit/ground-truth validated offline; the real-data
+backtest is packaged as a one-command script (`scripts/backtest-v3.ts`) because this
+build ran in a sandbox whose egress policy blocks `statsapi.mlb.com` — see "How to run
+the real backtest" below. No real-2026-game numbers in this round are claimed that were
+not actually computed.*
+
+### What Algorithm V2 is
+
+`sim-elo-v3` builds strictly **on top of** the shipped `sim-elo-v2`: the Monte Carlo
+engine, the multi-season Elo, the logit-mean ensemble, the per-game seeds, and every
+calibration constant are reused byte-for-byte from `mlb-sim.ts`. Two layers are added:
+
+**1. Strength-of-schedule deconvolution (`mlb-sos.ts`).** The v2 simulator eats *raw*
+season aggregates, which are convolved with who a team happened to play and where:
+
+- *Batting vs pitching faced* — a team that drew a run of division aces has deflated
+  observed rates; per-event multipliers (BB, SO, 1B, 2B, 3B, HR) of the opposing staffs
+  actually faced are divided out.
+- *Pitching vs batting schedules faced* — the symmetric correction for staff lines, and
+  **per-starter**: a starter's 8–15 starts are BF-weighted against the specific opposing
+  lineups from his game log, a far noisier schedule draw than the team's.
+- *Park deconvolution* — half a Coors team's PAs happen at altitude, and the sim then
+  applies the park factor again at game time; observed rates are divided by the average
+  park multiplier experienced (exactly mirroring the engine's √pf-on-hits /
+  pf^0.75-on-HR application, so the removal is exact).
+
+The estimation has two guards that came out of validation (below): a damping exponent
+**λ = 0.5** on all multipliers and a **self-contamination debias** — an opponent's
+observed line includes its games against *you*, so your own deviation leaks back into
+your schedule multiplier with weight ≈ the schedule concentration h = Σ(share²); it is
+subtracted before regression. Multipliers are regressed to 1 with a 15-game prior and
+clamped to [0.90, 1.12].
+
+**2. Game-context layer (`mlb-context.ts`).** Small, capped, individually flag-gated
+logit terms for signals the ensemble cannot see, all derived from the season game list
+(zero extra API calls) plus a 30-park geo table (`stadium-geo.ts`):
+
+| Term | Default prior (logit) | Basis |
+|---|---|---|
+| Win streak (±8 cap) | 0.006/game | momentum literature finds ≈nothing beyond strength; kept tiny |
+| 14-day run-diff form *minus season level* | 0.03/run | catches roster turns/injuries faster than season rates |
+| Rest-day edge (4-day cap) | 0.03/day | matches v0.4 prior, Cui et al. |
+| Schedule density >6 games/7 days | −0.012/game | doubleheader grind |
+| Travel since last game | −0.015/1000 km | day-after effect only |
+| Time zones crossed | −0.015/zone, ×1.5 eastward | Song/Severini/Allada PNAS 2017 |
+| Bullpen stress (extras/blowout yesterday) | −0.02/point | short pen proxy |
+
+The summed context delta is hard-capped at ±0.15 logit (≈±3.7pp) so context can never
+overturn the main signals. An optional global calibration scale (default 1.0) sits on
+the final logit.
+
+**Regression guarantee (tested, bit-exact):** with every adjustment disabled — or with
+a balanced schedule in neutral parks, where every multiplier is exactly 1 —
+`sim-elo-v3` reproduces `sim-elo-v2`'s probabilities *exactly*. V2 is a strict superset;
+it cannot silently drift from the model that earned the current track record.
+
+### How it was validated without network access
+
+Two mechanisms, both runnable offline and committed:
+
+**43 unit tests** (`bun test`) covering: exact multiplier math (regression prior,
+λ-damping, contamination debias with hand-computed expected values), park-multiplier
+mirror of the engine, BF-weighted starter schedules with home/away park resolution,
+streak/form/rest/density/pen-stress features on constructed schedules, travel + timezone
+math (LA→Boston ≈ 4,100 km, +3 zones, eastward costs more), the hard cap, the
+no-lookahead property at every level (future games/starts in the inputs cannot change a
+prediction), and the bit-exact v2 equality.
+
+**A synthetic-league ground-truth lab** (`bun scripts/validate-v3-synthetic.ts`):
+20 teams with *known* per-event talent, real park factors, a division-heavy (55%)
+schedule, a PA-level generator composing matchups the same multiplicative way the
+engine does; observed aggregates → models → scored against the generator's true win
+probabilities on held-out slates. This is the only setting where "did the adjustment
+recover the truth?" is answerable, and it reshaped the design:
+
+| config (4 seeds, 1,596 holdout games) | rate-MAE bat | rate-MAE pit | RMSE vs truth (sim) | RMSE vs truth (ensemble) |
+|---|---|---|---|---|
+| v2 (raw rates) | 9.09% | 8.76% | 0.0526 | 0.0508 |
+| SOS λ=1, no debias | 8.60% | 8.29% | **0.0503** | 0.0520 ✗ |
+| **SOS λ=0.5 + debias (shipped)** | 9.11% | 8.77% | 0.0516 | **0.0507** |
+
+Three findings worth recording:
+
+1. **The core thesis is right**: full-strength SOS measurably recovers true talent
+   (rate MAE −5%, sim-component RMSE −4.4%). The "strength of opposing batting
+   schedule" signal is real and the machinery extracts it.
+2. **Naive SOS hurts the shipped number anyway.** Elo is results-based and already
+   prices schedule; the raw sim's schedule bias partially *canceled* Elo's luck noise,
+   and correcting the sim at full strength re-correlates their errors — ensemble RMSE
+   got worse (0.0508 → 0.0520). This is exactly the class of trap Round 2 kept falling
+   into with correlated features, caught here before touching real data.
+3. **Damped + debiased is the safe capture**: λ=0.5 with the contamination correction
+   improves the sim component (0.0526 → 0.0516) while leaving the ensemble at worst
+   neutral (0.0508 → 0.0507) across both grid runs. That configuration is frozen as
+   `DEFAULT_SOS_TUNING`.
+
+Also verified there: the balanced-league invariance is *exact* (max |multiplier−1| = 0,
+v3 ≡ v2 bit-for-bit), and the generator's outcome-Brier floor (~0.243) illustrates how
+little outcome-Brier headroom exists even for a perfect model — which is why the
+synthetic lab scores against true probabilities, not just outcomes.
+
+Caveats of the lab, stated plainly: it has no starters (the starter-level SOS path is
+unit-tested but its predictive value is untested), no fatigue/momentum effects (so the
+context layer is correctness-tested only), and its generator shares the engine's
+multiplicative form. It validates estimation machinery, not real-world lift.
+
+### What could NOT be validated here, and how to run it
+
+This sandbox's egress policy allows GitHub/npm only — `statsapi.mlb.com` and
+`site.api.espn.com` are blocked at the proxy (verified; connect rejected 403). So the
+real-data backtest **has not been run**, and no real-game performance is claimed. The
+harness is ready and needs zero secrets (settled games come straight from the public
+schedule API; Supabase is not required):
+
+```
+bun scripts/backtest-v3.ts --window dev            # 2026-04-15 → 2026-07-01
+bun scripts/backtest-v3.ts --window dev --tune     # staged coefficient search
+bun scripts/backtest-v3.ts --window test           # 2026-07-02 → 2026-07-11, run ONCE
+```
+
+Point-in-time discipline matches Round 3's script: byDateRange rates ending the day
+before, Elo replayed per morning, probables from the day's schedule, starter game logs
+filtered to starts strictly before the day, everything disk-cached (`.backtest-cache/`,
+gitignored). It scores home-always-54, Elo-only, recomputed v2, v3 ablations
+(SOS-only / context-only / full / undamped-SOS), market + w=0.65 blends when ESPN is
+reachable, with paired bootstrap CIs, calibration buckets, and split-half stability.
+
+**Pre-registered protocol** (decided now, before any real number is seen):
+
+- Tune anything only on the dev window (2026-04-15 → 2026-07-01). The `--tune` mode
+  does a staged search: SOS knobs → context features one-at-a-time and leave-one-out →
+  calibration scale.
+- Score the frozen config exactly once on the test window (2026-07-02 → 2026-07-11,
+  ~130 games never used by any prior round).
+- **Promotion gate**: replace sim-elo-v2 as the headline only if dev Brier improves,
+  test Brier does not regress (paired bootstrap P(v3 better) ≥ 70%), and both split
+  halves agree in direction. Otherwise sim-elo-v3 stays a tracked shadow. Expected
+  effect sizes are small (the synthetic lab suggests low-single-digit Brier points ×
+  10⁻³ at best from team-level SOS; the starter-level and context terms are the upside
+  bets), so the gate is deliberately conservative.
+
+### Live shadow deployment (already wired)
+
+`ingestAndPredict` now writes `sim-elo-v3` prediction rows beside `sim-elo-v2` each
+morning (guarded — failures never block anything upstream), the existing settlement and
+`daily_metrics` machinery scores every model version identically, and the Track Record
+page lists it (`TRACKED_MODELS`). From the moment the pipeline runs with this build,
+live out-of-sample evidence accumulates with zero manual work: compare
+`daily_metrics` by `model_version` after 3–4 weeks, same as the v2 rollout.
+
+### Everything considered, including what was deliberately left out
+
+Factors examined for this round and *not* shipped, with reasons:
+
+- **Confirmed lineups + player projections** — still the single biggest available
+  signal (Round 2's #1). Needs lineup-feed infrastructure and a player-projection
+  store; out of scope for a schedule/context round. Next real upgrade.
+- **Platoon splits (team wOBA vs LHP/RHP × starter hand)** — the Stats API's
+  point-in-time story for splits (`byDateRange` × `sitCodes`) could not be verified
+  from this sandbox; shipping it live-only would mean shipping untested. Harness TODO
+  once network is available.
+- **Weather/temperature** — free via Open-Meteo and a park-coordinates table (now in
+  the repo as `stadium-geo.ts`), but for *moneyline* purposes temperature is
+  second-order (both teams bat in the same air; HR-profile interactions are subtle).
+  Good V3 candidate alongside totals work.
+- **Umpire assignments** — not reliably public pre-game; skipped.
+- **True bullpen-by-reliever with leverage usage** — Round 2 showed the naive version
+  hurts; the honest version needs per-reliever data and usage modeling. The context
+  layer's pen-stress proxy (extras/blowouts) is the cheap slice of it.
+- **Head-to-head record** — 3–6 game samples are noise; Elo + SOS already encode
+  opponent quality properly. Excluded on principle.
+- **Injuries/roster moves** — the 14-day form-vs-season term is the cheap proxy; real
+  IL-feed integration is future work.
+
+### Files in this round
+
+- `src/lib/mlb-sos.ts` — SOS engine (pure) + tuning (λ, prior, contamination debias)
+- `src/lib/mlb-context.ts` — context features + capped logit delta (pure, flag-gated)
+- `src/lib/stadium-geo.ts` — park coordinates/UTC offsets, travel + tz helpers
+- `src/lib/mlb-v3.ts` — `sim-elo-v3`: SOS-adjusted inputs → untouched engine → ensemble
+  → context delta; live builder `buildV3PredictionsForDate`
+- `src/lib/*.test.ts` — 43 tests (`bun test`)
+- `scripts/validate-v3-synthetic.ts` — ground-truth lab (`--grid` for the tuning sweep)
+- `scripts/backtest-v3.ts` — real-data dev/test harness + `--tune` (network required)
+- `scripts/test-v3.ts` — per-date live printout, v2 vs v3 side by side
+- `src/lib/mlb-pipeline.server.ts` — shadow write; `src/lib/mlb-models.ts` — tracking
+- `park-factors.ts` untouched; `mlb-sim.ts` untouched (by design)

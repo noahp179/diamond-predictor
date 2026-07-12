@@ -139,6 +139,12 @@ function BestOddsPage() {
               Teams
             </Link>
             <Link
+              to="/algorithm-v2"
+              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
+            >
+              Algorithm V2
+            </Link>
+            <Link
               to="/model"
               className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
             >

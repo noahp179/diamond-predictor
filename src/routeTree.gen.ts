@@ -13,6 +13,7 @@ import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as BestOddsRouteImport } from './routes/best-odds'
+import { Route as AlgorithmV2RouteImport } from './routes/algorithm-v2'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
@@ -20,6 +21,11 @@ import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/publ
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlgorithmV2Route = AlgorithmV2RouteImport.update({
+  id: '/algorithm-v2',
+  path: '/algorithm-v2',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModelRoute = ModelRouteImport.update({
@@ -57,6 +63,7 @@ const ApiPublicHooksRunPipelineRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/algorithm-v2': typeof AlgorithmV2Route
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/algorithm-v2': typeof AlgorithmV2Route
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/algorithm-v2': typeof AlgorithmV2Route
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/algorithm-v2'
     | '/best-odds'
     | '/history'
     | '/model'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/algorithm-v2'
     | '/best-odds'
     | '/history'
     | '/model'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/algorithm-v2'
     | '/best-odds'
     | '/history'
     | '/model'
@@ -115,6 +127,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  AlgorithmV2Route: typeof AlgorithmV2Route
   BestOddsRoute: typeof BestOddsRoute
   HistoryRoute: typeof HistoryRoute
   ModelRoute: typeof ModelRoute
@@ -143,6 +156,13 @@ declare module '@tanstack/react-router' {
       path: '/history'
       fullPath: '/history'
       preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/algorithm-v2': {
+      id: '/algorithm-v2'
+      path: '/algorithm-v2'
+      fullPath: '/algorithm-v2'
+      preLoaderRoute: typeof AlgorithmV2RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/best-odds': {
@@ -179,6 +199,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  AlgorithmV2Route: AlgorithmV2Route,
   BestOddsRoute: BestOddsRoute,
   HistoryRoute: HistoryRoute,
   ModelRoute: ModelRoute,
