@@ -44,7 +44,9 @@ function mergeSimIntoBaseline(
 /**
  * Attach sim-recent-v1's win probabilities to each game as the secondary
  * (altModel) display number. Used on the live fallback path so today's slate
- * shows both models even before the cron has stored rows.
+ * shows both models even before the cron has stored rows, and to backfill the
+ * DB path for games whose stored sim-recent-v1 row is missing. Games that
+ * already carry an altModel (a stored row) are left untouched.
  */
 function attachRecentForm(
   games: PredictedGame[],
@@ -53,6 +55,7 @@ function attachRecentForm(
   if (recentGames.length === 0) return games;
   const byId = new Map(recentGames.map((g) => [g.gameId, g]));
   return games.map((g) => {
+    if (g.altModel) return g; // preserve an already-present (stored) secondary number
     const r = byId.get(g.gameId);
     if (!r) return g;
     return {
@@ -149,6 +152,20 @@ async function loadGamesForDate(
               : null,
         };
       });
+      // The stored sim-recent-v1 row (the secondary "altModel" number) only
+      // exists for games predicted pre-game after the model shipped
+      // (2026-07-12); older games — and any slate where the heavy recent-form
+      // step didn't finish before its rows were written — have none, which is
+      // why those cards render only the primary percentage. When any game on
+      // this date is missing it, compute recent-form live purely for display so
+      // both numbers show. Never persisted, so the track record stays
+      // hindsight-free; point-in-time safe (a trailing window ending the day
+      // before `date`); and, thanks to the model's deterministic per-game seed,
+      // identical to the number the cron will later store.
+      if (games.some((g) => !g.altModel)) {
+        const recentGames = await buildRecentFormPredictionsForDate(date).catch(() => []);
+        return { games: attachRecentForm(games, recentGames), source: "db" };
+      }
       return { games, source: "db" };
     }
   } catch (err) {
