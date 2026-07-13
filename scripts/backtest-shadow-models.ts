@@ -11,14 +11,14 @@
  * Three models, same engine, compared on identical games (production seeds):
  *   sim-elo-v2      headline — season-to-date team rates + season starter    (seed 1000    + pk)
  *   sim-recent-v1   trailing-window team form + trailing starter             (seed 2000000 + pk)
- *   sim-recent-v2   sim-recent-v1 + relievers-only pen + lineup offense       (seed 5000000 + pk)
+ *   sim-recent-v2   sim-recent-v1 + the SMART relievers-only pen             (seed 5000000 + pk)
  *
- * sim-recent-v2 is the integration the two "remaining headroom" ideas (a real
- * bullpen, actual lineups) fold into — one model, the evolution of sim-recent,
- * not a separate algorithm. Every input is reconstructed with no lookahead
- * (Elo replayed to each morning; all rates end the day before; the pen from
- * relief-role arms over a trailing window; the offense from the posted batting
- * order over a trailing window).
+ * sim-recent-v2 folds the recommended bullpen upgrades (leverage weighting,
+ * fatigue/availability, DIPS peripheral stabilization; mlb-bullpen.ts) onto the
+ * recent-form model — one model, the evolution of sim-recent, not a separate
+ * algorithm. Every input is reconstructed with no lookahead (Elo replayed to
+ * each morning; all rates end the day before; the pen from relief-role arms
+ * over a trailing window, leverage/fatigue-weighted).
  *
  * Read-only. Never writes to any database.
  */
@@ -40,11 +40,9 @@ import {
   fetchStarterInfoRecent,
 } from "../src/lib/mlb-recent-form";
 import { fetchAllRelieverLines } from "../src/lib/mlb-bullpen";
-import { fetchLineupBatting } from "../src/lib/mlb-lineup";
 import { STATS_API, fetchWithTimeout, batchedAll } from "../src/lib/mlb-core";
 
 const PEN_WINDOW_DAYS = 30; // must match mlb-recent-form.ts
-const LINEUP_WINDOW_DAYS = 30;
 
 const logit = (p: number) => Math.log(p / (1 - p));
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
@@ -229,9 +227,8 @@ interface Scored {
   y: number;
   pElo2: number; // sim-elo-v2 (headline)
   pRec1: number; // sim-recent-v1
-  pRec2: number; // sim-recent-v2 (form + pen + lineup)
-  usedPen: boolean;
-  usedLineup: boolean;
+  pRec2: number; // sim-recent-v2 (form + smart pen)
+  usedPen: boolean; // a smart reliever line was used for at least one side
 }
 
 async function main() {
@@ -275,7 +272,7 @@ async function main() {
     const elo = computeElo([prev2, prev1, seasonResults]);
     const lg = leagueRates(teamRatesSeason);
 
-    // sim-recent-v2's two upgraded inputs (trailing windows), plus both starter
+    // sim-recent-v2's upgraded input (the smart pen), plus both starter
     // reconstructions.
     const pitcherIds = new Set<number>();
     for (const g of day) {
@@ -284,7 +281,6 @@ async function main() {
     }
     const startersSeason = new Map<number, StarterInfo | null>();
     const startersRecent = new Map<number, StarterInfo | null>();
-    const lineups = new Map<number, { home: BattingRates | null; away: BattingRates | null }>();
     const [relievers] = await Promise.all([
       fetchAllRelieverLines(teamIds, season, date, lg, PEN_WINDOW_DAYS),
       batchedAll(
@@ -299,19 +295,12 @@ async function main() {
         }),
         8,
       ),
-      batchedAll(
-        day.map((g) => async () => {
-          lineups.set(g.gamePk, await fetchLineupBatting(g.gamePk, season, date, lg, LINEUP_WINDOW_DAYS));
-        }),
-        6,
-      ),
     ]);
 
     for (const g of day) {
       const sR = (m: Map<number, TeamRates>, id: number) => m.get(id) ?? { batting: null, staff: null };
       const hSeason = sR(teamRatesSeason, g.homeId), aSeason = sR(teamRatesSeason, g.awayId);
       const hRecent = sR(teamRatesRecent, g.homeId), aRecent = sR(teamRatesRecent, g.awayId);
-      const lu = lineups.get(g.gamePk) ?? { home: null, away: null };
       const hPen = relievers.get(g.homeId) ?? null, aPen = relievers.get(g.awayId) ?? null;
       const pElo = eloWinProb(elo.get(g.homeId) ?? 1500, elo.get(g.awayId) ?? 1500);
 
@@ -345,11 +334,11 @@ async function main() {
         nSims,
         2_000_000 + g.gamePk,
       );
-      // sim-recent-v2: lineup offense + relievers pen (fallback to v1 lines), seed 5000000+pk.
+      // sim-recent-v2: recent team offense + SMART pen (fallback to v1 staff), seed 5000000+pk.
       const pS3 = simulateMatchup(
         {
-          homeBatting: lu.home ?? hRecent.batting ?? lg,
-          awayBatting: lu.away ?? aRecent.batting ?? lg,
+          homeBatting: hRecent.batting ?? lg,
+          awayBatting: aRecent.batting ?? lg,
           homeStarter: (g.hp && startersRecent.get(g.hp)) || null,
           awayStarter: (g.ap && startersRecent.get(g.ap)) || null,
           homeStaff: hPen ?? reshapeStaff(hRecent.staff, lg),
@@ -369,12 +358,10 @@ async function main() {
         pRec1: ensemble(pS2, pElo),
         pRec2: ensemble(pS3, pElo),
         usedPen: hPen != null || aPen != null,
-        usedLineup: lu.home != null || lu.away != null,
       });
     }
     const pen = day.filter((g) => (relievers.get(g.homeId) ?? relievers.get(g.awayId)) != null).length;
-    const luN = day.filter((g) => { const l = lineups.get(g.gamePk); return l?.home || l?.away; }).length;
-    console.log(`  ${date}: ${day.length} games  (pen for ${pen}, lineups for ${luN})`);
+    console.log(`  ${date}: ${day.length} games  (smart pen for ${pen})`);
   }
 
   console.log(`\nScored ${scored.length} games in ${((Date.now() - t0) / 1000).toFixed(0)}s\n`);
@@ -391,11 +378,11 @@ async function main() {
   fmt("sim-recent-v2", metrics(pairs((s) => s.pRec2)));
   fmt("home-always-54", metrics(pairs(() => 0.54)));
 
-  const bothSet = scored.filter((s) => s.usedPen && s.usedLineup);
-  console.log(`\n═══ Games where v2 had BOTH a reliever line and a posted lineup (n=${bothSet.length}) ═══`);
-  fmt("sim-elo-v2", metrics(pairs((s) => s.pElo2, bothSet)));
-  fmt("sim-recent-v1", metrics(pairs((s) => s.pRec1, bothSet)));
-  fmt("sim-recent-v2", metrics(pairs((s) => s.pRec2, bothSet)));
+  const penSet = scored.filter((s) => s.usedPen);
+  console.log(`\n═══ Games where a smart reliever line was actually built (n=${penSet.length}) ═══`);
+  fmt("sim-elo-v2", metrics(pairs((s) => s.pElo2, penSet)));
+  fmt("sim-recent-v1", metrics(pairs((s) => s.pRec1, penSet)));
+  fmt("sim-recent-v2", metrics(pairs((s) => s.pRec2, penSet)));
 
   const flips = (f: (s: Scored) => number) => {
     let disagree = 0, right = 0;
@@ -428,11 +415,11 @@ async function main() {
             simRecentV1: metrics(pairs((s) => s.pRec1)),
             simRecentV2: metrics(pairs((s) => s.pRec2)),
           },
-          bothSet: {
-            n: bothSet.length,
-            simEloV2: metrics(pairs((s) => s.pElo2, bothSet)),
-            simRecentV1: metrics(pairs((s) => s.pRec1, bothSet)),
-            simRecentV2: metrics(pairs((s) => s.pRec2, bothSet)),
+          penSet: {
+            n: penSet.length,
+            simEloV2: metrics(pairs((s) => s.pElo2, penSet)),
+            simRecentV1: metrics(pairs((s) => s.pRec1, penSet)),
+            simRecentV2: metrics(pairs((s) => s.pRec2, penSet)),
           },
           games: scored,
         },

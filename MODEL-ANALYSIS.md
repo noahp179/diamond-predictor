@@ -308,3 +308,66 @@ a leverage-aware pen (closer in the high-leverage 9th) and a PA-weighted, platoo
 run-environment-recalibrated lineup — not a re-run of these averages. The durable, positive
 finding from Round 4 is simpler: **trailing-window form (sim-recent-v1) out-picks the season
 model, and deserves a longer live look.**
+
+---
+
+## Round 5 — a *smart* bullpen, folded into sim-recent-v2 (replacing the naïve v2)
+
+*Backtest re-run 2026-07-13 (`scripts/backtest-shadow-models.ts`) on the same two 14-day
+windows as Round 4 (191 + 185 = 376 settled games), same point-in-time discipline and
+production seeds.*
+
+Round 4's `sim-recent-v2` (naïve relievers-only pen + lineup-average offense) lost to plain
+`sim-recent-v1`. The recommended fixes were all about the bullpen, so v2 was **rebuilt**:
+the lineup swap was dropped (offense back on the v1 trailing team line), and the pen was
+upgraded from an equal-weight average to a *smart* relievers-only line
+(`src/lib/mlb-bullpen.ts`), reconstructed from each reliever's game log (one fetch) so all
+three upgrades come for free:
+
+- **#1 Leverage weighting** — each arm scaled by save/hold/close-out usage
+  (`saves + holds + ½·gamesFinished`), so the closer and setup men dominate the pen line the
+  sim faces late instead of being averaged in with mop-up arms.
+- **#3 Fatigue / availability** — weight cut by how many of the last three days the arm
+  already pitched (three-in-a-row ≈ zeroed).
+- **#6 Peripheral (DIPS) stabilization** — K/BB/HR regressed only lightly toward league; the
+  non-HR hit rate (BABIP) regressed hard, so the pen's edge comes from what it controls. (A
+  Statcast xwOBA version is the natural next step — baseballsavant is reachable — this is the
+  statsapi-native form.)
+
+### Results
+
+| Window | Model | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|---|
+| **Jun 28 – Jul 11 (n=191)** | sim-elo-v2 | 57.1% | **0.2439** | **0.6812** |
+| | sim-recent-v1 | **60.2%** | 0.2467 | 0.6871 |
+| | sim-recent-v2 (smart pen) | 57.1% | 0.2495 | 0.6925 |
+| **Jun 14 – Jun 27 (n=185)** | sim-recent-v1 | **54.1%** | 0.2531 | 0.6997 |
+| | sim-recent-v2 (smart pen) | 52.4% | 0.2531 | 0.6996 |
+| | sim-elo-v2 | 50.3% | 0.2531 | 0.6996 |
+| **Pooled (n=376)** | sim-elo-v2 | 53.7% | **0.2484** | **0.6902** |
+| | sim-recent-v1 | **57.2%** | 0.2499 | 0.6933 |
+| | sim-recent-v2 (smart pen) | 54.8% | 0.2513 | 0.6960 |
+| | home-always-54 | 50.3% | 0.2514 | — |
+
+For reference, Round 4's *naïve* v2 pooled at 50.3% / 0.2524.
+
+### Read
+
+- **The recommendations clearly helped — over the naïve version.** Smart pen + dropping the
+  lineup lifts v2 from 50.3% / 0.2524 to 54.8% / 0.2513 (+4.5pp accuracy). Leverage,
+  fatigue and DIPS were directionally right.
+- **But the smart pen still does not beat plain recent-form (v1).** v2 is below v1 on both
+  accuracy (54.8 vs 57.2) and Brier (0.2513 vs 0.2499), and when the pen swap moved a pick
+  off v1 it was right only **15/39 (38%)** — worse than a coin flip. The full-staff line is a
+  stubbornly strong pen proxy at game-outcome granularity: relief innings are a minority of a
+  game, the starter and team/Elo signals dominate, and isolating ~3–4 pen innings adds little
+  real signal and some sampling noise, even weighted well.
+
+**Durable finding (unchanged): `sim-recent-v1` — recent-form with the plain full-staff pen —
+is the model to keep watching.** Best accuracy of the three (57.2%, and right 58% when it
+disagrees with the headline), Brier within noise of sim-elo-v2. The bullpen thread has now
+been tried both naïvely (Round 4) and intelligently (Round 5) and has not cleared the bar; if
+it is pursued further, the remaining untried lever is *in-sim tiering* (deploy tiers by
+inning/score state, suggestion #2) rather than a better single blended pen line — a single
+line, however weighted, is the wrong shape for a signal that only matters in specific
+late-game states. All three models stay tracked; none is promoted.

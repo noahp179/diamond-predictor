@@ -288,11 +288,10 @@ export async function ingestAndPredict(date: string) {
   }
 
   // Experimental: sim-recent-v2 — the sim-recent line's next iteration. Same
-  // trailing-form engine as sim-recent-v1, with the bullpen upgraded to a
-  // relievers-only line and the offense to a lineup-derived line (both over
-  // trailing windows; src/lib/mlb-recent-form.ts). Falls back per input to the
-  // v1 team lines when a pen or lineup can't be built (lineups are usually not
-  // posted yet at cron time → team batting for that game). Tracked side by side
+  // trailing-form engine as sim-recent-v1, with the bullpen upgraded to the
+  // smart relievers-only line (leverage-weighted, fatigue-adjusted, DIPS-
+  // stabilized; src/lib/mlb-bullpen.ts + mlb-recent-form.ts). Falls back to the
+  // v1 full-staff line when the pen sample is too thin. Tracked side by side
   // with sim-recent-v1 and sim-elo-v2; never blocks anything else.
   let newRecentV2Preds = 0;
   try {

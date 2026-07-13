@@ -25,7 +25,7 @@
 // Run (or write) a backtest against real settled games before trusting this
 // for anything beyond passive side-by-side tracking on Track Record.
 
-import { STATS_API, fetchWithTimeout, batchedAll } from "./mlb-core";
+import { STATS_API, fetchWithTimeout } from "./mlb-core";
 import {
   computeElo,
   eloWinProb,
@@ -39,7 +39,6 @@ import {
   type TeamRates,
 } from "./mlb-sim";
 import { fetchAllRelieverLines } from "./mlb-bullpen";
-import { fetchLineupBatting } from "./mlb-lineup";
 import { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
 
 export { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 };
@@ -47,7 +46,6 @@ export { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 };
 const TEAM_WINDOW_DAYS = 21; // offense/bullpen trailing form
 const STARTER_WINDOW_DAYS = 45; // ~6-9 starts
 const PEN_WINDOW_DAYS = 30; // relievers accumulate BF slowly → a touch wider than the team window
-const LINEUP_WINDOW_DAYS = 30; // per-hitter recent form (regressed); wider than 21d to firm up small PA
 
 function addDaysISO(dateISO: string, days: number): string {
   const d = new Date(dateISO + "T00:00:00Z");
@@ -312,27 +310,32 @@ export async function buildRecentFormPredictionsForDate(
 // ─── sim-recent-v2 ───────────────────────────────────────────────────────────
 //
 // The next iteration of the sim-recent line: everything sim-recent-v1 does
-// (trailing-window team form + multi-season Elo), with two inputs upgraded over
-// the same recent-form philosophy —
-//   · bullpen: a relievers-only line (mlb-bullpen.ts) over a 30-day window,
-//     instead of the trailing full-staff line, and
-//   · offense: a lineup-derived line (mlb-lineup.ts) — the nine hitters in the
-//     posted batting order, their recent bats — instead of the team aggregate.
-// Each falls back to the sim-recent-v1 input when it can't be reconstructed
-// (thin pen sample, or no lineup posted yet at cron time). One model, the
+// (trailing-window team form + trailing starter + multi-season Elo), with ONE
+// input upgraded — the bullpen. Instead of the trailing full-staff line as a
+// pen proxy, it uses the *smart* relievers-only line from mlb-bullpen.ts over a
+// 30-day window: leverage-weighted (save/hold/close-out arms dominate),
+// fatigue-adjusted (arms that pitched the last few days are downweighted), and
+// DIPS-stabilized (trust K/BB/HR, regress BABIP hard). Falls back to the
+// trailing full-staff line when the pen sample is too thin.
+//
+// This replaces the earlier v2 (which also swapped in a lineup-average offense):
+// Round 4 found the naïve pen + lineup average hurt, and the recommended fixes
+// were all about the bullpen, so v2 now isolates a single question — does an
+// *intelligent* pen beat the full-staff proxy? Offense stays on the v1 trailing
+// team line. (The lineup helper, mlb-lineup.ts, remains available for the
+// non-naïve lineup experiment noted in MODEL-ANALYSIS.md.) One model, the
 // evolution of sim-recent — compared against sim-recent-v1 and the headline
 // sim-elo-v2, never a separate parallel algorithm.
 
 export interface RecentFormV2GamePrediction extends RecentFormGamePrediction {
-  usedReliever: boolean; // a real reliever line was used for at least one side
-  usedLineup: boolean; // a posted lineup was used for at least one side
+  usedReliever: boolean; // a smart reliever line was used for at least one side
 }
 
 /**
- * Predict every game on `date` with the sim-recent engine plus the relievers-
- * only pen and lineup-derived offense (both over trailing windows). Mirrors
- * buildRecentFormPredictionsForDate's orchestration; adds the pen + lineup
- * fetches and swaps them in, per input, with fallback to the v1 team lines.
+ * Predict every game on `date` with the sim-recent engine and the smart
+ * relievers-only pen (leverage/fatigue-weighted, DIPS-stabilized). Mirrors
+ * buildRecentFormPredictionsForDate's orchestration; swaps the pen in, with
+ * fallback to the v1 trailing full-staff line.
  */
 export async function buildRecentFormV2PredictionsForDate(
   date: string,
@@ -366,7 +369,7 @@ export async function buildRecentFormV2PredictionsForDate(
     if (ap) pitcherIds.add(ap);
   }
 
-  const [starters, relievers, lineupByGame] = await Promise.all([
+  const [starters, relievers] = await Promise.all([
     (async () => {
       const m = new Map<number, StarterInfo | null>();
       await Promise.all(
@@ -377,16 +380,6 @@ export async function buildRecentFormV2PredictionsForDate(
       return m;
     })(),
     fetchAllRelieverLines(Array.from(teamIds), season, date, lg, PEN_WINDOW_DAYS),
-    (async () => {
-      const m = new Map<number, { home: BattingRates | null; away: BattingRates | null }>();
-      await batchedAll(
-        games.map((g) => async () => {
-          m.set(g.gamePk, await fetchLineupBatting(g.gamePk, season, date, lg, LINEUP_WINDOW_DAYS));
-        }),
-        6,
-      );
-      return m;
-    })(),
   ]);
 
   const logitFn = (p: number) => Math.log(p / (1 - p));
@@ -403,14 +396,13 @@ export async function buildRecentFormV2PredictionsForDate(
     const ap = g.teams.away.probablePitcher?.id;
     const venue: string | null = g.venue?.name ?? null;
 
-    const lineup = lineupByGame.get(g.gamePk) ?? { home: null, away: null };
     const homePen = relievers.get(homeTeam.id) ?? null;
     const awayPen = relievers.get(awayTeam.id) ?? null;
 
     const recentSimProb = simulateMatchup(
       {
-        homeBatting: lineup.home ?? hRates.batting ?? lg,
-        awayBatting: lineup.away ?? aRates.batting ?? lg,
+        homeBatting: hRates.batting ?? lg,
+        awayBatting: aRates.batting ?? lg,
         homeStarter: (hp && starters.get(hp)) || null,
         awayStarter: (ap && starters.get(ap)) || null,
         homeStaff: homePen ?? reshapeStaff(hRates.staff, lg),
@@ -435,9 +427,8 @@ export async function buildRecentFormV2PredictionsForDate(
       eloProb,
       ensembleProb,
       usedReliever: homePen != null || awayPen != null,
-      usedLineup: lineup.home != null || lineup.away != null,
       rationale: [
-        `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, relievers-only pen, lineup offense, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
+        `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, smart relievers-only pen, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
         `Elo ${homeElo.toFixed(0)} vs ${awayElo.toFixed(0)} → ${(eloProb * 100).toFixed(1)}%`,
         `Ensemble (logit mean) → ${(ensembleProb * 100).toFixed(1)}%`,
       ],

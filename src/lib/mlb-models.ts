@@ -29,16 +29,15 @@ export const MODEL_VERSION_RECENT = "sim-recent-v1";
 /**
  * Experimental: the next iteration of the sim-recent line. sim-recent-v2 keeps
  * everything sim-recent-v1 does (the sim-elo-v2 engine fed trailing-window
- * form + multi-season Elo) and layers on the two "remaining headroom" inputs
- * from MODEL-ANALYSIS.md, both reconstructed over the same trailing window:
- *   - a relievers-only bullpen line (real relief-role arms, not the full-staff
- *     proxy and not the staff-minus-rotation subtraction Round 2 rejected), and
- *   - a lineup-derived offense (the nine hitters actually in the batting order),
- * each with graceful fallback to the trailing team line when it can't be built.
- * It is one model — the evolution of sim-recent, not a separate algorithm —
- * tracked against sim-recent-v1 (the baseline of the line) and the headline
- * sim-elo-v2. See src/lib/mlb-recent-form.ts (+ mlb-bullpen.ts / mlb-lineup.ts
- * for the two reconstructions). Backtest: scripts/backtest-shadow-models.ts.
+ * form + multi-season Elo) and upgrades one input — the bullpen — to the smart
+ * relievers-only line from mlb-bullpen.ts: built from real relief-role arms
+ * (not the staff-minus-rotation subtraction Round 2 rejected) and weighted by
+ * leverage (save/hold/close-out usage) and availability (recent workload), then
+ * DIPS-stabilized (trust K/BB/HR, regress BABIP hard). Falls back to the
+ * trailing full-staff line when the pen sample is too thin. It is one model —
+ * the evolution of sim-recent, not a separate algorithm — tracked against
+ * sim-recent-v1 (the baseline of the line) and the headline sim-elo-v2. See
+ * src/lib/mlb-recent-form.ts. Backtest: scripts/backtest-shadow-models.ts.
  */
 export const MODEL_VERSION_RECENT_V2 = "sim-recent-v2";
 
