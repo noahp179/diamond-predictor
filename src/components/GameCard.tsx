@@ -62,14 +62,25 @@ export function GameCard({ game }: { game: PredictedGame }) {
           />
         </div>
 
-        {/* secondary model (sim-recent-v1) — shown under the primary line */}
+        {/* secondary model (sim-recent-v1) — its own label row + probability
+            bar mirroring the primary above, dimmed so the headline still leads */}
         {game.altModel && (
-          <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
-            <span>{game.altModel.label}</span>
-            <span>
-              {game.away.abbreviation} {pct(game.altModel.awayWinProb)} ·{" "}
-              {pct(game.altModel.homeWinProb)} {game.home.abbreviation}
-            </span>
+          <div className="mt-3">
+            <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
+              <span>{game.away.abbreviation} {pct(game.altModel.awayWinProb)}</span>
+              <span>{game.altModel.label}</span>
+              <span>{pct(game.altModel.homeWinProb)} {game.home.abbreviation}</span>
+            </div>
+            <div className="flex h-2 overflow-hidden bg-secondary opacity-70">
+              <div
+                className="bg-chalk/70"
+                style={{ width: `${game.altModel.awayWinProb * 100}%` }}
+              />
+              <div
+                className="bg-signal"
+                style={{ width: `${game.altModel.homeWinProb * 100}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
