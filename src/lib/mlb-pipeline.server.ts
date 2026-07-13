@@ -96,10 +96,13 @@ export async function runPipelineIfDue(minIntervalMs = 2 * 60_000) {
 
 import { buildPredictionsForDate, MODEL_VERSION, STATS_API } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
-import { buildRecentFormPredictionsForDate } from "./mlb-recent-form";
+import {
+  buildRecentFormPredictionsForDate,
+  buildRecentFormV2PredictionsForDate,
+} from "./mlb-recent-form";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
-import { MODEL_VERSION_MARKET, MODEL_VERSION_RECENT } from "./mlb-models";
+import { MODEL_VERSION_MARKET, MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
 
 /**
  * Insert prediction rows that don't already exist for `modelVersion`,
@@ -284,6 +287,42 @@ export async function ingestAndPredict(date: string) {
     console.error("[ingestAndPredict] sim-recent-v1 predictions failed:", err);
   }
 
+  // Experimental: sim-recent-v2 — the sim-recent line's next iteration. Same
+  // trailing-form engine as sim-recent-v1, with the bullpen upgraded to a
+  // relievers-only line and the offense to a lineup-derived line (both over
+  // trailing windows; src/lib/mlb-recent-form.ts). Falls back per input to the
+  // v1 team lines when a pen or lineup can't be built (lineups are usually not
+  // posted yet at cron time → team batting for that game). Tracked side by side
+  // with sim-recent-v1 and sim-elo-v2; never blocks anything else.
+  let newRecentV2Preds = 0;
+  try {
+    const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
+    const recentV2Games = await buildRecentFormV2PredictionsForDate(date);
+    const recentV2Rows = recentV2Games
+      .filter((g) => predictableIds.has(g.gameId))
+      .map((g) => {
+        const base = baselineByGameId.get(g.gameId);
+        return {
+          game_id: g.gameId,
+          model_version: MODEL_VERSION_RECENT_V2,
+          home_win_prob: Number(g.ensembleProb.toFixed(4)),
+          away_win_prob: Number((1 - g.ensembleProb).toFixed(4)),
+          home_win_pct: base ? Number(base.home.winPct.toFixed(4)) : null,
+          away_win_pct: base ? Number(base.away.winPct.toFixed(4)) : null,
+          home_pitcher_id: base?.home.pitcher?.id ?? null,
+          home_pitcher_name: base?.home.pitcher?.name ?? null,
+          home_pitcher_era: base?.home.pitcher?.era ?? null,
+          away_pitcher_id: base?.away.pitcher?.id ?? null,
+          away_pitcher_name: base?.away.pitcher?.name ?? null,
+          away_pitcher_era: base?.away.pitcher?.era ?? null,
+          rationale: g.rationale,
+        };
+      });
+    newRecentV2Preds = await insertFreshPredictions(recentV2Rows, MODEL_VERSION_RECENT_V2);
+  } catch (err) {
+    console.error("[ingestAndPredict] sim-recent-v2 predictions failed:", err);
+  }
+
   // Real market odds (ESPN, free/keyless). Best-effort and never blocks game
   // or prediction ingestion — odds may not be posted yet for far-future dates,
   // and the endpoint is unofficial.
@@ -383,6 +422,7 @@ export async function ingestAndPredict(date: string) {
     newPredictions: newPreds,
     newSimPredictions: newSimPreds,
     newRecentPredictions: newRecentPreds,
+    newRecentV2Predictions: newRecentV2Preds,
     newBlendPredictions: newBlendPreds,
     newMarketPredictions: newMarketPreds,
     newOdds,

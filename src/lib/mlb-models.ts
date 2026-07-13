@@ -26,6 +26,22 @@ export const MODEL_VERSION_MARKET = "market-devig";
  */
 export const MODEL_VERSION_RECENT = "sim-recent-v1";
 
+/**
+ * Experimental: the next iteration of the sim-recent line. sim-recent-v2 keeps
+ * everything sim-recent-v1 does (the sim-elo-v2 engine fed trailing-window
+ * form + multi-season Elo) and layers on the two "remaining headroom" inputs
+ * from MODEL-ANALYSIS.md, both reconstructed over the same trailing window:
+ *   - a relievers-only bullpen line (real relief-role arms, not the full-staff
+ *     proxy and not the staff-minus-rotation subtraction Round 2 rejected), and
+ *   - a lineup-derived offense (the nine hitters actually in the batting order),
+ * each with graceful fallback to the trailing team line when it can't be built.
+ * It is one model — the evolution of sim-recent, not a separate algorithm —
+ * tracked against sim-recent-v1 (the baseline of the line) and the headline
+ * sim-elo-v2. See src/lib/mlb-recent-form.ts (+ mlb-bullpen.ts / mlb-lineup.ts
+ * for the two reconstructions). Backtest: scripts/backtest-shadow-models.ts.
+ */
+export const MODEL_VERSION_RECENT_V2 = "sim-recent-v2";
+
 /** Display order and labels for every tracked model. */
 export const TRACKED_MODELS: Array<{ version: string; label: string; note: string }> = [
   {
@@ -37,6 +53,11 @@ export const TRACKED_MODELS: Array<{ version: string; label: string; note: strin
     version: MODEL_VERSION_RECENT,
     label: "sim-recent-v1",
     note: "sim-elo-v2 engine, trailing 21-day form instead of season rates — experimental",
+  },
+  {
+    version: MODEL_VERSION_RECENT_V2,
+    label: "sim-recent-v2",
+    note: "sim-recent-v1 plus a relievers-only bullpen and a lineup-derived offense — experimental",
   },
   {
     version: MODEL_VERSION_BLEND,
