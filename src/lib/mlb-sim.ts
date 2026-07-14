@@ -479,15 +479,47 @@ function simHalf(
   return runs;
 }
 
+/**
+ * A tiered bullpen: three per-BF lines deployed by game state instead of one
+ * blended pen line. `closer` covers the 9th+ of close games (save/tie), `setup`
+ * the 7th–8th of close games, `middle` everything else (early relief, blowouts).
+ * When a matchup carries these (sim-recent-v2), the sim picks the tier by inning
+ * and score; when it doesn't, the sim uses the single `homeStaff`/`awayStaff`
+ * line exactly as before (sim-elo-v2 / sim-recent-v1 are unaffected).
+ */
+export interface BullpenTiers {
+  closer: PitchingLine;
+  setup: PitchingLine;
+  middle: PitchingLine;
+}
+
 export interface MatchupInputs {
   homeBatting: BattingRates;
   awayBatting: BattingRates;
   homeStarter: StarterInfo | null;
   awayStarter: StarterInfo | null;
-  homeStaff: PitchingLine | null; // bullpen proxy
+  homeStaff: PitchingLine | null; // single-line bullpen proxy (fallback / non-tiered)
   awayStaff: PitchingLine | null;
+  homePenTiers?: BullpenTiers | null; // optional leverage-tiered pen (sim-recent-v2)
+  awayPenTiers?: BullpenTiers | null;
   league: BattingRates;
   venue: string | null;
+}
+
+/**
+ * Which bullpen tier a team deploys, from the pitching team's lead at the start
+ * of the half-inning. Closer in the 9th+ protecting a lead of 1–3 (or a tie);
+ * setup in the 7th–8th (and the trailing-close 9th) of one-score games; middle
+ * otherwise. This is the "explicit closer + role tiers" deployment.
+ */
+function selectTier(inning: number, lead: number): keyof BullpenTiers {
+  if (inning >= 9) {
+    if (lead >= 0 && lead <= 3) return "closer";
+    if (lead >= -3) return "setup";
+    return "middle";
+  }
+  if (inning >= 7) return Math.abs(lead) <= 3 ? "setup" : "middle";
+  return "middle";
 }
 
 /** Simulate one game; returns 1 if home wins. Gaussian via Box-Muller. */
@@ -516,6 +548,24 @@ export function simulateMatchup(m: MatchupInputs, nSims = 3000, seed = 12345): n
   const hExpOuts = m.homeStarter?.expectedOuts ?? 15.5;
   const aExpOuts = m.awayStarter?.expectedOuts ?? 15.5;
 
+  // Optional leverage tiers → batting-vs-each-tier cums. When absent, the pen
+  // selectors below just return the single-line cum, so the non-tiered path is
+  // byte-identical to before (same cum arrays, same RNG draw sequence).
+  const tierCums = (batting: BattingRates, boost: number, pen: BullpenTiers | null | undefined) =>
+    pen
+      ? {
+          closer: paProbs(batting, pen.closer, lg, parkMult, boost),
+          setup: paProbs(batting, pen.setup, lg, parkMult, boost),
+          middle: paProbs(batting, pen.middle, lg, parkMult, boost),
+        }
+      : null;
+  const awayVsHomePen = tierCums(m.awayBatting, 1.0, m.homePenTiers); // away batters vs home pen
+  const homeVsAwayPen = tierCums(m.homeBatting, HOME_BOOST, m.awayPenTiers); // home batters vs away pen
+  const homePenCum = (inning: number, lead: number): Cum =>
+    awayVsHomePen ? awayVsHomePen[selectTier(inning, lead)] : awayVsBp;
+  const awayPenCum = (inning: number, lead: number): Cum =>
+    homeVsAwayPen ? homeVsAwayPen[selectTier(inning, lead)] : homeVsBp;
+
   let wins = 0;
   for (let s = 0; s < nSims; s++) {
     // [outsLeft, battersFaced, runsAllowed]
@@ -526,13 +576,15 @@ export function simulateMatchup(m: MatchupInputs, nSims = 3000, seed = 12345): n
     let inning = 1;
     for (;;) {
       const ghost = inning > 9;
-      as += simHalf(awayVsSp, awayVsSpTto, awayVsBp, hSp, rnd, ghost, null);
+      // Away batting (home team pitching): pick the home pen tier by home's lead.
+      as += simHalf(awayVsSp, awayVsSpTto, homePenCum(inning, hs - as), hSp, rnd, ghost, null);
       if (inning >= 9 && hs > as) {
         wins++;
         break;
       }
       const target = inning >= 9 ? as - hs : null;
-      hs += simHalf(homeVsSp, homeVsSpTto, homeVsBp, aSp, rnd, ghost, target);
+      // Home batting (away team pitching): pick the away pen tier by away's lead.
+      hs += simHalf(homeVsSp, homeVsSpTto, awayPenCum(inning, as - hs), aSp, rnd, ghost, target);
       if (inning >= 9) {
         if (hs > as) {
           wins++;

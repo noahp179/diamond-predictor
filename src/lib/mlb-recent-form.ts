@@ -38,12 +38,14 @@ import {
   type StarterInfo,
   type TeamRates,
 } from "./mlb-sim";
-import { MODEL_VERSION_RECENT } from "./mlb-models";
+import { fetchAllBullpens } from "./mlb-bullpen";
+import { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
 
-export { MODEL_VERSION_RECENT };
+export { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 };
 
 const TEAM_WINDOW_DAYS = 21; // offense/bullpen trailing form
 const STARTER_WINDOW_DAYS = 45; // ~6-9 starts
+const PEN_WINDOW_DAYS = 30; // relievers accumulate BF slowly → a touch wider than the team window
 
 function addDaysISO(dateISO: string, days: number): string {
   const d = new Date(dateISO + "T00:00:00Z");
@@ -298,6 +300,139 @@ export async function buildRecentFormPredictionsForDate(
       ensembleProb,
       rationale: [
         `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
+        `Elo ${homeElo.toFixed(0)} vs ${awayElo.toFixed(0)} → ${(eloProb * 100).toFixed(1)}%`,
+        `Ensemble (logit mean) → ${(ensembleProb * 100).toFixed(1)}%`,
+      ],
+    };
+  });
+}
+
+// ─── sim-recent-v2 ───────────────────────────────────────────────────────────
+//
+// The next iteration of the sim-recent line: everything sim-recent-v1 does
+// (trailing-window team form + trailing starter + multi-season Elo), with ONE
+// input upgraded — the bullpen — from the trailing full-staff proxy to a
+// leverage-TIERED relievers-only pen (mlb-bullpen.ts, 30-day window). The sim
+// deploys the tiers by game state: closer in the 9th of a save/tie, setup in
+// the 7th–8th of one-score games, middle otherwise. The tiers fold in the
+// reliever ideas worth having — leverage ranking + explicit closer (#1/#2),
+// fatigue/availability (#3), a reliever-league regression baseline (#4), DIPS
+// stabilization (#6) and recency weighting (#7). Falls back to the trailing
+// full-staff line when the pen sample is too thin.
+//
+// This is the third cut at v2. Round 4's naïve pen + lineup average lost to v1;
+// Round 5's single smart pen line also lost to v1 — a single line is the wrong
+// SHAPE for a signal that only bites in specific late-game states — so Round 6
+// gives the pen a depth chart the sim actually manages. Offense stays on the v1
+// trailing team line, isolating the bullpen question. (Platoon splits (#5) and
+// IL/transactions (#10) are deliberately deferred — see MODEL-ANALYSIS.md; the
+// lineup helper mlb-lineup.ts likewise stays parked.) One model, the evolution
+// of sim-recent — compared against sim-recent-v1 and the headline sim-elo-v2.
+
+export interface RecentFormV2GamePrediction extends RecentFormGamePrediction {
+  usedReliever: boolean; // a smart reliever line was used for at least one side
+}
+
+/**
+ * Predict every game on `date` with the sim-recent engine and the smart
+ * relievers-only pen (leverage/fatigue-weighted, DIPS-stabilized). Mirrors
+ * buildRecentFormPredictionsForDate's orchestration; swaps the pen in, with
+ * fallback to the v1 trailing full-staff line.
+ */
+export async function buildRecentFormV2PredictionsForDate(
+  date: string,
+  nSims = 3000,
+): Promise<RecentFormV2GamePrediction[]> {
+  const season = parseInt(date.slice(0, 4), 10);
+  const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue&startDate=${date}&endDate=${date}`;
+  const [scheduleRes, prev2Results, prev1Results, seasonResults, teamRates] = await Promise.all([
+    fetchWithTimeout(scheduleUrl),
+    fetchSeasonResults(season - 2, `${season - 2}-12-01`),
+    fetchSeasonResults(season - 1, `${season - 1}-12-01`),
+    fetchSeasonResults(season, date),
+    fetchAllTeamRatesRecent(season, date),
+  ]);
+  if (!scheduleRes.ok) throw new Error(`MLB schedule fetch failed: ${scheduleRes.status}`);
+  const scheduleJson: any = await scheduleRes.json();
+  const games: any[] = scheduleJson?.dates?.[0]?.games ?? [];
+  if (games.length === 0) return [];
+
+  const elo = computeElo([prev2Results, prev1Results, seasonResults]);
+  const lg = leagueRates(teamRates);
+
+  const teamIds = new Set<number>();
+  const pitcherIds = new Set<number>();
+  for (const g of games) {
+    teamIds.add(g.teams.home.team.id);
+    teamIds.add(g.teams.away.team.id);
+    const hp = g.teams?.home?.probablePitcher?.id;
+    const ap = g.teams?.away?.probablePitcher?.id;
+    if (hp) pitcherIds.add(hp);
+    if (ap) pitcherIds.add(ap);
+  }
+
+  const [starters, relievers] = await Promise.all([
+    (async () => {
+      const m = new Map<number, StarterInfo | null>();
+      await Promise.all(
+        Array.from(pitcherIds).map(async (id) => {
+          m.set(id, await fetchStarterInfoRecent(id, season, date, lg));
+        }),
+      );
+      return m;
+    })(),
+    fetchAllBullpens(Array.from(teamIds), season, date, lg, PEN_WINDOW_DAYS),
+  ]);
+
+  const logitFn = (p: number) => Math.log(p / (1 - p));
+  const sigmoidFn = (x: number) => 1 / (1 + Math.exp(-x));
+  const clamp01 = (p: number) => Math.min(0.99, Math.max(0.01, p));
+
+  return games.map((g: any): RecentFormV2GamePrediction => {
+    const homeTeam = g.teams.home.team;
+    const awayTeam = g.teams.away.team;
+    const rates = (id: number): TeamRates => teamRates.get(id) ?? { batting: null, staff: null };
+    const hRates = rates(homeTeam.id);
+    const aRates = rates(awayTeam.id);
+    const hp = g.teams.home.probablePitcher?.id;
+    const ap = g.teams.away.probablePitcher?.id;
+    const venue: string | null = g.venue?.name ?? null;
+
+    const homePen = relievers.get(homeTeam.id) ?? null;
+    const awayPen = relievers.get(awayTeam.id) ?? null;
+
+    const recentSimProb = simulateMatchup(
+      {
+        homeBatting: hRates.batting ?? lg,
+        awayBatting: aRates.batting ?? lg,
+        homeStarter: (hp && starters.get(hp)) || null,
+        awayStarter: (ap && starters.get(ap)) || null,
+        homeStaff: reshapeStaff(hRates.staff, lg), // fallback when no tiered pen
+        awayStaff: reshapeStaff(aRates.staff, lg),
+        homePenTiers: homePen,
+        awayPenTiers: awayPen,
+        league: lg,
+        venue,
+      },
+      nSims,
+      5_000_000 + g.gamePk, // distinct seed space from sim-elo-v2 / sim-recent-v1
+    );
+
+    const homeElo = elo.get(homeTeam.id) ?? 1500;
+    const awayElo = elo.get(awayTeam.id) ?? 1500;
+    const eloProb = eloWinProb(homeElo, awayElo);
+    const ensembleProb = sigmoidFn((logitFn(clamp01(recentSimProb)) + logitFn(clamp01(eloProb))) / 2);
+
+    return {
+      gameId: g.gamePk,
+      homeId: homeTeam.id,
+      awayId: awayTeam.id,
+      recentSimProb,
+      eloProb,
+      ensembleProb,
+      usedReliever: homePen != null || awayPen != null,
+      rationale: [
+        `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, leverage-tiered relievers-only pen, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
         `Elo ${homeElo.toFixed(0)} vs ${awayElo.toFixed(0)} → ${(eloProb * 100).toFixed(1)}%`,
         `Ensemble (logit mean) → ${(ensembleProb * 100).toFixed(1)}%`,
       ],

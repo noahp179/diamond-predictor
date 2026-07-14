@@ -26,22 +26,57 @@ export const MODEL_VERSION_MARKET = "market-devig";
  */
 export const MODEL_VERSION_RECENT = "sim-recent-v1";
 
+/**
+ * Experimental: the next iteration of the sim-recent line. sim-recent-v2 keeps
+ * everything sim-recent-v1 does (the sim-elo-v2 engine fed trailing-window
+ * form + multi-season Elo) and upgrades one input — the bullpen — to the smart
+ * relievers-only line from mlb-bullpen.ts: built from real relief-role arms
+ * (not the staff-minus-rotation subtraction Round 2 rejected) and weighted by
+ * leverage (save/hold/close-out usage) and availability (recent workload), then
+ * DIPS-stabilized (trust K/BB/HR, regress BABIP hard). Falls back to the
+ * trailing full-staff line when the pen sample is too thin. It is one model —
+ * the evolution of sim-recent, not a separate algorithm — tracked against
+ * sim-recent-v1 (the baseline of the line) and the headline sim-elo-v2. See
+ * src/lib/mlb-recent-form.ts. Backtest: scripts/backtest-shadow-models.ts.
+ */
+export const MODEL_VERSION_RECENT_V2 = "sim-recent-v2";
+
+/** The primary/headline model's stored version key (defined in mlb-sim.ts as MODEL_VERSION_SIM). */
+export const MODEL_VERSION_HEADLINE = "sim-elo-v2";
+
+/**
+ * Short display labels for the three compared models, keyed by stored
+ * model_version. The internal keys stay stable (data continuity); the UI shows
+ * v1/v2/v3. v1 = headline sim-elo-v2, v2 = sim-recent-v1 (recent-form),
+ * v3 = sim-recent-v2 (tiered-bullpen).
+ */
+export const MODEL_LABELS: Record<string, string> = {
+  [MODEL_VERSION_HEADLINE]: "v1",
+  [MODEL_VERSION_RECENT]: "v2",
+  [MODEL_VERSION_RECENT_V2]: "v3",
+};
+
 /** Display order and labels for every tracked model. */
 export const TRACKED_MODELS: Array<{ version: string; label: string; note: string }> = [
   {
-    version: "sim-elo-v2",
-    label: "sim-elo-v2",
-    note: "Monte Carlo sim × multi-season Elo — the headline model",
+    version: MODEL_VERSION_HEADLINE,
+    label: "v1",
+    note: "sim-elo-v2 — Monte Carlo sim × multi-season Elo (the headline model)",
   },
   {
     version: MODEL_VERSION_RECENT,
-    label: "sim-recent-v1",
-    note: "sim-elo-v2 engine, trailing 21-day form instead of season rates — experimental",
+    label: "v2",
+    note: "sim-recent-v1 — the sim engine on trailing 21-day form instead of season rates",
+  },
+  {
+    version: MODEL_VERSION_RECENT_V2,
+    label: "v3",
+    note: "sim-recent-v2 — v2 with a leverage-tiered relievers-only bullpen",
   },
   {
     version: MODEL_VERSION_BLEND,
     label: "odds-blend-v1",
-    note: "sim-elo-v2 blended with the market line (Best Odds tab 2)",
+    note: "v1 blended with the market line (Best Odds tab 2)",
   },
   {
     version: MODEL_VERSION_MARKET,

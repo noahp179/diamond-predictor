@@ -26,7 +26,7 @@ export const Route = createFileRoute("/history")({
       {
         name: "description",
         content:
-          "Accuracy, Brier score, log loss, and betting returns at the stored odds for every model — sim-elo-v2, odds-blend-v1, the devigged market, and the baseline — tracked from " +
+          "Accuracy, Brier score, log loss, and betting returns at the stored odds for every model — v1, v2, v3, odds-blend-v1, the devigged market, and the baseline — tracked from " +
           TRACK_RECORD_START +
           " forward.",
       },

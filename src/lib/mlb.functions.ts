@@ -3,10 +3,19 @@ import { z } from "zod";
 
 import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
-import { buildRecentFormPredictionsForDate } from "./mlb-recent-form";
+import {
+  buildRecentFormPredictionsForDate,
+  buildRecentFormV2PredictionsForDate,
+} from "./mlb-recent-form";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
-import { TRACK_RECORD_START, TRACKED_MODELS, MODEL_VERSION_RECENT } from "./mlb-models";
+import {
+  TRACK_RECORD_START,
+  TRACKED_MODELS,
+  MODEL_VERSION_RECENT,
+  MODEL_VERSION_RECENT_V2,
+  MODEL_LABELS,
+} from "./mlb-models";
 
 export type { PredictedGame } from "./mlb-core";
 
@@ -41,30 +50,40 @@ function mergeSimIntoBaseline(
   });
 }
 
+// The two secondary models shown beneath the primary (v1) number, in order.
+const ALT_ORDER = [MODEL_LABELS[MODEL_VERSION_RECENT], MODEL_LABELS[MODEL_VERSION_RECENT_V2]]; // ["v2","v3"]
+
+function sortAlt(alt: PredictedGame["altModels"]): PredictedGame["altModels"] {
+  if (!alt) return alt;
+  return [...alt].sort((a, b) => ALT_ORDER.indexOf(a.label) - ALT_ORDER.indexOf(b.label));
+}
+
 /**
- * Attach sim-recent-v1's win probabilities to each game as the secondary
- * (altModel) display number. Used on the live fallback path so today's slate
- * shows both models even before the cron has stored rows, and to backfill the
- * DB path for games whose stored sim-recent-v1 row is missing. Games that
- * already carry an altModel (a stored row) are left untouched.
+ * Attach one secondary model's win probabilities to each game as an extra
+ * (altModels) display number under the given `label`. Used on the live fallback
+ * path so today's slate shows every model even before the cron has stored rows,
+ * and to backfill the DB path for games whose stored row for that model is
+ * missing. A game that already carries an entry for `label` (a stored row) is
+ * left untouched. Point-in-time safe and, thanks to the models' deterministic
+ * per-game seeds, identical to the number the cron will later store.
  */
-function attachRecentForm(
+function attachAltModel(
   games: PredictedGame[],
-  recentGames: Awaited<ReturnType<typeof buildRecentFormPredictionsForDate>>,
+  built: Array<{ gameId: number; ensembleProb: number }>,
+  label: string,
 ): PredictedGame[] {
-  if (recentGames.length === 0) return games;
-  const byId = new Map(recentGames.map((g) => [g.gameId, g]));
+  if (built.length === 0) return games;
+  const byId = new Map(built.map((g) => [g.gameId, g]));
   return games.map((g) => {
-    if (g.altModel) return g; // preserve an already-present (stored) secondary number
+    if (g.altModels?.some((m) => m.label === label)) return g;
     const r = byId.get(g.gameId);
     if (!r) return g;
     return {
       ...g,
-      altModel: {
-        label: MODEL_VERSION_RECENT,
-        homeWinProb: r.ensembleProb,
-        awayWinProb: 1 - r.ensembleProb,
-      },
+      altModels: sortAlt([
+        ...(g.altModels ?? []),
+        { label, homeWinProb: r.ensembleProb, awayWinProb: 1 - r.ensembleProb },
+      ]),
     };
   });
 }
@@ -98,6 +117,22 @@ async function loadGamesForDate(
           preds.find((x: any) => x.model_version === MODEL_VERSION) ??
           preds[0];
         const recent = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT);
+        const recentV2 = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT_V2);
+        const altModels: NonNullable<PredictedGame["altModels"]> = [];
+        if (recent && recent.home_win_prob != null) {
+          altModels.push({
+            label: MODEL_LABELS[MODEL_VERSION_RECENT],
+            homeWinProb: Number(recent.home_win_prob),
+            awayWinProb: Number(recent.away_win_prob),
+          });
+        }
+        if (recentV2 && recentV2.home_win_prob != null) {
+          altModels.push({
+            label: MODEL_LABELS[MODEL_VERSION_RECENT_V2],
+            homeWinProb: Number(recentV2.home_win_prob),
+            awayWinProb: Number(recentV2.away_win_prob),
+          });
+        }
         return {
           gameId: r.game_id,
           date: r.game_time,
@@ -142,29 +177,30 @@ async function loadGamesForDate(
           awayScore: r.away_score,
           winner: r.winner,
           correct: p?.correct ?? null,
-          altModel:
-            recent && recent.home_win_prob != null
-              ? {
-                  label: MODEL_VERSION_RECENT,
-                  homeWinProb: Number(recent.home_win_prob),
-                  awayWinProb: Number(recent.away_win_prob),
-                }
-              : null,
+          altModels,
         };
       });
-      // The stored sim-recent-v1 row (the secondary "altModel" number) only
-      // exists for games predicted pre-game after the model shipped
-      // (2026-07-12); older games — and any slate where the heavy recent-form
-      // step didn't finish before its rows were written — have none, which is
-      // why those cards render only the primary percentage. When any game on
-      // this date is missing it, compute recent-form live purely for display so
-      // both numbers show. Never persisted, so the track record stays
-      // hindsight-free; point-in-time safe (a trailing window ending the day
-      // before `date`); and, thanks to the model's deterministic per-game seed,
-      // identical to the number the cron will later store.
-      if (games.some((g) => !g.altModel)) {
-        const recentGames = await buildRecentFormPredictionsForDate(date).catch(() => []);
-        return { games: attachRecentForm(games, recentGames), source: "db" };
+      // The stored v2/v3 rows only exist for games predicted pre-game after
+      // each model shipped; older games — and any slate where the heavy
+      // recent-form steps didn't finish before rows were written — have none,
+      // so those cards would render only the primary percentage. When any game
+      // on this date is missing v2 or v3, compute that model live purely for
+      // display so all three numbers show. Never persisted (the track record
+      // stays hindsight-free); point-in-time safe (trailing windows ending the
+      // day before `date`); and, thanks to the models' deterministic per-game
+      // seeds, identical to the numbers the cron will later store.
+      const v2Label = MODEL_LABELS[MODEL_VERSION_RECENT];
+      const v3Label = MODEL_LABELS[MODEL_VERSION_RECENT_V2];
+      const needV2 = games.some((g) => !g.altModels?.some((m) => m.label === v2Label));
+      const needV3 = games.some((g) => !g.altModels?.some((m) => m.label === v3Label));
+      if (needV2 || needV3) {
+        const [recentGames, recentV2Games] = await Promise.all([
+          needV2 ? buildRecentFormPredictionsForDate(date).catch(() => []) : Promise.resolve([]),
+          needV3 ? buildRecentFormV2PredictionsForDate(date).catch(() => []) : Promise.resolve([]),
+        ]);
+        let out = attachAltModel(games, recentGames, v2Label);
+        out = attachAltModel(out, recentV2Games, v3Label);
+        return { games: out, source: "db" };
       }
       return { games, source: "db" };
     }
@@ -174,14 +210,17 @@ async function loadGamesForDate(
   }
 
   // Fallback: compute live (no persistence) — baseline for metadata, sim-elo-v2
-  // for the primary probability, sim-recent-v1 for the secondary display number.
-  const [baseGames, simGames, recentGames] = await Promise.all([
+  // for the primary (v1) probability, sim-recent-v1 (v2) and sim-recent-v2 (v3)
+  // for the two secondary display numbers.
+  const [baseGames, simGames, recentGames, recentV2Games] = await Promise.all([
     buildPredictionsForDate(date),
     buildSimPredictionsForDate(date).catch(() => []),
     buildRecentFormPredictionsForDate(date).catch(() => []),
+    buildRecentFormV2PredictionsForDate(date).catch(() => []),
   ]);
   const merged = simGames.length > 0 ? mergeSimIntoBaseline(baseGames, simGames) : baseGames;
-  const games = attachRecentForm(merged, recentGames);
+  let games = attachAltModel(merged, recentGames, MODEL_LABELS[MODEL_VERSION_RECENT]);
+  games = attachAltModel(games, recentV2Games, MODEL_LABELS[MODEL_VERSION_RECENT_V2]);
   return { games, source: "live" };
 }
 

@@ -48,7 +48,7 @@ export function GameCard({ game }: { game: PredictedGame }) {
       <div className="px-5 pb-4">
         <div className="mb-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           <span>{game.away.abbreviation} {pct(game.awayWinProb)}</span>
-          <span className="text-primary">Edge · {favName} {pct(favProb)}</span>
+          <span className="text-primary">v1 · {favName} {pct(favProb)}</span>
           <span>{pct(game.homeWinProb)} {game.home.abbreviation}</span>
         </div>
         <div className="flex h-2 overflow-hidden bg-secondary">
@@ -62,27 +62,28 @@ export function GameCard({ game }: { game: PredictedGame }) {
           />
         </div>
 
-        {/* secondary model (sim-recent-v1) — its own label row + probability
-            bar mirroring the primary above, dimmed so the headline still leads */}
-        {game.altModel && (
-          <div className="mt-3">
+        {/* secondary models (v2 = sim-recent-v1, v3 = sim-recent-v2) — each its
+            own label row + probability bar mirroring the primary above, dimmed
+            so the v1 headline still leads */}
+        {game.altModels?.map((m) => (
+          <div key={m.label} className="mt-3">
             <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
-              <span>{game.away.abbreviation} {pct(game.altModel.awayWinProb)}</span>
-              <span>{game.altModel.label}</span>
-              <span>{pct(game.altModel.homeWinProb)} {game.home.abbreviation}</span>
+              <span>{game.away.abbreviation} {pct(m.awayWinProb)}</span>
+              <span>{m.label}</span>
+              <span>{pct(m.homeWinProb)} {game.home.abbreviation}</span>
             </div>
             <div className="flex h-2 overflow-hidden bg-secondary opacity-70">
               <div
                 className="bg-chalk/70"
-                style={{ width: `${game.altModel.awayWinProb * 100}%` }}
+                style={{ width: `${m.awayWinProb * 100}%` }}
               />
               <div
                 className="bg-signal"
-                style={{ width: `${game.altModel.homeWinProb * 100}%` }}
+                style={{ width: `${m.homeWinProb * 100}%` }}
               />
             </div>
           </div>
-        )}
+        ))}
       </div>
 
       <details className="border-t border-border bg-background/30 px-5 py-3 text-sm">

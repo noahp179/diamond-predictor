@@ -210,3 +210,239 @@ The daily cron last wrote on **2026-06-15**: `game_odds` is empty and no `sim-el
 prediction rows were ever persisted (the shadow-write shipped after the cron stopped).
 Today/tomorrow pages fall back to live computation and work; the Track Record's Best Odds
 segment stays empty until the pipeline (and its odds caching) runs again.
+
+---
+
+
+## Round 4 — the two headroom bets, folded into the sim-recent line (`sim-recent-v2`)
+
+*Backtest run 2026-07-13 (`scripts/backtest-shadow-models.ts`) on two non-overlapping
+14-day windows of real settled games — 191 games (2026-06-28 → 2026-07-11) and 185 games
+(2026-06-14 → 2026-06-27), 376 total. Every input is reconstructed strictly point-in-time
+from the MLB Stats API (Elo replayed to each morning; all rates end the day before), then
+run through the production `simulateMatchup` with the exact per-game seeds the live models
+use. Self-contained: no Supabase, no odds.*
+
+Round 2 named the two biggest pieces of remaining headroom — a real bullpen and actual
+lineups. Rather than spin those up as separate parallel models, Round 4 folds them into the
+**sim-recent** line as its next iteration, and asks one question: does the recent-form model,
+upgraded with these inputs, beat the headline `sim-elo-v2`? Three models, one engine,
+identical games:
+
+| Model | What changes vs the headline |
+|---|---|
+| `sim-elo-v2` (headline) | season-to-date team rates + season starter, full-staff pen |
+| `sim-recent-v1` | trailing 21/45-day team form + trailing starter (the baseline of the sim-recent line) |
+| `sim-recent-v2` | **sim-recent-v1 + a relievers-only bullpen + a lineup-derived offense**, both over trailing windows, each with fallback to the v1 team line |
+
+The two new inputs (`src/lib/mlb-bullpen.ts`, `src/lib/mlb-lineup.ts`) are point-in-time
+reconstructions: the pen from the real relief-role arms (active roster as-of the morning,
+each pitcher's own trailing line, kept if majority-relief, summed and regressed — *not* the
+staff-minus-rotation subtraction Round 2 rejected); the offense from the nine hitters in the
+posted batting order, their trailing bats regressed to league and averaged.
+
+### Results
+
+| Window | Model | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|---|
+| **Jun 28 – Jul 11 (n=191)** | sim-elo-v2 | 57.1% | **0.2439** | **0.6812** |
+| | sim-recent-v1 | **60.2%** | 0.2467 | 0.6871 |
+| | sim-recent-v2 | 50.8% | 0.2525 | 0.6985 |
+| | home-always-54 | 49.2% | 0.2522 | 0.6976 |
+| **Jun 14 – Jun 27 (n=185)** | sim-elo-v2 | 50.3% | 0.2531 | 0.6996 |
+| | sim-recent-v1 | **54.1%** | 0.2531 | 0.6997 |
+| | sim-recent-v2 | 49.7% | **0.2523** | **0.6979** |
+| | home-always-54 | 51.4% | 0.2505 | 0.6942 |
+| **Pooled (n=376)** | sim-elo-v2 | 53.7% | **0.2484** | **0.6902** |
+| | sim-recent-v1 | **57.2%** | 0.2499 | 0.6933 |
+| | sim-recent-v2 | 50.3% | 0.2524 | 0.6982 |
+| | home-always-54 | 50.3% | 0.2514 | — |
+
+Head-to-head against the headline pick, pooled: **sim-recent-v1 disagreed on 77 games and
+was right on 45 (58%)** — a real edge; **sim-recent-v2 disagreed on 73 and was right on only
+30 (41%)** — worse than a coin flip.
+
+### Read
+
+**The recent-form window helps; the two headroom inputs, as built here, hurt.**
+
+- **`sim-recent-v1` beats the headline on accuracy** (+3.5pp pooled, and ahead in both
+  windows) and picks better than sim-elo-v2 when the two disagree (58%). Its Brier is a hair
+  worse (+0.0015) — it lands the pick more often but is slightly less calibrated on the tails.
+  That is the genuinely promising result and it is worth continuing to track live.
+- **`sim-recent-v2` is a clear negative.** Adding the relievers-only pen and the
+  lineup-average offense drops accuracy below both v1 *and* the headline (50.3%), lands the
+  worst Brier, and — most damning — when the extra inputs move a pick off the headline they
+  are right only 41% of the time. The additions are injecting noise, not signal.
+
+Why the "biggest headroom" backfired:
+
+- **Relievers-only pen (≈ flat-to-negative).** An *average* reliever line still ignores
+  leverage — a good pen's best arm throws the highest-leverage outs, which a season/trailing
+  mean can't represent — so it trades one flat proxy (full staff) for another. This
+  corroborates Round 2 with a cleaner, identity-based reconstruction.
+- **Lineup-average offense (negative).** Averaging nine regressed per-PA rates shrinks the
+  offense's spread relative to the team aggregate, and the engine's run-environment constants
+  (`OFFENSE_CAL`, `HOME_BOOST`) were calibrated against the *team-aggregate* line, so the
+  lineup-average line runs through a mildly miscalibrated environment. Simple lineup averaging
+  is not, by itself, the free win the headroom note implied.
+
+### What shipped (tracked, not promoted)
+
+- **`src/lib/mlb-recent-form.ts`** — `buildRecentFormV2PredictionsForDate`, the sim-recent-v2
+  model: the v1 engine with the pen and offense swapped in over trailing windows, each with
+  per-input fallback to the v1 team line.
+- **`src/lib/mlb-bullpen.ts` / `src/lib/mlb-lineup.ts`** — the two point-in-time
+  reconstruction helpers (relievers-only line; lineup-derived batting), parameterized by a
+  trailing window.
+- **`src/lib/mlb-models.ts`** — `sim-recent-v2` registered in `TRACKED_MODELS`, scored beside
+  sim-recent-v1 and the headline automatically.
+- **`src/lib/mlb-pipeline.server.ts`** — the daily cron shadow-writes sim-recent-v2 (guarded,
+  best-effort). Lineups feed in when posted at cron time, else the model falls back to team
+  batting for that game.
+- **`scripts/backtest-shadow-models.ts`** — the reproducible, self-contained backtest
+  (`npx tsx scripts/backtest-shadow-models.ts [--start] [--end] [--sims] [--out]`).
+
+Next experiments, if the pen/lineup thread is worth pursuing, are the *non-naïve* versions —
+a leverage-aware pen (closer in the high-leverage 9th) and a PA-weighted, platoon-aware,
+run-environment-recalibrated lineup — not a re-run of these averages. The durable, positive
+finding from Round 4 is simpler: **trailing-window form (sim-recent-v1) out-picks the season
+model, and deserves a longer live look.**
+
+---
+
+## Round 5 — a *smart* bullpen, folded into sim-recent-v2 (replacing the naïve v2)
+
+*Backtest re-run 2026-07-13 (`scripts/backtest-shadow-models.ts`) on the same two 14-day
+windows as Round 4 (191 + 185 = 376 settled games), same point-in-time discipline and
+production seeds.*
+
+Round 4's `sim-recent-v2` (naïve relievers-only pen + lineup-average offense) lost to plain
+`sim-recent-v1`. The recommended fixes were all about the bullpen, so v2 was **rebuilt**:
+the lineup swap was dropped (offense back on the v1 trailing team line), and the pen was
+upgraded from an equal-weight average to a *smart* relievers-only line
+(`src/lib/mlb-bullpen.ts`), reconstructed from each reliever's game log (one fetch) so all
+three upgrades come for free:
+
+- **#1 Leverage weighting** — each arm scaled by save/hold/close-out usage
+  (`saves + holds + ½·gamesFinished`), so the closer and setup men dominate the pen line the
+  sim faces late instead of being averaged in with mop-up arms.
+- **#3 Fatigue / availability** — weight cut by how many of the last three days the arm
+  already pitched (three-in-a-row ≈ zeroed).
+- **#6 Peripheral (DIPS) stabilization** — K/BB/HR regressed only lightly toward league; the
+  non-HR hit rate (BABIP) regressed hard, so the pen's edge comes from what it controls. (A
+  Statcast xwOBA version is the natural next step — baseballsavant is reachable — this is the
+  statsapi-native form.)
+
+### Results
+
+| Window | Model | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|---|
+| **Jun 28 – Jul 11 (n=191)** | sim-elo-v2 | 57.1% | **0.2439** | **0.6812** |
+| | sim-recent-v1 | **60.2%** | 0.2467 | 0.6871 |
+| | sim-recent-v2 (smart pen) | 57.1% | 0.2495 | 0.6925 |
+| **Jun 14 – Jun 27 (n=185)** | sim-recent-v1 | **54.1%** | 0.2531 | 0.6997 |
+| | sim-recent-v2 (smart pen) | 52.4% | 0.2531 | 0.6996 |
+| | sim-elo-v2 | 50.3% | 0.2531 | 0.6996 |
+| **Pooled (n=376)** | sim-elo-v2 | 53.7% | **0.2484** | **0.6902** |
+| | sim-recent-v1 | **57.2%** | 0.2499 | 0.6933 |
+| | sim-recent-v2 (smart pen) | 54.8% | 0.2513 | 0.6960 |
+| | home-always-54 | 50.3% | 0.2514 | — |
+
+For reference, Round 4's *naïve* v2 pooled at 50.3% / 0.2524.
+
+### Read
+
+- **The recommendations clearly helped — over the naïve version.** Smart pen + dropping the
+  lineup lifts v2 from 50.3% / 0.2524 to 54.8% / 0.2513 (+4.5pp accuracy). Leverage,
+  fatigue and DIPS were directionally right.
+- **But the smart pen still does not beat plain recent-form (v1).** v2 is below v1 on both
+  accuracy (54.8 vs 57.2) and Brier (0.2513 vs 0.2499), and when the pen swap moved a pick
+  off v1 it was right only **15/39 (38%)** — worse than a coin flip. The full-staff line is a
+  stubbornly strong pen proxy at game-outcome granularity: relief innings are a minority of a
+  game, the starter and team/Elo signals dominate, and isolating ~3–4 pen innings adds little
+  real signal and some sampling noise, even weighted well.
+
+**Durable finding (unchanged): `sim-recent-v1` — recent-form with the plain full-staff pen —
+is the model to keep watching.** Best accuracy of the three (57.2%, and right 58% when it
+disagrees with the headline), Brier within noise of sim-elo-v2. The bullpen thread has now
+been tried both naïvely (Round 4) and intelligently (Round 5) and has not cleared the bar; if
+it is pursued further, the remaining untried lever is *in-sim tiering* (deploy tiers by
+inning/score state, suggestion #2) rather than a better single blended pen line — a single
+line, however weighted, is the wrong shape for a signal that only matters in specific
+late-game states. All three models stay tracked; none is promoted.
+
+---
+
+## Round 6 — a leverage-TIERED bullpen the sim actually manages (`sim-recent-v2`, 3rd cut)
+
+*Backtest re-run 2026-07-13 (`scripts/backtest-shadow-models.ts`) on the same two 14-day
+windows (191 + 185 = 376 settled games), same point-in-time discipline and production seeds.
+sim-elo-v2 and sim-recent-v1 reproduce Round 5's numbers to the digit, confirming the engine
+change touched only the tiered path.*
+
+Rounds 4–5 established the pen problem is one of **shape**: a single blended pen line — even
+leverage-weighted, fatigue-adjusted and DIPS-stabilized — lost to the full-staff proxy,
+because the bullpen only matters in specific late-game states and a single line can't express
+that. Round 6 gives the pen a depth chart the simulator manages, implementing the best of the
+ten suggested upgrades:
+
+- **#1/#2 Leverage tiers + explicit closer** — relievers are ranked by close-out usage
+  (`saves + holds + ½·gamesFinished`) and split into **closer / setup / middle**. The sim
+  (`src/lib/mlb-sim.ts`, `selectTier`) sends the closer out in the 9th+ of a save/tie, setup
+  in the 7th–8th of one-score games, middle otherwise — chosen each half-inning from the
+  pitching team's current lead.
+- **#3 Fatigue / availability** — the closer tier blends the top two arms availability-
+  weighted, so a gassed closer cedes his tier to the backup.
+- **#4 Reliever-league prior** — tiers regress toward a reliever-league baseline pooled from
+  every rostered reliever that day, not the all-pitching league line.
+- **#6 DIPS stabilization** and **#7 recency weighting** carried over from Round 5.
+
+Deferred on purpose: **#5 platoon/handedness** and **#10 IL/transactions** — each roughly
+doubles the per-reliever fetch load, and Rounds 4–5 warned against piling unvalidated inputs
+on at once; isolate the tiering result first. (#9 innings-to-cover is now implicit — the sim
+already samples starter length and the tier is chosen by the resulting game state.)
+
+### Results — the v2 progression
+
+| sim-recent-v2 version | Pooled Acc | Pooled Brier ↓ | Pooled Log loss ↓ |
+|---|---|---|---|
+| Round 4 — naïve pen + lineup average | 50.3% | 0.2524 | — |
+| Round 5 — single smart pen line | 54.8% | 0.2513 | 0.6960 |
+| **Round 6 — leverage-tiered pen** | **55.3%** | **0.2504** | **0.6944** |
+
+Per window (Round 6): Jun 28 – Jul 11 — v2 56.5% / 0.2481; Jun 14 – Jun 27 — v2 54.1% / 0.2529.
+
+### Full comparison (pooled, n=376)
+
+| Model | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|
+| sim-elo-v2 (headline) | 53.7% | **0.2484** | **0.6902** |
+| **sim-recent-v1** (recent form, full-staff pen) | **57.2%** | 0.2499 | 0.6933 |
+| sim-recent-v2 (leverage-tiered pen) | 55.3% | 0.2504 | 0.6944 |
+| home-always-54 | 50.3% | 0.2514 | — |
+
+### Read
+
+- **Getting the shape right worked — monotonically.** Each cut of the bullpen improved v2:
+  naïve → smart line → tiered took Brier 0.2524 → 0.2513 → **0.2504** and accuracy 50.3% →
+  54.8% → **55.3%**. Tiering is unambiguously the best bullpen build of the three, and it is
+  now **within noise of sim-recent-v1 on Brier** (0.2504 vs 0.2499 on 376 games).
+- **But it still does not surpass sim-recent-v1.** v1 keeps the accuracy edge (57.2 vs 55.3),
+  and when tiering moves a pick off v1 it is right only **13/33 (39%)** — still no
+  complementary pick signal. Doing the bullpen *right* essentially recovers what the plain
+  full-staff proxy already captured, and no more: at game-outcome granularity relief innings
+  are ~a third of the game, the starter + Elo + offense dominate, and *which* tier pitches is
+  itself downstream of an uncertain game state, so the extra detail sharpens calibration
+  (Brier ↓) without moving the pick.
+
+**Conclusion.** The bullpen thread has now been pushed hard — naïve, smart, and tiered — and
+has reached **parity, not superiority**, with the full-staff proxy. This is a diminishing-
+returns frontier: the untried pen levers (platoon splits, IL modeling, per-reliever Statcast
+xwOBA) are unlikely to clear a bar that three rounds of the largest structural change could
+only tie. **`sim-recent-v1` remains the model to watch** — its accuracy edge over the headline
+(57.2% vs 53.7%, right 58% on disagreements) is the durable signal across Rounds 4–6, and it
+comes from *recent-form team rates*, not the bullpen. If the goal is accuracy, the next
+experiment worth running is the properly-built lineup/platoon offense (not the naïve average
+that failed in Round 4), or simply promoting sim-recent-v1 to a longer live trial. All three
+models stay tracked; none is promoted.

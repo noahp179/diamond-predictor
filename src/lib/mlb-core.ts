@@ -51,10 +51,12 @@ export interface PredictedGame {
   winner?: "home" | "away" | null;
   correct?: boolean | null;
   /**
-   * Optional secondary model's win probabilities for the same game, shown
-   * beside the primary number on the card. Currently carries sim-recent-v1.
+   * Optional secondary models' win probabilities for the same game, shown as
+   * extra probability bars beneath the primary (v1) number on the card. Carries
+   * v2 (sim-recent-v1) and v3 (sim-recent-v2, the tiered-bullpen model), in
+   * display order.
    */
-  altModel?: { label: string; homeWinProb: number; awayWinProb: number } | null;
+  altModels?: Array<{ label: string; homeWinProb: number; awayWinProb: number }>;
 }
 
 export interface StandingsRow {
