@@ -38,7 +38,7 @@ import {
   type StarterInfo,
   type TeamRates,
 } from "./mlb-sim";
-import { fetchAllRelieverLines } from "./mlb-bullpen";
+import { fetchAllBullpens } from "./mlb-bullpen";
 import { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
 
 export { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 };
@@ -311,21 +311,23 @@ export async function buildRecentFormPredictionsForDate(
 //
 // The next iteration of the sim-recent line: everything sim-recent-v1 does
 // (trailing-window team form + trailing starter + multi-season Elo), with ONE
-// input upgraded — the bullpen. Instead of the trailing full-staff line as a
-// pen proxy, it uses the *smart* relievers-only line from mlb-bullpen.ts over a
-// 30-day window: leverage-weighted (save/hold/close-out arms dominate),
-// fatigue-adjusted (arms that pitched the last few days are downweighted), and
-// DIPS-stabilized (trust K/BB/HR, regress BABIP hard). Falls back to the
-// trailing full-staff line when the pen sample is too thin.
+// input upgraded — the bullpen — from the trailing full-staff proxy to a
+// leverage-TIERED relievers-only pen (mlb-bullpen.ts, 30-day window). The sim
+// deploys the tiers by game state: closer in the 9th of a save/tie, setup in
+// the 7th–8th of one-score games, middle otherwise. The tiers fold in the
+// reliever ideas worth having — leverage ranking + explicit closer (#1/#2),
+// fatigue/availability (#3), a reliever-league regression baseline (#4), DIPS
+// stabilization (#6) and recency weighting (#7). Falls back to the trailing
+// full-staff line when the pen sample is too thin.
 //
-// This replaces the earlier v2 (which also swapped in a lineup-average offense):
-// Round 4 found the naïve pen + lineup average hurt, and the recommended fixes
-// were all about the bullpen, so v2 now isolates a single question — does an
-// *intelligent* pen beat the full-staff proxy? Offense stays on the v1 trailing
-// team line. (The lineup helper, mlb-lineup.ts, remains available for the
-// non-naïve lineup experiment noted in MODEL-ANALYSIS.md.) One model, the
-// evolution of sim-recent — compared against sim-recent-v1 and the headline
-// sim-elo-v2, never a separate parallel algorithm.
+// This is the third cut at v2. Round 4's naïve pen + lineup average lost to v1;
+// Round 5's single smart pen line also lost to v1 — a single line is the wrong
+// SHAPE for a signal that only bites in specific late-game states — so Round 6
+// gives the pen a depth chart the sim actually manages. Offense stays on the v1
+// trailing team line, isolating the bullpen question. (Platoon splits (#5) and
+// IL/transactions (#10) are deliberately deferred — see MODEL-ANALYSIS.md; the
+// lineup helper mlb-lineup.ts likewise stays parked.) One model, the evolution
+// of sim-recent — compared against sim-recent-v1 and the headline sim-elo-v2.
 
 export interface RecentFormV2GamePrediction extends RecentFormGamePrediction {
   usedReliever: boolean; // a smart reliever line was used for at least one side
@@ -379,7 +381,7 @@ export async function buildRecentFormV2PredictionsForDate(
       );
       return m;
     })(),
-    fetchAllRelieverLines(Array.from(teamIds), season, date, lg, PEN_WINDOW_DAYS),
+    fetchAllBullpens(Array.from(teamIds), season, date, lg, PEN_WINDOW_DAYS),
   ]);
 
   const logitFn = (p: number) => Math.log(p / (1 - p));
@@ -405,8 +407,10 @@ export async function buildRecentFormV2PredictionsForDate(
         awayBatting: aRates.batting ?? lg,
         homeStarter: (hp && starters.get(hp)) || null,
         awayStarter: (ap && starters.get(ap)) || null,
-        homeStaff: homePen ?? reshapeStaff(hRates.staff, lg),
-        awayStaff: awayPen ?? reshapeStaff(aRates.staff, lg),
+        homeStaff: reshapeStaff(hRates.staff, lg), // fallback when no tiered pen
+        awayStaff: reshapeStaff(aRates.staff, lg),
+        homePenTiers: homePen,
+        awayPenTiers: awayPen,
         league: lg,
         venue,
       },
@@ -428,7 +432,7 @@ export async function buildRecentFormV2PredictionsForDate(
       ensembleProb,
       usedReliever: homePen != null || awayPen != null,
       rationale: [
-        `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, smart relievers-only pen, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
+        `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, leverage-tiered relievers-only pen, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
         `Elo ${homeElo.toFixed(0)} vs ${awayElo.toFixed(0)} → ${(eloProb * 100).toFixed(1)}%`,
         `Ensemble (logit mean) → ${(ensembleProb * 100).toFixed(1)}%`,
       ],

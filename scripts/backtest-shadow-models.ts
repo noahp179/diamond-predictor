@@ -39,7 +39,7 @@ import {
   fetchAllTeamRatesRecent,
   fetchStarterInfoRecent,
 } from "../src/lib/mlb-recent-form";
-import { fetchAllRelieverLines } from "../src/lib/mlb-bullpen";
+import { fetchAllBullpens } from "../src/lib/mlb-bullpen";
 import { STATS_API, fetchWithTimeout, batchedAll } from "../src/lib/mlb-core";
 
 const PEN_WINDOW_DAYS = 30; // must match mlb-recent-form.ts
@@ -282,7 +282,7 @@ async function main() {
     const startersSeason = new Map<number, StarterInfo | null>();
     const startersRecent = new Map<number, StarterInfo | null>();
     const [relievers] = await Promise.all([
-      fetchAllRelieverLines(teamIds, season, date, lg, PEN_WINDOW_DAYS),
+      fetchAllBullpens(teamIds, season, date, lg, PEN_WINDOW_DAYS),
       batchedAll(
         Array.from(pitcherIds).map((id) => async () => {
           startersSeason.set(id, await fetchStarterInfoAsOf(id, season, before, lg));
@@ -334,15 +334,17 @@ async function main() {
         nSims,
         2_000_000 + g.gamePk,
       );
-      // sim-recent-v2: recent team offense + SMART pen (fallback to v1 staff), seed 5000000+pk.
+      // sim-recent-v2: recent team offense + TIERED pen (fallback to v1 staff), seed 5000000+pk.
       const pS3 = simulateMatchup(
         {
           homeBatting: hRecent.batting ?? lg,
           awayBatting: aRecent.batting ?? lg,
           homeStarter: (g.hp && startersRecent.get(g.hp)) || null,
           awayStarter: (g.ap && startersRecent.get(g.ap)) || null,
-          homeStaff: hPen ?? reshapeStaff(hRecent.staff, lg),
-          awayStaff: aPen ?? reshapeStaff(aRecent.staff, lg),
+          homeStaff: reshapeStaff(hRecent.staff, lg),
+          awayStaff: reshapeStaff(aRecent.staff, lg),
+          homePenTiers: hPen,
+          awayPenTiers: aPen,
           league: lg,
           venue: g.venue,
         },

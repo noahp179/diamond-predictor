@@ -371,3 +371,78 @@ it is pursued further, the remaining untried lever is *in-sim tiering* (deploy t
 inning/score state, suggestion #2) rather than a better single blended pen line — a single
 line, however weighted, is the wrong shape for a signal that only matters in specific
 late-game states. All three models stay tracked; none is promoted.
+
+---
+
+## Round 6 — a leverage-TIERED bullpen the sim actually manages (`sim-recent-v2`, 3rd cut)
+
+*Backtest re-run 2026-07-13 (`scripts/backtest-shadow-models.ts`) on the same two 14-day
+windows (191 + 185 = 376 settled games), same point-in-time discipline and production seeds.
+sim-elo-v2 and sim-recent-v1 reproduce Round 5's numbers to the digit, confirming the engine
+change touched only the tiered path.*
+
+Rounds 4–5 established the pen problem is one of **shape**: a single blended pen line — even
+leverage-weighted, fatigue-adjusted and DIPS-stabilized — lost to the full-staff proxy,
+because the bullpen only matters in specific late-game states and a single line can't express
+that. Round 6 gives the pen a depth chart the simulator manages, implementing the best of the
+ten suggested upgrades:
+
+- **#1/#2 Leverage tiers + explicit closer** — relievers are ranked by close-out usage
+  (`saves + holds + ½·gamesFinished`) and split into **closer / setup / middle**. The sim
+  (`src/lib/mlb-sim.ts`, `selectTier`) sends the closer out in the 9th+ of a save/tie, setup
+  in the 7th–8th of one-score games, middle otherwise — chosen each half-inning from the
+  pitching team's current lead.
+- **#3 Fatigue / availability** — the closer tier blends the top two arms availability-
+  weighted, so a gassed closer cedes his tier to the backup.
+- **#4 Reliever-league prior** — tiers regress toward a reliever-league baseline pooled from
+  every rostered reliever that day, not the all-pitching league line.
+- **#6 DIPS stabilization** and **#7 recency weighting** carried over from Round 5.
+
+Deferred on purpose: **#5 platoon/handedness** and **#10 IL/transactions** — each roughly
+doubles the per-reliever fetch load, and Rounds 4–5 warned against piling unvalidated inputs
+on at once; isolate the tiering result first. (#9 innings-to-cover is now implicit — the sim
+already samples starter length and the tier is chosen by the resulting game state.)
+
+### Results — the v2 progression
+
+| sim-recent-v2 version | Pooled Acc | Pooled Brier ↓ | Pooled Log loss ↓ |
+|---|---|---|---|
+| Round 4 — naïve pen + lineup average | 50.3% | 0.2524 | — |
+| Round 5 — single smart pen line | 54.8% | 0.2513 | 0.6960 |
+| **Round 6 — leverage-tiered pen** | **55.3%** | **0.2504** | **0.6944** |
+
+Per window (Round 6): Jun 28 – Jul 11 — v2 56.5% / 0.2481; Jun 14 – Jun 27 — v2 54.1% / 0.2529.
+
+### Full comparison (pooled, n=376)
+
+| Model | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|
+| sim-elo-v2 (headline) | 53.7% | **0.2484** | **0.6902** |
+| **sim-recent-v1** (recent form, full-staff pen) | **57.2%** | 0.2499 | 0.6933 |
+| sim-recent-v2 (leverage-tiered pen) | 55.3% | 0.2504 | 0.6944 |
+| home-always-54 | 50.3% | 0.2514 | — |
+
+### Read
+
+- **Getting the shape right worked — monotonically.** Each cut of the bullpen improved v2:
+  naïve → smart line → tiered took Brier 0.2524 → 0.2513 → **0.2504** and accuracy 50.3% →
+  54.8% → **55.3%**. Tiering is unambiguously the best bullpen build of the three, and it is
+  now **within noise of sim-recent-v1 on Brier** (0.2504 vs 0.2499 on 376 games).
+- **But it still does not surpass sim-recent-v1.** v1 keeps the accuracy edge (57.2 vs 55.3),
+  and when tiering moves a pick off v1 it is right only **13/33 (39%)** — still no
+  complementary pick signal. Doing the bullpen *right* essentially recovers what the plain
+  full-staff proxy already captured, and no more: at game-outcome granularity relief innings
+  are ~a third of the game, the starter + Elo + offense dominate, and *which* tier pitches is
+  itself downstream of an uncertain game state, so the extra detail sharpens calibration
+  (Brier ↓) without moving the pick.
+
+**Conclusion.** The bullpen thread has now been pushed hard — naïve, smart, and tiered — and
+has reached **parity, not superiority**, with the full-staff proxy. This is a diminishing-
+returns frontier: the untried pen levers (platoon splits, IL modeling, per-reliever Statcast
+xwOBA) are unlikely to clear a bar that three rounds of the largest structural change could
+only tie. **`sim-recent-v1` remains the model to watch** — its accuracy edge over the headline
+(57.2% vs 53.7%, right 58% on disagreements) is the durable signal across Rounds 4–6, and it
+comes from *recent-form team rates*, not the bullpen. If the goal is accuracy, the next
+experiment worth running is the properly-built lineup/platoon offense (not the naïve average
+that failed in Round 4), or simply promoting sim-recent-v1 to a longer live trial. All three
+models stay tracked; none is promoted.
