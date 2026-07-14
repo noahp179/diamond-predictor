@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -53,6 +52,13 @@ const MODEL_COLORS = [
   "var(--color-chart-4)",
   "var(--color-chart-5)",
 ];
+
+const LEGEND_STYLE = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 11,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
+};
 
 function modelLabel(version: string): string {
   return TRACKED_MODELS.find((m) => m.version === version)?.label ?? version;
@@ -134,6 +140,31 @@ function HistoryPage() {
   }, [games, selected, tableFilter]);
 
   const calibration = React.useMemo(() => calculateCalibration(games, selected), [games, selected]);
+
+  // Hero leaderboard: every model's overall win rate, best first.
+  const accuracyRanked = React.useMemo(
+    () =>
+      models
+        .filter((m) => m.settled.n > 0 && m.settled.accuracy != null)
+        .map((m) => ({
+          version: m.version,
+          label: modelLabel(m.version),
+          accuracy: m.settled.accuracy as number,
+          n: m.settled.n,
+        }))
+        .sort((a, b) => b.accuracy - a.accuracy),
+    [models],
+  );
+
+  // Running (cumulative) win rate per model over time — far smoother than daily.
+  const runningAccuracy = React.useMemo(
+    () =>
+      calculateRunningAccuracy(
+        games,
+        models.map((m) => m.version),
+      ),
+    [games, models],
+  );
 
   return (
     <div className="min-h-screen">
@@ -278,96 +309,43 @@ function HistoryPage() {
 
         {activeTab === "graphs" && !isLoading && totalSettled > 0 && (
           <>
-            <ChartCard title="Cumulative return by model — flat 1u on every pick at the stored line">
-              {returns.rows.length > 0 ? (
-                <>
-                  <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                    {returns.totals.map((t) => (
-                      <span key={t.version} className="inline-flex items-center gap-1.5">
-                        <span
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{ background: colorOf(t.version) }}
-                        />
-                        {modelLabel(t.version)}:{" "}
-                        <span className={t.units >= 0 ? "text-emerald-500" : "text-red-500"}>
-                          {fmtUnits(t.units)}
-                        </span>
-                        <span>
-                          · ROI {t.roi != null ? `${(t.roi * 100).toFixed(1)}%` : "—"} · {t.bets}{" "}
-                          bets
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <ComposedChart data={returns.rows}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                      <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} />
-                      <YAxis
-                        stroke="var(--color-muted-foreground)"
-                        fontSize={11}
-                        tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}u`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: "var(--color-card)",
-                          border: "1px solid var(--color-border)",
-                          fontFamily: "var(--font-mono)",
-                        }}
-                        formatter={(value) => `${Number(value) >= 0 ? "+" : ""}${value}u`}
-                      />
-                      <Legend
-                        wrapperStyle={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 11,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      />
-                      <ReferenceLine
-                        y={0}
-                        stroke="var(--color-muted-foreground)"
-                        strokeDasharray="4 4"
-                      />
-                      {returns.totals.map((t) => (
-                        <Line
-                          key={t.version}
-                          type="monotone"
-                          dataKey={`${t.version}_units`}
-                          name={modelLabel(t.version)}
-                          stroke={colorOf(t.version)}
-                          strokeWidth={selected === t.version ? 2.5 : 1.5}
-                          strokeOpacity={selected === t.version ? 1 : 0.35}
-                          dot={{ r: selected === t.version ? 3 : 2 }}
-                          connectNulls
-                        />
-                      ))}
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                    1 unit staked on each model's pick, settled at the stored DraftKings moneyline
-                    for that side. Games with no cached line are skipped for every model, so the
-                    curves compare on the same slate.
-                  </p>
-                </>
-              ) : (
-                <div className="flex h-40 items-center justify-center text-muted-foreground">
-                  No settled picks with a stored line yet — returns plot once games with cached
-                  odds go final.
-                </div>
-              )}
+            <div className="mt-4 border border-border bg-secondary/20 px-5 py-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">How to read this page. </span>
+              Each card says in plain English what it shows and whether a higher or lower number is
+              better. “Right” means the model’s favored team actually won. Tap any model in the
+              scoreboard above to spotlight it in the charts.
+            </div>
+
+            {/* 1 — the headline comparison: who picks the most winners */}
+            <ChartCard
+              title="Which model picks the most winners?"
+              subtitle={`Out of every finished game since ${trackingSince}, how often each model’s favored team actually won. Bigger number = better. The line down the middle is a 50/50 coin flip.`}
+              better="up"
+            >
+              <AccuracyLeaderboard
+                rows={accuracyRanked}
+                colorOf={colorOf}
+                selected={selected}
+                onSelect={setSelectedModel}
+              />
             </ChartCard>
 
-            <ChartCard title={`Daily accuracy by model — ${modelLabel(selected)} emphasized`}>
-              <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart data={mergedDaily}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} />
+            {/* 2 — the trend: is each model getting better or worse */}
+            <ChartCard
+              title="Is each model getting better or worse over time?"
+              subtitle="Each line is a model’s win rate as more games finish — it steadies as the season builds. Higher is better; the dashed line is a coin flip."
+              better="up"
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={runningAccuracy} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                  <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} minTickGap={24} />
                   <YAxis
-                    domain={[0, 100]}
+                    domain={["auto", "auto"]}
                     stroke="var(--color-muted-foreground)"
                     fontSize={11}
-                    unit="%"
+                    tickFormatter={(v: number) => `${v}%`}
+                    width={40}
                   />
                   <Tooltip
                     contentStyle={{
@@ -375,25 +353,25 @@ function HistoryPage() {
                       border: "1px solid var(--color-border)",
                       fontFamily: "var(--font-mono)",
                     }}
+                    formatter={(value, name) => [value != null ? `${value}%` : "—", name]}
                   />
-                  <Legend
-                    wrapperStyle={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
+                  <Legend wrapperStyle={LEGEND_STYLE} />
+                  <ReferenceLine
+                    y={50}
+                    stroke="var(--color-muted-foreground)"
+                    strokeDasharray="4 4"
+                    label={{ value: "coin flip", position: "insideBottomRight", fontSize: 10, fill: "var(--color-muted-foreground)" }}
                   />
                   {models.map((m) => (
                     <Line
                       key={m.version}
                       type="monotone"
-                      dataKey={`${m.version}_accuracy`}
+                      dataKey={`${m.version}_run`}
                       name={modelLabel(m.version)}
                       stroke={colorOf(m.version)}
-                      strokeWidth={selected === m.version ? 2.5 : 1.5}
-                      strokeOpacity={selected === m.version ? 1 : 0.35}
-                      dot={{ r: selected === m.version ? 3 : 2 }}
+                      strokeWidth={selected === m.version ? 3 : 1.5}
+                      strokeOpacity={selected === m.version ? 1 : 0.3}
+                      dot={false}
                       connectNulls
                     />
                   ))}
@@ -401,57 +379,27 @@ function HistoryPage() {
               </ResponsiveContainer>
             </ChartCard>
 
-            <ChartCard title="Daily Brier score by model (lower is better)">
-              <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart data={mergedDaily}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} />
-                  <YAxis stroke="var(--color-muted-foreground)" fontSize={11} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      fontFamily: "var(--font-mono)",
-                    }}
-                  />
-                  <Legend
-                    wrapperStyle={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  />
-                  {models.map((m) => (
-                    <Line
-                      key={m.version}
-                      type="monotone"
-                      dataKey={`${m.version}_brier`}
-                      name={modelLabel(m.version)}
-                      stroke={colorOf(m.version)}
-                      strokeWidth={selected === m.version ? 2.5 : 1.5}
-                      strokeOpacity={selected === m.version ? 1 : 0.35}
-                      dot={{ r: selected === m.version ? 3 : 2 }}
-                      connectNulls
-                    />
-                  ))}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
+            {/* 3 — trust: are the stated percentages honest */}
             <ChartCard
-              title={`Calibration — ${modelLabel(selected)}: predicted vs actual win rate`}
+              title="Do the percentages tell the truth?"
+              subtitle={`When ${modelLabel(selected)} says a team has, say, a 70% chance, does that team really win about 70% of the time? The closer each bar sits to the dashed “perfect” line, the more you can trust the number. Tap another model above to check it.`}
             >
-              <ResponsiveContainer width="100%" height={260}>
-                {calibration.length > 0 ? (
-                  <BarChart data={calibration}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis dataKey="bucket" stroke="var(--color-muted-foreground)" fontSize={11} />
+              {calibration.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={calibration} margin={{ top: 8, right: 16, bottom: 20, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                    <XAxis
+                      dataKey="bucket"
+                      stroke="var(--color-muted-foreground)"
+                      fontSize={11}
+                      label={{ value: "what the model said", position: "insideBottom", offset: -12, fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                    />
                     <YAxis
                       domain={[0, 1]}
                       stroke="var(--color-muted-foreground)"
                       fontSize={11}
                       tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                      width={40}
                     />
                     <Tooltip
                       contentStyle={{
@@ -459,29 +407,159 @@ function HistoryPage() {
                         border: "1px solid var(--color-border)",
                         fontFamily: "var(--font-mono)",
                       }}
+                      formatter={(value: any, name: any) =>
+                        name === "actually won"
+                          ? [`${(Number(value) * 100).toFixed(0)}%`, name]
+                          : [`${(Number(value) * 100).toFixed(0)}%`, "perfect"]
+                      }
+                      labelFormatter={(l, p: any) =>
+                        `Model said ${l}${p?.[0]?.payload?.count != null ? ` · ${p[0].payload.count} games` : ""}`
+                      }
                     />
+                    <Legend wrapperStyle={LEGEND_STYLE} />
                     <Bar
                       dataKey="actual"
+                      name="actually won"
                       fill={colorOf(selected)}
-                      barSize={28}
+                      barSize={30}
                       radius={[4, 4, 0, 0]}
                     />
                     <Line
                       type="monotone"
                       dataKey="ideal"
+                      name="perfect"
                       stroke="var(--color-muted-foreground)"
                       strokeDasharray="4 4"
-                      strokeWidth={1}
+                      strokeWidth={1.5}
                       dot={false}
                     />
-                  </BarChart>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    Not enough settled {modelLabel(selected)} games for a calibration chart
-                  </div>
-                )}
-              </ResponsiveContainer>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-40 items-center justify-center text-muted-foreground">
+                  Not enough settled {modelLabel(selected)} games yet for this chart.
+                </div>
+              )}
             </ChartCard>
+
+            {/* 4 — money: what betting every pick would have done */}
+            <ChartCard
+              title="If you bet $100 on every pick…"
+              subtitle="Running profit or loss from a flat $100 bet on each model’s pick, paid at the real sportsbook price. Above the middle line = up money; below = down. Same games for every model."
+              better="up"
+            >
+              {returns.rows.length > 0 ? (
+                <>
+                  <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1.5 text-sm">
+                    {returns.totals.map((t) => (
+                      <span key={t.version} className="inline-flex items-center gap-1.5 font-mono text-xs">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ background: colorOf(t.version) }}
+                        />
+                        <span className="uppercase tracking-widest text-muted-foreground">
+                          {modelLabel(t.version)}
+                        </span>
+                        <span className={t.units >= 0 ? "text-emerald-600" : "text-red-500"}>
+                          {fmtDollars(t.units)}
+                        </span>
+                        <span className="text-muted-foreground">
+                          · {t.roi != null ? `${(t.roi * 100).toFixed(1)}% ROI` : "—"} · {t.bets} bets
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <ComposedChart data={returns.rows} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                      <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} minTickGap={24} />
+                      <YAxis
+                        stroke="var(--color-muted-foreground)"
+                        fontSize={11}
+                        width={54}
+                        tickFormatter={(v: number) => fmtDollars(v)}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "var(--color-card)",
+                          border: "1px solid var(--color-border)",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                        formatter={(value) => fmtDollars(Number(value))}
+                      />
+                      <Legend wrapperStyle={LEGEND_STYLE} />
+                      <ReferenceLine y={0} stroke="var(--color-muted-foreground)" strokeDasharray="4 4" />
+                      {returns.totals.map((t) => (
+                        <Line
+                          key={t.version}
+                          type="monotone"
+                          dataKey={`${t.version}_units`}
+                          name={modelLabel(t.version)}
+                          stroke={colorOf(t.version)}
+                          strokeWidth={selected === t.version ? 3 : 1.5}
+                          strokeOpacity={selected === t.version ? 1 : 0.3}
+                          dot={false}
+                          connectNulls
+                        />
+                      ))}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Losing favorites don’t pay much, so a model can pick lots of winners and still lose
+                    money — that’s the sportsbook’s edge, not a bug. Games with no stored price are
+                    skipped for every model so the lines compare on the same slate.
+                  </p>
+                </>
+              ) : (
+                <div className="flex h-40 items-center justify-center text-muted-foreground">
+                  No settled picks with a stored price yet — this plots once priced games go final.
+                </div>
+              )}
+            </ChartCard>
+
+            {/* Advanced — the technical scores, tucked away for the curious */}
+            <details className="mt-4 border border-border bg-card">
+              <summary className="cursor-pointer px-5 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground">
+                Advanced stats — Brier score &amp; log loss (for the stat nerds)
+              </summary>
+              <div className="border-t border-border p-4">
+                <p className="mb-4 text-sm text-muted-foreground">
+                  These grade a model on its <em>confidence</em>, not just its win/lose calls: being
+                  90% sure and right beats being 51% sure and right, and being confidently wrong is
+                  punished hardest. For both, <span className="text-foreground">lower is better</span>.
+                  A daily point is one day’s games, so early days are jumpy.
+                </p>
+                <div className="mb-2 font-display text-base">Brier score by day (lower ↓)</div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <ComposedChart data={mergedDaily} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                    <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} minTickGap={24} />
+                    <YAxis stroke="var(--color-muted-foreground)" fontSize={11} width={48} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    />
+                    <Legend wrapperStyle={LEGEND_STYLE} />
+                    {models.map((m) => (
+                      <Line
+                        key={m.version}
+                        type="monotone"
+                        dataKey={`${m.version}_brier`}
+                        name={modelLabel(m.version)}
+                        stroke={colorOf(m.version)}
+                        strokeWidth={selected === m.version ? 3 : 1.5}
+                        strokeOpacity={selected === m.version ? 1 : 0.3}
+                        dot={false}
+                        connectNulls
+                      />
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </details>
           </>
         )}
 
@@ -642,8 +720,91 @@ function moneylineProfit(ml: number): number {
   return ml > 0 ? ml / 100 : 100 / -ml;
 }
 
-function fmtUnits(u: number): string {
-  return `${u >= 0 ? "+" : ""}${u.toFixed(2)}u`;
+/** A model's cumulative unit P/L expressed as dollars on a flat $100 stake. */
+function fmtDollars(units: number): string {
+  const d = units * 100;
+  return `${d >= 0 ? "+" : "−"}$${Math.abs(d).toFixed(0)}`;
+}
+
+function BetterBadge({ dir }: { dir: "up" | "down" }) {
+  const up = dir === "up";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest ${
+        up ? "border-emerald-600/40 text-emerald-600" : "border-red-500/40 text-red-500"
+      }`}
+    >
+      {up ? "Higher is better ↑" : "Lower is better ↓"}
+    </span>
+  );
+}
+
+/**
+ * The headline comparison: a plain ranked leaderboard of every model's overall
+ * win rate. An honest 0–100% track with a 50% coin-flip marker, the real number
+ * shown large, best first. Click a row to spotlight that model in the charts.
+ */
+function AccuracyLeaderboard({
+  rows,
+  colorOf,
+  selected,
+  onSelect,
+}: {
+  rows: Array<{ version: string; label: string; accuracy: number; n: number }>;
+  colorOf: (v: string) => string;
+  selected: string;
+  onSelect: (v: string) => void;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="flex h-24 items-center justify-center text-muted-foreground">
+        No settled games yet.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {rows.map((r) => {
+        const acc = r.accuracy * 100;
+        const isSel = selected === r.version;
+        return (
+          <button
+            key={r.version}
+            onClick={() => onSelect(r.version)}
+            className={`block w-full rounded-sm px-1 py-1 text-left transition-colors ${isSel ? "bg-secondary/40" : "hover:bg-secondary/20"}`}
+          >
+            <div className="mb-1 flex items-baseline justify-between gap-3">
+              <span className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ background: colorOf(r.version) }}
+                />
+                <span className={isSel ? "text-primary" : "text-foreground"}>{r.label}</span>
+              </span>
+              <span className="font-display text-2xl leading-none text-foreground">
+                {acc.toFixed(1)}%
+                <span className="ml-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  of {r.n}
+                </span>
+              </span>
+            </div>
+            <div className="relative h-3 w-full overflow-hidden rounded bg-secondary">
+              <div
+                className="h-full rounded"
+                style={{ width: `${acc}%`, background: colorOf(r.version), opacity: isSel ? 1 : 0.6 }}
+              />
+              {/* 50% coin-flip reference marker */}
+              <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-foreground/40" />
+            </div>
+          </button>
+        );
+      })}
+      <div className="flex items-center gap-2 pt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        <span className="inline-block h-3 w-px bg-foreground/40" />
+        the middle line is a 50/50 coin flip — anything past it beats guessing
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -726,14 +887,63 @@ function calculateCalibration(games: TrackedGame[], version: string) {
       bucket: `${(bucket.min * 100).toFixed(0)}-${(bucket.max * 100).toFixed(0)}%`,
       actual: bucket.correct / bucket.count,
       ideal: bucket.min + 0.05,
+      count: bucket.count,
     }));
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * Cumulative (running) win rate per model over time, in percent. One row per
+ * date carrying `${version}_run` = correct/total through that date. Far smoother
+ * than day-by-day accuracy, so the "getting better or worse?" trend is legible.
+ */
+function calculateRunningAccuracy(games: TrackedGame[], versions: string[]) {
+  const run = new Map(versions.map((v) => [v, { c: 0, n: 0 }]));
+  const byDate = new Map<string, TrackedGame[]>();
+  for (const g of [...games].sort((a, b) => (a.date < b.date ? -1 : 1))) {
+    const arr = byDate.get(g.date) ?? [];
+    arr.push(g);
+    byDate.set(g.date, arr);
+  }
+  const rows: Array<Record<string, number | string | null>> = [];
+  for (const [date, dayGames] of byDate) {
+    for (const g of dayGames) {
+      for (const v of versions) {
+        const s = g.models[v];
+        if (!s || s.correct == null) continue;
+        const r = run.get(v)!;
+        r.n += 1;
+        if (s.correct) r.c += 1;
+      }
+    }
+    const row: Record<string, number | string | null> = { date };
+    for (const v of versions) {
+      const r = run.get(v)!;
+      row[`${v}_run`] = r.n > 0 ? Number(((r.c / r.n) * 100).toFixed(1)) : null;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  better,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  better?: "up" | "down";
+  children: React.ReactNode;
+}) {
   return (
     <section className="mt-4 border border-border bg-card">
-      <div className="border-b border-border px-5 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        {title}
+      <div className="border-b border-border px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-display text-xl leading-tight text-foreground">{title}</h3>
+          {better && <BetterBadge dir={better} />}
+        </div>
+        {subtitle && <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
       </div>
       <div className="p-4">{children}</div>
     </section>
