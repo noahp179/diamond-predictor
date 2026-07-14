@@ -446,3 +446,99 @@ comes from *recent-form team rates*, not the bullpen. If the goal is accuracy, t
 experiment worth running is the properly-built lineup/platoon offense (not the naïve average
 that failed in Round 4), or simply promoting sim-recent-v1 to a longer live trial. All three
 models stay tracked; none is promoted.
+
+---
+
+## Round 7 — the factor & ensemble expedition (1,102 games, dev/test + walk-forward)
+
+*Study run 2026-07-14. New infrastructure: `scripts/collect-backtest-data.ts` sweeps
+Apr 20 → Jul 11 once (84 dates, 1,102 settled games — 3× the Rounds 4–6 sample) and
+caches, per game, the three tracked models' components (production seeds, byte-identical
+reproduction verified), the devigged DraftKings line (matched for 100% of games), and a
+bank of context factors computed point-in-time: rest days, games-in-last-7, last-10 win%,
+win streak, trailing-30d run differential, road-trip length, starter rest, starter
+last-3-starts form, day/night. `scripts/analyze-models.ts` then evaluates candidates as
+pure math. Protocol: every weight/coefficient fit on **dev** (Apr 20 – Jun 13, 726 games),
+scored **once** on the frozen **test** window (Jun 14 – Jul 11 — the exact 376 games
+Rounds 4–6 reported on), and finalists re-scored **walk-forward** (refit on all prior
+games before every date, 947 predictions) — the most honest number here.*
+
+The brief: build algorithms on top of the existing models, hunt for unique factors, and
+question everything — including the models already believed good.
+
+### What was tested
+
+Blends of the tracked models (v1×v2, v2×v3, v1×v2×v3, re-weighted sim×Elo), a
+trailing-30d Pythagorean log5 leg, a logistic "offset" layer adding the schedule/context
+factors on top of v2, a full fitted stacker (sim + Elo logits + all factors), a 3-logit
+ensemble (blend + calibration in one fit), per-model temperature calibration, and market
+blends.
+
+### Results (headline rows)
+
+| Model | Dev acc / Brier | Test acc / Brier | Walk-fwd acc / Brier |
+|---|---|---|---|
+| market (devigged DK) | 56.3% / 0.2453 | 57.7% / 0.2452 | 56.6% / **0.2449** |
+| v1 (sim-elo-v2) | 53.4% / 0.2462 | 53.5% / 0.2483 | 54.0% / **0.2460** |
+| v1 + temperature (a=0.75) | 53.4% / 0.2458 | 53.5% / 0.2476 | 54.0% / 0.2462 |
+| **v2 + temperature (a=0.60) → ships as v4** | 52.8% / 0.2467 | **57.2% / 0.2479** | **55.1% / 0.2472** |
+| v2 (sim-recent-v1) | 52.8% / 0.2480 | 57.2% / 0.2499 | 55.1% / 0.2480 |
+| blend v1×v2 (w refit) | — | — | 54.2% / 0.2465 |
+| full stacker (sim, elo, factors) | 54.7% / **0.2441** | 55.9% / 0.2471 | 53.0% / 0.2512 |
+| v2 + schedule offset layer | 54.0% / 0.2457 | 55.9% / 0.2486 | 54.8% / 0.2516 |
+| 3-logit ensemble | 51.9% / 0.2457 | 54.0% / 0.2480 | 52.9% / 0.2482 |
+| pythag-30 log5 leg (alone) | 52.6% / 0.2591 | 52.9% / 0.2574 | — |
+| v3 (sim-recent-v2) | 52.9% / 0.2483 | 55.6% / 0.2505 | — |
+| home-always-54 | 51.9% / 0.2501 | 50.3% / 0.2514 | — |
+
+### The five findings
+
+1. **v2's celebrated +3.5pp accuracy edge was partly window luck.** On dev (726 earlier
+   games) v1 out-picks v2 (53.4% vs 52.8%) and out-scores it (0.2462 vs 0.2480); on the
+   947-game walk-forward v2's edge is +1.1pp accuracy with *worse* Brier. The durable
+   picture is a trade-off, not a champion: **v1 is the best-calibrated model, v2 the best
+   picker**, and neither dominates. Rounds 4–6's frozen window flattered v2.
+2. **Fitted machinery loses out-of-sample — again.** The full stacker posts the best dev
+   *and* test Briers (0.2441 / 0.2471), then collapses to 0.2512 on walk-forward — worse
+   than everything it was built from. The offset layer and 3-logit ensemble do the same.
+   Round 2 rejected a fitted stacker at n=187; Round 7 re-confirms it at n=947 with far
+   more features. Fixed-weight blends beat fitted weights at this sample size, every time.
+3. **The context factors are a dead end.** Rest, fatigue, streaks, L10, road trips,
+   starter rest, starter recent form, day/night: standardized coefficients all land in
+   [−0.14, +0.09] with unstable signs, and adding them *hurts* walk-forward (0.2480 →
+   0.2516). The simulator + Elo already price everything these public schedule signals
+   carry. The trailing-Pythagorean leg is equally subsumed (its optimal blend weight into
+   v2 is 0.0).
+4. **Temperature calibration is the one free win.** Both models run overconfident —
+   dev-fit shrink factors a=0.75 (v1) and a=0.60 (v2), stable under walk-forward
+   refitting. Shrinking v2's probabilities toward 50% in logit space changes **zero
+   picks** (the favored team is preserved by construction) and improves its Brier on dev,
+   test (0.2499 → 0.2479) and walk-forward (0.2480 → 0.2472). It also closes most of
+   v2's calibration gap to v1 while keeping v2's accuracy lead.
+5. **The market is still the ceiling** (walk-forward 0.2449). Blending v2 into it at 20%
+   ties the market (0.2451–0.2452 test) — no public-data model here adds real information
+   to the line. The shipped odds-blend-v1 (v1×market, w=0.65) tests within noise of
+   optimal; no change warranted.
+
+### What ships (tracked, not headline)
+
+- **`sim-recent-cal-v1` — displayed as "v4"**: v2's prediction with calibrated confidence,
+  `p' = σ(0.60·logit(p))`, a frozen from dev. Same favored team as v2 on every game;
+  honest probabilities. Derived in the daily cron from v2's own build (no extra fetches)
+  and registered in `TRACKED_MODELS`, so it is stored, settled, scored and charted like
+  every other model. It is deliberately **not** a fourth bar on the game cards — its pick
+  duplicates v2's, so a card bar would be redundant; Track Record is where it proves out.
+- **`scripts/collect-backtest-data.ts` / `scripts/analyze-models.ts`** — the reusable
+  study harness (collect once ≈ 3 min thanks to a cross-date game-log cache; analysis is
+  pure math over the cache and runs in seconds). Future candidate models start from here.
+
+### Where this leaves the roadmap
+
+The cheap structural ideas are now exhausted: bullpen construction (Rounds 4–6), schedule
+context, run-differential legs, fitted ensembles (Round 7) all fail to beat what sim+Elo
+already knows. The two experiments still plausibly worth real money are the ones that add
+*new information*, not new arithmetic: a properly-built lineup/platoon offense
+(PA-weighted, handedness-aware, environment-recalibrated — not Round 4's naïve average)
+and weather/park-day effects. Meanwhile the honest live question is simply whether v2's
+accuracy edge and v4's calibration hold on games none of us have seen — which is exactly
+what the Track Record page now measures.

@@ -79,7 +79,7 @@ async function fetchTeamPitcherIds(teamId: number, asOfDate: string): Promise<nu
   }
 }
 
-interface Appearance {
+export interface Appearance {
   date: string;
   bf: number;
   gs: number;
@@ -233,6 +233,11 @@ function blendTier(
  * line.
  *
  * @param windowDays  trailing window length; omit for season-to-date.
+ * @param gameLogCache optional cross-call cache of full-season game logs keyed
+ *   by pitcher id. Game logs are date-filtered downstream (window + fatigue set),
+ *   so serving a cached full-season log is point-in-time safe. Used by the
+ *   backtest collector, which sweeps many dates in one process; the daily cron
+ *   omits it (one date per run — identical behavior to before).
  */
 export async function fetchAllBullpens(
   teamIds: number[],
@@ -240,6 +245,7 @@ export async function fetchAllBullpens(
   date: string,
   lg: BattingRates,
   windowDays?: number,
+  gameLogCache?: Map<number, Appearance[]>,
 ): Promise<Map<number, BullpenTiers | null>> {
   const endDate = addDaysISO(date, -1);
   const startDate = windowDays ? addDaysISO(date, -windowDays) : `${season}-03-01`;
@@ -260,7 +266,14 @@ export async function fetchAllBullpens(
   const logById = new Map<number, Appearance[]>();
   await batchedAll(
     Array.from(allIds).map((id) => async () => {
-      logById.set(id, await fetchPitcherGameLog(id, season));
+      const cached = gameLogCache?.get(id);
+      if (cached) {
+        logById.set(id, cached);
+        return;
+      }
+      const log = await fetchPitcherGameLog(id, season);
+      logById.set(id, log);
+      gameLogCache?.set(id, log);
     }),
     10,
   );

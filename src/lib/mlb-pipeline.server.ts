@@ -102,7 +102,13 @@ import {
 } from "./mlb-recent-form";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
-import { MODEL_VERSION_MARKET, MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
+import {
+  MODEL_VERSION_MARKET,
+  MODEL_VERSION_RECENT,
+  MODEL_VERSION_RECENT_V2,
+  MODEL_VERSION_RECENT_CAL,
+  RECENT_CAL_A,
+} from "./mlb-models";
 
 /**
  * Insert prediction rows that don't already exist for `modelVersion`,
@@ -259,6 +265,7 @@ export async function ingestAndPredict(date: string) {
   // side by side with sim-elo-v2 on Track Record so it can prove itself (or
   // not) against real settled games. Never blocks anything else.
   let newRecentPreds = 0;
+  let newRecentCalPreds = 0;
   try {
     const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
     const recentGames = await buildRecentFormPredictionsForDate(date);
@@ -283,8 +290,29 @@ export async function ingestAndPredict(date: string) {
         };
       });
     newRecentPreds = await insertFreshPredictions(recentRows, MODEL_VERSION_RECENT);
+
+    // v4 (sim-recent-cal-v1) derives from the same build: v2's probability with
+    // temperature-calibrated confidence — p' = σ(RECENT_CAL_A·logit(p)). Same
+    // favored team on every game, honest probabilities (Round 7,
+    // MODEL-ANALYSIS.md). No extra fetches; rides inside v2's try block because
+    // it cannot exist without v2's numbers.
+    const calRows = recentRows.map((row) => {
+      const p = Math.min(0.99, Math.max(0.01, row.home_win_prob));
+      const cal = 1 / (1 + Math.exp(-RECENT_CAL_A * Math.log(p / (1 - p))));
+      return {
+        ...row,
+        model_version: MODEL_VERSION_RECENT_CAL,
+        home_win_prob: Number(cal.toFixed(4)),
+        away_win_prob: Number((1 - cal).toFixed(4)),
+        rationale: [
+          `v2's prediction with calibrated confidence: σ(${RECENT_CAL_A}·logit(${(row.home_win_prob * 100).toFixed(1)}%)) → ${(cal * 100).toFixed(1)}%`,
+          ...(Array.isArray(row.rationale) ? row.rationale : []),
+        ],
+      };
+    });
+    newRecentCalPreds = await insertFreshPredictions(calRows, MODEL_VERSION_RECENT_CAL);
   } catch (err) {
-    console.error("[ingestAndPredict] sim-recent-v1 predictions failed:", err);
+    console.error("[ingestAndPredict] sim-recent-v1/cal predictions failed:", err);
   }
 
   // Experimental: sim-recent-v2 (shown as "v3") — the sim-recent line's next
@@ -421,6 +449,7 @@ export async function ingestAndPredict(date: string) {
     newPredictions: newPreds,
     newSimPredictions: newSimPreds,
     newRecentPredictions: newRecentPreds,
+    newRecentCalPredictions: newRecentCalPreds,
     newRecentV2Predictions: newRecentV2Preds,
     newBlendPredictions: newBlendPreds,
     newMarketPredictions: newMarketPreds,

@@ -41,6 +41,22 @@ export const MODEL_VERSION_RECENT = "sim-recent-v1";
  */
 export const MODEL_VERSION_RECENT_V2 = "sim-recent-v2";
 
+/**
+ * Experimental: v2 (sim-recent-v1) with temperature-calibrated confidence.
+ * The Round-7 study (1,102 games, dev/test + walk-forward; MODEL-ANALYSIS.md)
+ * found v2 systematically overconfident: shrinking every probability toward
+ * 50% in logit space by a fixed a = 0.60 — p' = σ(0.60·logit(p)) — left every
+ * pick identical while improving Brier on the dev set, the frozen test set
+ * (0.2499 → 0.2479) and the 947-game walk-forward (0.2480 → 0.2472). It is a
+ * calibration of v2, not a new signal: same favored team every game, honest
+ * confidence. Tracked side by side so live results confirm (or refute) the
+ * calibration before anything relies on it.
+ */
+export const MODEL_VERSION_RECENT_CAL = "sim-recent-cal-v1";
+
+/** Fitted on the Round-7 dev window (Apr 20 – Jun 13), frozen. */
+export const RECENT_CAL_A = 0.6;
+
 /** The primary/headline model's stored version key (defined in mlb-sim.ts as MODEL_VERSION_SIM). */
 export const MODEL_VERSION_HEADLINE = "sim-elo-v2";
 
@@ -54,6 +70,7 @@ export const MODEL_LABELS: Record<string, string> = {
   [MODEL_VERSION_HEADLINE]: "v1",
   [MODEL_VERSION_RECENT]: "v2",
   [MODEL_VERSION_RECENT_V2]: "v3",
+  [MODEL_VERSION_RECENT_CAL]: "v4",
 };
 
 /** Display order and labels for every tracked model. */
@@ -72,6 +89,11 @@ export const TRACKED_MODELS: Array<{ version: string; label: string; note: strin
     version: MODEL_VERSION_RECENT_V2,
     label: "v3",
     note: "sim-recent-v2 — v2 with a leverage-tiered relievers-only bullpen",
+  },
+  {
+    version: MODEL_VERSION_RECENT_CAL,
+    label: "v4",
+    note: "v2 with calibrated confidence (same picks, honest probabilities) — Round 7",
   },
   {
     version: MODEL_VERSION_BLEND,
