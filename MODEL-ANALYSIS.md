@@ -542,3 +542,61 @@ already knows. The two experiments still plausibly worth real money are the ones
 and weather/park-day effects. Meanwhile the honest live question is simply whether v2's
 accuracy edge and v4's calibration hold on games none of us have seen — which is exactly
 what the Track Record page now measures.
+
+---
+
+## Round 8 — the edge hunt: five attacks on the sportsbook line (verdict: no edge)
+
+*Study run 2026-07-14. Market sample extended with a light early-season collector
+(`scripts/collect-market-history.ts`) to **1,429 games with stored DraftKings lines**
+(Mar 26 → Jul 11; ESPN purges prior-season odds, so 2025 was unavailable). All five
+attacks in `scripts/hunt-edge.ts`. Pre-committed bar for claiming an edge: walk-forward
+ROI > 0 with a 90% bootstrap CI excluding zero AND the same sign in both date-halves —
+or walk-forward Brier ≤ market − 0.001.*
+
+**1 · Devig shootout.** Proportional (shipped) 0.2464 Brier vs power 0.2466 vs Shin
+0.2476 on 1,429 games. The simple normalization is already the best transform of the
+book's own numbers — no free win from fancier vig removal. Shipped code stays.
+
+**2 · Bias scan.** Nine classic pockets (favorite/underdog levels, home/away, day/night,
+coin flips): every flat-bet ROI is negative or CI-straddles zero. The only two CIs that
+exclude zero are *negative* — home favorites −5.5% [−10.0, −1.0] and home sides at night
+−8.0% [−13.5, −2.0] — which is the vig plus this season's weak home-field showing, not an
+exploitable bias (the mirror bets net ≈ −1% after vig). No pocket survives split-half.
+
+**3 · Dixon-Coles.** The time-decayed attack/defense Poisson family that historically
+found soccer-market edges, ported to MLB and refit walk-forward daily (dev-selected: no
+decay, heavy temperature a=0.4 — raw Poisson is overconfident). Test Brier **0.2493** vs
+market 0.2459 and our own sims ~0.248. Without pitcher information it is strictly
+dominated; as a residual feature its coefficient is −0.037 (nothing).
+
+**4 · The residual information test — the decisive one.** Walk-forward logistic with the
+market as a fixed offset and everything we have as features (v1/v2/Elo/DC disagreement
+with the line, sim spread, rest, starter rest): market alone **0.2463**; market plus our
+signals **0.2479**. Adding our full information set makes the market *worse* — every
+coefficient lands in ±0.09 standardized (noise). The line already prices everything this
+codebase knows.
+
+**5 · Betting rules.** Vig-inclusive EV thresholds (t = 0, 0.03, 0.06) for v1, v2, v4 and
+DC — twelve rules, 328–840 bets each: every 90% CI straddles zero (best nominal: v4 at
+t=0.06, +1.7% [−8.0, +11.2] — one of twelve, i.e., exactly what multiple comparisons
+predict). Nothing meets the bar.
+
+### Verdict
+
+**No edge found, on any front.** The pre-committed bar was met by zero of the five
+attacks. The book's ~4.5% vig is the moat: even a model that ties the market on
+probability quality (our blends do) loses ~4–5% betting into it. Honest scope caveats:
+one book (DK via ESPN), one line snapshot per game (near-closing), one season window
+(n=1,429), and no access to the places real edges live — line-shopping across books,
+opener-vs-closer timing, and injury/lineup news latency. Within what public data can see,
+this market is efficient.
+
+### What this round leaves behind
+
+- `scripts/collect-market-history.ts` + `scripts/hunt-edge.ts` — a permanent, reusable
+  edge-testing harness with the honesty guardrails built in (bootstrap CIs, split-half,
+  pre-committed bar). Any future "I think X beats the book" starts as one function here.
+- Nothing ships to the product; the pipeline is untouched. The tracked models (v1–v4)
+  remain the honest offering: probability quality on par with the market, no betting
+  claims.
