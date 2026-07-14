@@ -287,12 +287,12 @@ export async function ingestAndPredict(date: string) {
     console.error("[ingestAndPredict] sim-recent-v1 predictions failed:", err);
   }
 
-  // Experimental: sim-recent-v2 — the sim-recent line's next iteration. Same
-  // trailing-form engine as sim-recent-v1, with the bullpen upgraded to the
-  // smart relievers-only line (leverage-weighted, fatigue-adjusted, DIPS-
-  // stabilized; src/lib/mlb-bullpen.ts + mlb-recent-form.ts). Falls back to the
-  // v1 full-staff line when the pen sample is too thin. Tracked side by side
-  // with sim-recent-v1 and sim-elo-v2; never blocks anything else.
+  // Experimental: sim-recent-v2 (shown as "v3") — the sim-recent line's next
+  // iteration. Same trailing-form engine as sim-recent-v1, with the bullpen
+  // upgraded to a leverage-TIERED relievers-only pen the sim deploys by game
+  // state (closer/setup/middle; src/lib/mlb-bullpen.ts + mlb-recent-form.ts).
+  // Falls back to the full-staff line when the pen sample is too thin. Tracked
+  // side by side with v1/v2; never blocks anything else.
   let newRecentV2Preds = 0;
   try {
     const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
