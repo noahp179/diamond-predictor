@@ -655,3 +655,64 @@ sharp order flow, line movement). Nothing promotes this round; v5 stays a study 
 (`mlb-lineup.ts` is production-quality if a lineup-aware display model is ever wanted).
 The honest next frontier is not another algorithm — it is *data the market prices late*,
 which public APIs do not carry.
+
+---
+
+## Round 10 — invented stats: nine manufactured signals vs the line (verdict: one live lead, no edge)
+
+*Study run 2026-07-14. New harness: `scripts/collect-novel-stats.ts` manufactures nine
+signals that don't exist in standard aggregates — chosen because the market could
+plausibly price them late — and `scripts/analyze-round10.ts` judges them three ways:
+univariate correlation with the market residual (bootstrap CIs), a walk-forward
+multivariate on top of the line, and 14 flat-bet pocket strategies at real prices.
+Sample: 1,078 games with lines + all signals. Edge bar unchanged (CI excluding zero AND
+same-sign halves).*
+
+The stats invented (all strictly point-in-time):
+
+| Signal | Construction | Hypothesis |
+|---|---|---|
+| **veloDelta** | starter's first-inning FF/SI velocity, last start vs his own prior mean (Statcast; inning-1 pitches are starters by construction) | velo drops precede bad outings/injury — news the line prices late |
+| **luck21** | actual runs (21d) minus BaseRuns-expected runs from the same window's raw events | sequencing-lucky teams regress |
+| **pythagLuck** | season W% − Pythagorean W% | run-profile luck regresses |
+| **oneRunLuck** | one-run-game win% − overall win% | coin-flip-game luck regresses |
+| **tzShift / km72h / getaway** | park-coordinate travel: zones crossed, km flown in 72h, night-game→day-game-after-travel | fatigue the line ignores |
+| **down02** | lost first 2+ of the current series | sweep-avoidance psychology |
+| **penBF2d** | bullpen batters faced, last 2 days (from 1,146 boxscores; everyone after the first pitcher is pen) | gassed pens lose late leads |
+
+### Results
+
+**Univariate vs the market residual:** every CI includes zero. The largest correlation —
+and the only one leaning anywhere — is **veloDelta (r = +0.051, CI [−0.013, +0.117])**.
+**Multivariate walk-forward:** market alone 0.2447; market + all nine stats 0.2476
+(worse — same overfit pattern as Rounds 7–9). **Pocket strategies:** eleven of fourteen
+are flat or negative; the luck-fade family actively loses (the market already prices
+regression); consensus rules are dead. The only positive pockets are both velocity rules:
+
+| Strategy | n | Win% | ROI | 90% CI | Halves |
+|---|---|---|---|---|---|
+| back velo-GAIN starter (≥+1.0 mph) | 200 | 59.5% | **+9.4%** | [−1.3, +20.1] | same sign |
+| fade velo-DROP starter (≤−1.0 mph) | 161 | 56.5% | **+8.4%** | [−3.4, +21.4] | same sign |
+| *post-hoc pooled (diff ≥ 1.0)* | 232 | 55.6% | +5.2% | [−4.7, +16.0] | +12.8% → +0.2% |
+
+### The honest read on velocity
+
+It is the single most promising signal of the whole program: pre-nominated on theory
+before any data was seen, positive in both directions (symmetric, as a real effect should
+be), the largest univariate lean, the largest positive multivariate coefficient, and the
+only strategies with same-sign halves. It is also **not an edge by the pre-committed
+bar**: every CI includes zero, the pooled rule decays in the second half, and it emerged
+alongside thirteen dead strategies. Two hundred bets cannot distinguish +9% skill from
+luck; roughly a full remaining season of tracking could. **Disposition: pre-registered,
+not promoted.** The rule as frozen here — flat bet backing the side whose starter's
+first-inning velocity trend leads by ≥1.0 mph — is written down *now*, before any further
+data, so a future live evaluation is clean. Wiring it into the daily pipeline would add a
+Statcast dependency to the cron; that is a product decision, not taken unilaterally.
+
+### Program status after Round 10
+
+Ten rounds, every public signal reachable: model structure (Rounds 4–7), the market
+itself (8), lineups and weather (9), and nine manufactured stats (10). Final tally —
+**one model improvement shipped** (v4 calibration), **one live lead pre-registered**
+(starter velocity), **zero edges claimed**. The line's remaining advantage is private
+information and the vig; everything public is priced.
