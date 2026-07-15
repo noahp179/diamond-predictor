@@ -41,6 +41,22 @@ export const MODEL_VERSION_RECENT = "sim-recent-v1";
  */
 export const MODEL_VERSION_RECENT_V2 = "sim-recent-v2";
 
+/**
+ * Experimental: the sim-recent line's other branch. sim-lineup-v1 keeps
+ * everything sim-recent-v1 does (trailing-window team form + trailing starter +
+ * multi-season Elo, full-staff pen) and upgrades ONE input — the offense — from
+ * the trailing team-aggregate line to the nine hitters in tonight's posted
+ * batting order: PA-weighted by lineup slot, platoon-tilted by each hitter's
+ * hand vs the starter's, and level-recalibrated so the league-mean lineup
+ * reproduces the team-aggregate run environment the engine is tuned for
+ * (src/lib/mlb-lineup.ts). This is the properly-built version of the naïve
+ * lineup average that lost in Round 4. Falls back to the trailing team line per
+ * side when no lineup is posted (early cron) or too few hitters resolve. One
+ * isolated change onto sim-recent-v1 — the "actual lineups" headroom lever.
+ * See src/lib/mlb-recent-form.ts. Backtest: scripts/backtest-shadow-models.ts.
+ */
+export const MODEL_VERSION_LINEUP = "sim-lineup-v1";
+
 /** The primary/headline model's stored version key (defined in mlb-sim.ts as MODEL_VERSION_SIM). */
 export const MODEL_VERSION_HEADLINE = "sim-elo-v2";
 
@@ -72,6 +88,11 @@ export const TRACKED_MODELS: Array<{ version: string; label: string; note: strin
     version: MODEL_VERSION_RECENT_V2,
     label: "v3",
     note: "sim-recent-v2 — v2 with a leverage-tiered relievers-only bullpen",
+  },
+  {
+    version: MODEL_VERSION_LINEUP,
+    label: "v4",
+    note: "sim-lineup-v1 — v2 with a PA-weighted, platoon-aware lineup offense",
   },
   {
     version: MODEL_VERSION_BLEND,

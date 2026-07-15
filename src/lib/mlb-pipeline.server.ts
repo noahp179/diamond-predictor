@@ -99,10 +99,16 @@ import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
 import {
   buildRecentFormPredictionsForDate,
   buildRecentFormV2PredictionsForDate,
+  buildLineupPredictionsForDate,
 } from "./mlb-recent-form";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
-import { MODEL_VERSION_MARKET, MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
+import {
+  MODEL_VERSION_MARKET,
+  MODEL_VERSION_RECENT,
+  MODEL_VERSION_RECENT_V2,
+  MODEL_VERSION_LINEUP,
+} from "./mlb-models";
 
 /**
  * Insert prediction rows that don't already exist for `modelVersion`,
@@ -322,6 +328,42 @@ export async function ingestAndPredict(date: string) {
     console.error("[ingestAndPredict] sim-recent-v2 predictions failed:", err);
   }
 
+  // Experimental: sim-lineup-v1 (shown as "v4") — the sim-recent line's other
+  // branch. Same trailing-form engine as sim-recent-v1, with the OFFENSE upgraded
+  // from the trailing team-aggregate line to the nine hitters in tonight's posted
+  // order: PA-weighted by slot, platoon-tilted vs the starter's hand, and
+  // level-recalibrated to the team run environment (mlb-lineup.ts + mlb-recent-
+  // form.ts). Before lineups post (early cron), a game falls back to the team
+  // line and this equals sim-recent-v1 for it. Tracked side by side; never blocks.
+  let newLineupPreds = 0;
+  try {
+    const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
+    const lineupGames = await buildLineupPredictionsForDate(date);
+    const lineupRows = lineupGames
+      .filter((g) => predictableIds.has(g.gameId))
+      .map((g) => {
+        const base = baselineByGameId.get(g.gameId);
+        return {
+          game_id: g.gameId,
+          model_version: MODEL_VERSION_LINEUP,
+          home_win_prob: Number(g.ensembleProb.toFixed(4)),
+          away_win_prob: Number((1 - g.ensembleProb).toFixed(4)),
+          home_win_pct: base ? Number(base.home.winPct.toFixed(4)) : null,
+          away_win_pct: base ? Number(base.away.winPct.toFixed(4)) : null,
+          home_pitcher_id: base?.home.pitcher?.id ?? null,
+          home_pitcher_name: base?.home.pitcher?.name ?? null,
+          home_pitcher_era: base?.home.pitcher?.era ?? null,
+          away_pitcher_id: base?.away.pitcher?.id ?? null,
+          away_pitcher_name: base?.away.pitcher?.name ?? null,
+          away_pitcher_era: base?.away.pitcher?.era ?? null,
+          rationale: g.rationale,
+        };
+      });
+    newLineupPreds = await insertFreshPredictions(lineupRows, MODEL_VERSION_LINEUP);
+  } catch (err) {
+    console.error("[ingestAndPredict] sim-lineup-v1 predictions failed:", err);
+  }
+
   // Real market odds (ESPN, free/keyless). Best-effort and never blocks game
   // or prediction ingestion — odds may not be posted yet for far-future dates,
   // and the endpoint is unofficial.
@@ -422,6 +464,7 @@ export async function ingestAndPredict(date: string) {
     newSimPredictions: newSimPreds,
     newRecentPredictions: newRecentPreds,
     newRecentV2Predictions: newRecentV2Preds,
+    newLineupPredictions: newLineupPreds,
     newBlendPredictions: newBlendPreds,
     newMarketPredictions: newMarketPreds,
     newOdds,

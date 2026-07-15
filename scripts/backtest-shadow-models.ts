@@ -8,17 +8,21 @@
  *   npx tsx scripts/backtest-shadow-models.ts [--start YYYY-MM-DD] [--end YYYY-MM-DD]
  *                                             [--sims 3000] [--out results.json]
  *
- * Three models, same engine, compared on identical games (production seeds):
+ * Four models, same engine, compared on identical games (production seeds):
  *   sim-elo-v2      headline — season-to-date team rates + season starter    (seed 1000    + pk)
  *   sim-recent-v1   trailing-window team form + trailing starter             (seed 2000000 + pk)
- *   sim-recent-v2   sim-recent-v1 + the SMART relievers-only pen             (seed 5000000 + pk)
+ *   sim-recent-v2   sim-recent-v1 + the TIERED relievers-only pen            (seed 5000000 + pk)
+ *   sim-lineup-v1   sim-recent-v1 + the LINEUP/PLATOON offense               (seed 7000000 + pk)
  *
- * sim-recent-v2 folds the recommended bullpen upgrades (leverage weighting,
- * fatigue/availability, DIPS peripheral stabilization; mlb-bullpen.ts) onto the
- * recent-form model — one model, the evolution of sim-recent, not a separate
- * algorithm. Every input is reconstructed with no lookahead (Elo replayed to
- * each morning; all rates end the day before; the pen from relief-role arms
- * over a trailing window, leverage/fatigue-weighted).
+ * sim-recent-v2 (Rounds 4-6) folds the recommended bullpen upgrades onto the
+ * recent-form model. sim-lineup-v1 (Round 7) instead swaps the offense: the
+ * trailing team-aggregate line is replaced by the nine hitters in tonight's
+ * posted order, PA-weighted by slot, platoon-tilted vs the starter's hand, and
+ * level-recalibrated to the team-aggregate run environment (mlb-lineup.ts) —
+ * the properly-built version of the naïve lineup average that lost in Round 4.
+ * Each is one isolated change onto sim-recent-v1. Every input is reconstructed
+ * with no lookahead (Elo replayed to each morning; all rates end the day before;
+ * lineups are tonight's posted orders; handedness is static).
  *
  * Read-only. Never writes to any database.
  */
@@ -40,6 +44,7 @@ import {
   fetchStarterInfoRecent,
 } from "../src/lib/mlb-recent-form";
 import { fetchAllBullpens } from "../src/lib/mlb-bullpen";
+import { fetchLineupOffenseForDate, type LineupGameRef } from "../src/lib/mlb-lineup";
 import { STATS_API, fetchWithTimeout, batchedAll } from "../src/lib/mlb-core";
 
 const PEN_WINDOW_DAYS = 30; // must match mlb-recent-form.ts
@@ -227,8 +232,10 @@ interface Scored {
   y: number;
   pElo2: number; // sim-elo-v2 (headline)
   pRec1: number; // sim-recent-v1
-  pRec2: number; // sim-recent-v2 (form + smart pen)
+  pRec2: number; // sim-recent-v2 (form + tiered pen)
+  pLineup: number; // sim-lineup-v1 (form + lineup/platoon offense)
   usedPen: boolean; // a smart reliever line was used for at least one side
+  usedLineup: boolean; // a lineup-derived offense line was used for at least one side
 }
 
 async function main() {
@@ -281,8 +288,22 @@ async function main() {
     }
     const startersSeason = new Map<number, StarterInfo | null>();
     const startersRecent = new Map<number, StarterInfo | null>();
-    const [relievers] = await Promise.all([
+
+    // sim-lineup-v1's upgraded input: the lineup-derived offense, recalibrated
+    // against the same trailing team-batting map sim-recent-v1 uses.
+    const teamAggRecent = new Map<number, BattingRates | null>();
+    for (const [id, r] of teamRatesRecent) teamAggRecent.set(id, r.batting);
+    const lineupRefs: LineupGameRef[] = day.map((g) => ({
+      gamePk: g.gamePk,
+      homeId: g.homeId,
+      awayId: g.awayId,
+      homeStarterId: g.hp,
+      awayStarterId: g.ap,
+    }));
+
+    const [relievers, lineupByGame] = await Promise.all([
       fetchAllBullpens(teamIds, season, date, lg, PEN_WINDOW_DAYS),
+      fetchLineupOffenseForDate(lineupRefs, season, date, lg, teamAggRecent),
       batchedAll(
         Array.from(pitcherIds).map((id) => async () => {
           startersSeason.set(id, await fetchStarterInfoAsOf(id, season, before, lg));
@@ -351,6 +372,26 @@ async function main() {
         nSims,
         5_000_000 + g.gamePk,
       );
+      // sim-lineup-v1: recent form + LINEUP/PLATOON offense (fallback to the v1
+      // recent team line per side), recent starter, recent full-staff pen (like
+      // v1). Isolates exactly the offense source. seed 7000000+pk.
+      const lu = lineupByGame.get(g.gamePk);
+      const homeLineup = lu?.home ?? null;
+      const awayLineup = lu?.away ?? null;
+      const pS4 = simulateMatchup(
+        {
+          homeBatting: homeLineup ?? hRecent.batting ?? lg,
+          awayBatting: awayLineup ?? aRecent.batting ?? lg,
+          homeStarter: (g.hp && startersRecent.get(g.hp)) || null,
+          awayStarter: (g.ap && startersRecent.get(g.ap)) || null,
+          homeStaff: reshapeStaff(hRecent.staff, lg),
+          awayStaff: reshapeStaff(aRecent.staff, lg),
+          league: lg,
+          venue: g.venue,
+        },
+        nSims,
+        7_000_000 + g.gamePk,
+      );
 
       scored.push({
         gamePk: g.gamePk,
@@ -359,7 +400,9 @@ async function main() {
         pElo2: ensemble(pS1, pElo),
         pRec1: ensemble(pS2, pElo),
         pRec2: ensemble(pS3, pElo),
+        pLineup: ensemble(pS4, pElo),
         usedPen: hPen != null || aPen != null,
+        usedLineup: homeLineup != null || awayLineup != null,
       });
     }
     const pen = day.filter((g) => (relievers.get(g.homeId) ?? relievers.get(g.awayId)) != null).length;
@@ -378,6 +421,7 @@ async function main() {
   fmt("sim-elo-v2 (headline)", metrics(pairs((s) => s.pElo2)));
   fmt("sim-recent-v1", metrics(pairs((s) => s.pRec1)));
   fmt("sim-recent-v2", metrics(pairs((s) => s.pRec2)));
+  fmt("sim-lineup-v1", metrics(pairs((s) => s.pLineup)));
   fmt("home-always-54", metrics(pairs(() => 0.54)));
 
   const penSet = scored.filter((s) => s.usedPen);
@@ -386,20 +430,37 @@ async function main() {
   fmt("sim-recent-v1", metrics(pairs((s) => s.pRec1, penSet)));
   fmt("sim-recent-v2", metrics(pairs((s) => s.pRec2, penSet)));
 
-  const flips = (f: (s: Scored) => number) => {
+  const lineupSet = scored.filter((s) => s.usedLineup);
+  console.log(`\n═══ Games where a lineup-derived offense was actually built (n=${lineupSet.length}) ═══`);
+  fmt("sim-elo-v2", metrics(pairs((s) => s.pElo2, lineupSet)));
+  fmt("sim-recent-v1", metrics(pairs((s) => s.pRec1, lineupSet)));
+  fmt("sim-lineup-v1", metrics(pairs((s) => s.pLineup, lineupSet)));
+
+  // Disagreement vs a base pick: how often the challenger flips the base's pick,
+  // and how often that flip is correct (a real complementary-signal test).
+  const flips = (base: (s: Scored) => number, chal: (s: Scored) => number, set = scored) => {
     let disagree = 0, right = 0;
-    for (const s of scored) {
-      if ((s.pElo2 >= 0.5) !== (f(s) >= 0.5)) {
+    for (const s of set) {
+      if ((base(s) >= 0.5) !== (chal(s) >= 0.5)) {
         disagree++;
-        if ((f(s) >= 0.5 ? 1 : 0) === s.y) right++;
+        if ((chal(s) >= 0.5 ? 1 : 0) === s.y) right++;
       }
     }
     return { disagree, right };
   };
-  const f1 = flips((s) => s.pRec1), f2 = flips((s) => s.pRec2);
+  const f1 = flips((s) => s.pElo2, (s) => s.pRec1);
+  const f2 = flips((s) => s.pElo2, (s) => s.pRec2);
+  const f3 = flips((s) => s.pElo2, (s) => s.pLineup);
   console.log(`\nvs the headline sim-elo-v2 pick:`);
   console.log(`  sim-recent-v1 disagreed on ${f1.disagree} games, right on ${f1.right}`);
   console.log(`  sim-recent-v2 disagreed on ${f2.disagree} games, right on ${f2.right}`);
+  console.log(`  sim-lineup-v1 disagreed on ${f3.disagree} games, right on ${f3.right}`);
+  // The key Round 7 question: does the lineup offense out-pick its own parent, v1?
+  const f4 = flips((s) => s.pRec1, (s) => s.pLineup);
+  console.log(`vs its parent sim-recent-v1 pick:`);
+  console.log(`  sim-lineup-v1 disagreed on ${f4.disagree} games, right on ${f4.right}`);
+  const f4l = flips((s) => s.pRec1, (s) => s.pLineup, lineupSet);
+  console.log(`  (on the ${lineupSet.length} lineup-built games: disagreed on ${f4l.disagree}, right on ${f4l.right})`);
 
   const outIdx = process.argv.indexOf("--out");
   if (outIdx > 0 && process.argv[outIdx + 1]) {
@@ -416,12 +477,19 @@ async function main() {
             simEloV2: metrics(pairs((s) => s.pElo2)),
             simRecentV1: metrics(pairs((s) => s.pRec1)),
             simRecentV2: metrics(pairs((s) => s.pRec2)),
+            simLineupV1: metrics(pairs((s) => s.pLineup)),
           },
           penSet: {
             n: penSet.length,
             simEloV2: metrics(pairs((s) => s.pElo2, penSet)),
             simRecentV1: metrics(pairs((s) => s.pRec1, penSet)),
             simRecentV2: metrics(pairs((s) => s.pRec2, penSet)),
+          },
+          lineupSet: {
+            n: lineupSet.length,
+            simEloV2: metrics(pairs((s) => s.pElo2, lineupSet)),
+            simRecentV1: metrics(pairs((s) => s.pRec1, lineupSet)),
+            simLineupV1: metrics(pairs((s) => s.pLineup, lineupSet)),
           },
           games: scored,
         },

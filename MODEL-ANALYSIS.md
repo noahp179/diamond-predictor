@@ -446,3 +446,120 @@ comes from *recent-form team rates*, not the bullpen. If the goal is accuracy, t
 experiment worth running is the properly-built lineup/platoon offense (not the naïve average
 that failed in Round 4), or simply promoting sim-recent-v1 to a longer live trial. All three
 models stay tracked; none is promoted.
+
+---
+
+## Round 7 — a *properly-built* lineup/platoon offense (`sim-lineup-v1`)
+
+*Backtest run 2026-07-15 (`scripts/backtest-shadow-models.ts`) on the same two 14-day windows
+as Rounds 4–6 (191 + 185 = 376 settled games), same point-in-time discipline and production
+seeds. **This is the first round validated against the live MLB Stats API rather than shipped
+unvalidated** — every prior round shipped with the caveat "statsapi blocked in the sandbox,"
+so before building anything new the harness was re-run and it reproduces the stored Rounds 4–6
+pooled figures to the digit (sim-recent-v1 57.2% / 0.2499; sim-recent-v2 55.3% / 0.2504),
+confirming both the harness and those findings. The Round 7 engine change touched only the new
+offense path — the other three models reproduce exactly.*
+
+Round 2 named actual lineups the single biggest piece of remaining headroom; Round 4 built the
+naïve version — average the nine hitters' regressed per-PA rates with equal weight — and it
+LOST to the plain team line (50.3% / 0.2524). The post-mortem named two causes. Round 7
+rebuilds the offense (`src/lib/mlb-lineup.ts`) fixing both, and adds the one signal a team
+aggregate structurally cannot see:
+
+- **#1 PA-weighting by lineup slot.** The equal-weight average shrank the offense's spread;
+  weighting each hitter by the plate appearances his slot sees (leadoff bats ~0.8 more times
+  than the 9-hole) restores the top-of-order emphasis the team aggregate already carries.
+- **#2 Run-environment recalibration.** The engine's `OFFENSE_CAL` / `HOME_BOOST` were tuned
+  against the *team-aggregate* line, so a differently-leveled lineup line runs through the wrong
+  R/G. Every lineup line is rescaled by a single per-event global scalar so the league-mean
+  lineup reproduces the league-mean team line — re-pinning the run environment the engine
+  expects while preserving each team's relative deviation. This is the direct fix for Round 4's
+  named miscalibration.
+- **#3 Platoon (the new signal).** Each hitter is tilted by a league platoon multiplier keyed
+  on his batting hand vs the starter's throwing hand, damped by the starter's PA share (the pen
+  is mixed-handed). statsapi's `statSplits` ignores date ranges — a hitter's own vL/vR
+  mid-season would leak the future — and individual platoon skill needs ~1000+ PA to stabilize,
+  so the league-by-handedness multiplier is *both* the point-in-time-clean and the
+  properly-regressed choice. It captures tonight's lineup CONSTRUCTION against tonight's starter
+  (a lefty-stacked order vs a LHP), which the aggregate cannot.
+
+Everything else is sim-recent-v1 exactly (trailing team pitching + trailing starter + full-staff
+pen + multi-season Elo); the offense source is the only change, with a per-side fallback to the
+trailing team line when no lineup is posted or too few hitters resolve.
+
+### Results
+
+| Window | Model | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|---|
+| **Jun 28 – Jul 11 (n=191)** | sim-elo-v2 | 56.5% | **0.2437** | **0.6808** |
+| | sim-recent-v1 | **60.2%** | 0.2467 | 0.6872 |
+| | sim-lineup-v1 | 57.6% | 0.2484 | 0.6904 |
+| **Jun 14 – Jun 27 (n=185)** | sim-recent-v1 | **54.1%** | 0.2531 | 0.6997 |
+| | sim-lineup-v1 | 52.4% | **0.2500** | **0.6931** |
+| | sim-elo-v2 | 50.3% | 0.2531 | 0.6996 |
+| **Pooled (n=376)** | sim-elo-v2 | 53.5% | **0.2483** | **0.6901** |
+| | **sim-recent-v1** | **57.2%** | 0.2499 | 0.6933 |
+| | sim-lineup-v1 | 55.1% | 0.2492 | 0.6917 |
+| | sim-recent-v2 | 55.3% | 0.2504 | 0.6943 |
+
+### The lineup progression (pooled, n=376)
+
+| lineup offense | Acc | Brier ↓ |
+|---|---|---|
+| Round 4 — naïve equal-weight average | 50.3% | 0.2524 |
+| **Round 7 — PA-weighted + platoon + recalibrated** | **55.1%** | **0.2492** |
+
+### Read
+
+- **Building it properly fixed Round 4 — decisively.** +4.8pp accuracy and Brier 0.2524 →
+  **0.2492**. The two named failure causes were real: PA-weighting and the run-environment
+  recalibration recover almost all of the loss, and sim-lineup-v1 is now the **best-Brier of the
+  three recent-form branches** (0.2492 vs sim-recent-v1 0.2499, sim-recent-v2 0.2504) — the
+  second-best-calibrated model overall, behind only the headline. In window B it posts the best
+  Brier of *any* sim model (0.2500). The properly-built lineup is a genuine calibration win.
+- **But it still does not surpass sim-recent-v1 on the pick.** v1 keeps the accuracy edge
+  (57.2 vs 55.1), and when the lineup offense moves a pick off v1 it is right only **15/38
+  (39%)** — worse than a coin flip, no complementary pick signal. Against the headline it flips
+  70 picks and wins 38 (54%), a shade better than sim-recent-v2's disagreement record but not a
+  real edge.
+
+This is the **same frontier the bullpen reached in Rounds 4–6**, approached from the other
+direction: doing the "biggest headroom" input *right* sharpens the probability (Brier ↓, the
+naïve version's damage undone) without moving the pick to a better place. At game-outcome
+granularity the starter + Elo + team-level offense already carry most of the signal; *which*
+nine bats and how they platoon against tonight's starter refines the **confidence** more than
+the **call**.
+
+### What shipped (tracked, not promoted)
+
+- **`src/lib/mlb-lineup.ts`** — rewritten from the naïve Round 4 averager into the proper
+  builder: PA-weighted by slot, platoon-tilted by handedness vs the starter, level-recalibrated
+  to the team run environment, point-in-time and lookahead-free (handedness is static; lineups
+  are tonight's posted orders; rates end the day before).
+- **`src/lib/mlb-recent-form.ts`** — `buildLineupPredictionsForDate`, the `sim-lineup-v1` model:
+  the sim-recent-v1 engine with the offense swapped to the lineup line (per-side fallback to the
+  team line).
+- **`src/lib/mlb-models.ts`** — `sim-lineup-v1` registered in `TRACKED_MODELS` (display label
+  "v4"), so Track Record scores and charts it beside the others automatically.
+- **`src/lib/mlb-pipeline.server.ts`** — the daily cron shadow-writes `sim-lineup-v1` (guarded,
+  best-effort). Before lineups post it falls back to the team line and equals sim-recent-v1 for
+  those games, sharpening as lineups drop.
+- **`scripts/backtest-shadow-models.ts`** — extended to a fourth model, with a lineup-built
+  subset breakdown and a v1-vs-lineup flip test. Reproducible:
+  `NODE_USE_ENV_PROXY=1 npx tsx scripts/backtest-shadow-models.ts --start … --end … --sims 3000`.
+
+### Conclusion
+
+Both levers Round 2 named as the biggest remaining headroom — a real bullpen and actual lineups
+— have now been built properly (Round 6 tiered pen; Round 7 PA-weighted platoon lineup) and both
+land in the same place: **parity on Brier, no accuracy edge over plain recent-form.**
+sim-lineup-v1 earns its spot in the tracked set — it is the best-calibrated recent-form branch
+and the only one to improve Brier over sim-recent-v1 — but it is not promoted. **`sim-recent-v1`
+remains the model to watch:** across Rounds 4–7 its accuracy edge over the headline (57.2% vs
+53.5%, right 58% on disagreements) is the one durable, un-beaten signal, and it comes from
+recent-form *team* rates, not from the structural offense/pen detail. The remaining untried
+levers (individual platoon skill via prior-season splits to stay point-in-time-clean; a lineup
+line *blended* with the team aggregate rather than replacing it; weather/umpires) are
+lower-probability than the frontier they'd be trying to clear. All models stay tracked; none is
+promoted — the honest next step is a longer live trial of sim-recent-v1, not another structural
+input.

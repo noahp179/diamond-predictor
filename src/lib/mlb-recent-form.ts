@@ -39,9 +39,10 @@ import {
   type TeamRates,
 } from "./mlb-sim";
 import { fetchAllBullpens } from "./mlb-bullpen";
-import { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 } from "./mlb-models";
+import { fetchLineupOffenseForDate, type LineupGameRef } from "./mlb-lineup";
+import { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2, MODEL_VERSION_LINEUP } from "./mlb-models";
 
-export { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2 };
+export { MODEL_VERSION_RECENT, MODEL_VERSION_RECENT_V2, MODEL_VERSION_LINEUP };
 
 const TEAM_WINDOW_DAYS = 21; // offense/bullpen trailing form
 const STARTER_WINDOW_DAYS = 45; // ~6-9 starts
@@ -433,6 +434,139 @@ export async function buildRecentFormV2PredictionsForDate(
       usedReliever: homePen != null || awayPen != null,
       rationale: [
         `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, leverage-tiered relievers-only pen, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
+        `Elo ${homeElo.toFixed(0)} vs ${awayElo.toFixed(0)} → ${(eloProb * 100).toFixed(1)}%`,
+        `Ensemble (logit mean) → ${(ensembleProb * 100).toFixed(1)}%`,
+      ],
+    };
+  });
+}
+
+// ─── sim-lineup-v1 ───────────────────────────────────────────────────────────
+//
+// The sim-recent line's other branch (Round 7). Everything sim-recent-v1 does
+// (trailing-window team form + trailing starter + multi-season Elo + full-staff
+// pen), with ONE input upgraded — the OFFENSE — from the trailing team-aggregate
+// line to the nine hitters in tonight's posted batting order: PA-weighted by
+// lineup slot, platoon-tilted by each hitter's hand vs the starter's, and
+// level-recalibrated to the team-aggregate run environment (src/lib/mlb-lineup.ts).
+// It is the properly-built version of the naïve lineup average that lost in
+// Round 4 — the two failure causes (spread compression, run-environment
+// miscalibration) fixed, plus the platoon signal a team aggregate can't see.
+//
+// Falls back to the trailing team line per side when no lineup is posted (the
+// early-morning cron, before lineups drop ~1-4h pre-game) or too few hitters
+// resolve — so at cron time this quietly degrades toward sim-recent-v1 for the
+// unposted games and sharpens as lineups post. One isolated change onto
+// sim-recent-v1, compared against it and the headline sim-elo-v2.
+
+export interface LineupGamePrediction extends RecentFormGamePrediction {
+  usedLineup: boolean; // a lineup-derived offense line was used for at least one side
+}
+
+/**
+ * Predict every game on `date` with the sim-recent engine and the lineup/platoon
+ * offense (fallback to the v1 trailing team line). Mirrors
+ * buildRecentFormPredictionsForDate's orchestration; swaps the offense in.
+ */
+export async function buildLineupPredictionsForDate(
+  date: string,
+  nSims = 3000,
+): Promise<LineupGamePrediction[]> {
+  const season = parseInt(date.slice(0, 4), 10);
+  const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue&startDate=${date}&endDate=${date}`;
+  const [scheduleRes, prev2Results, prev1Results, seasonResults, teamRates] = await Promise.all([
+    fetchWithTimeout(scheduleUrl),
+    fetchSeasonResults(season - 2, `${season - 2}-12-01`),
+    fetchSeasonResults(season - 1, `${season - 1}-12-01`),
+    fetchSeasonResults(season, date),
+    fetchAllTeamRatesRecent(season, date),
+  ]);
+  if (!scheduleRes.ok) throw new Error(`MLB schedule fetch failed: ${scheduleRes.status}`);
+  const scheduleJson: any = await scheduleRes.json();
+  const games: any[] = scheduleJson?.dates?.[0]?.games ?? [];
+  if (games.length === 0) return [];
+
+  const elo = computeElo([prev2Results, prev1Results, seasonResults]);
+  const lg = leagueRates(teamRates);
+
+  const pitcherIds = new Set<number>();
+  for (const g of games) {
+    const hp = g.teams?.home?.probablePitcher?.id;
+    const ap = g.teams?.away?.probablePitcher?.id;
+    if (hp) pitcherIds.add(hp);
+    if (ap) pitcherIds.add(ap);
+  }
+
+  // The lineup offense is recalibrated against — and falls back to — the same
+  // trailing team-batting map sim-recent-v1 uses.
+  const teamAggRecent = new Map<number, BattingRates | null>();
+  for (const [id, r] of teamRates) teamAggRecent.set(id, r.batting);
+  const lineupRefs: LineupGameRef[] = games.map((g) => ({
+    gamePk: g.gamePk,
+    homeId: g.teams.home.team.id,
+    awayId: g.teams.away.team.id,
+    homeStarterId: g.teams?.home?.probablePitcher?.id ?? null,
+    awayStarterId: g.teams?.away?.probablePitcher?.id ?? null,
+  }));
+
+  const starters = new Map<number, StarterInfo | null>();
+  const [, lineupByGame] = await Promise.all([
+    Promise.all(
+      Array.from(pitcherIds).map(async (id) => {
+        starters.set(id, await fetchStarterInfoRecent(id, season, date, lg));
+      }),
+    ),
+    fetchLineupOffenseForDate(lineupRefs, season, date, lg, teamAggRecent),
+  ]);
+
+  const logitFn = (p: number) => Math.log(p / (1 - p));
+  const sigmoidFn = (x: number) => 1 / (1 + Math.exp(-x));
+  const clamp01 = (p: number) => Math.min(0.99, Math.max(0.01, p));
+
+  return games.map((g: any): LineupGamePrediction => {
+    const homeTeam = g.teams.home.team;
+    const awayTeam = g.teams.away.team;
+    const rates = (id: number): TeamRates => teamRates.get(id) ?? { batting: null, staff: null };
+    const hRates = rates(homeTeam.id);
+    const aRates = rates(awayTeam.id);
+    const hp = g.teams.home.probablePitcher?.id;
+    const ap = g.teams.away.probablePitcher?.id;
+    const venue: string | null = g.venue?.name ?? null;
+
+    const lu = lineupByGame.get(g.gamePk);
+    const homeLineup = lu?.home ?? null;
+    const awayLineup = lu?.away ?? null;
+
+    const recentSimProb = simulateMatchup(
+      {
+        homeBatting: homeLineup ?? hRates.batting ?? lg,
+        awayBatting: awayLineup ?? aRates.batting ?? lg,
+        homeStarter: (hp && starters.get(hp)) || null,
+        awayStarter: (ap && starters.get(ap)) || null,
+        homeStaff: reshapeStaff(hRates.staff, lg),
+        awayStaff: reshapeStaff(aRates.staff, lg),
+        league: lg,
+        venue,
+      },
+      nSims,
+      7_000_000 + g.gamePk, // distinct seed space from the other sim-recent models
+    );
+
+    const homeElo = elo.get(homeTeam.id) ?? 1500;
+    const awayElo = elo.get(awayTeam.id) ?? 1500;
+    const eloProb = eloWinProb(homeElo, awayElo);
+    const ensembleProb = sigmoidFn((logitFn(clamp01(recentSimProb)) + logitFn(clamp01(eloProb))) / 2);
+
+    return {
+      gameId: g.gamePk,
+      homeId: homeTeam.id,
+      awayId: awayTeam.id,
+      recentSimProb,
+      eloProb,
+      ensembleProb,
+      usedLineup: homeLineup != null || awayLineup != null,
+      rationale: [
+        `Recent-form Monte Carlo (last ${TEAM_WINDOW_DAYS}d form, PA-weighted platoon-aware lineup offense, ${nSims} sims): home wins ${(recentSimProb * 100).toFixed(1)}%`,
         `Elo ${homeElo.toFixed(0)} vs ${awayElo.toFixed(0)} → ${(eloProb * 100).toFixed(1)}%`,
         `Ensemble (logit mean) → ${(ensembleProb * 100).toFixed(1)}%`,
       ],
