@@ -600,3 +600,58 @@ this market is efficient.
 - Nothing ships to the product; the pipeline is untouched. The tracked models (v1–v4)
   remain the honest offering: probability quality on par with the market, no betting
   claims.
+
+---
+
+## Round 9 — the last two untried signals: real lineups and weather (verdict: parity and nothing)
+
+*Study run 2026-07-14. Collector extended (`--lineup --weather`): the smart lineup offense
+rebuilt in `src/lib/mlb-lineup.ts` and per-game weather (open-meteo, one call per park for
+the whole span), swept over the same 1,102 games with production seeds (v1/v2/v3 reproduce
+exactly). Analysis: `scripts/analyze-round9.ts`, usual dev / frozen-test / full-span
+protocol. Ship bar unchanged: beat v2 on BOTH accuracy and Brier on the frozen test.*
+
+**The lineup model, done properly this time.** Round 4's naïve lineup average lost badly;
+this rebuild fixed its three specific failures: **PA weighting** by batting-order slot
+(leadoff ~4.65 PA/game → ninth ~3.81), **platoon adjustment** vs the starter's hand (fixed
+league-norm multipliers scaled to the starter's ~60% PA share; handedness from the people
+API — static facts, no lookahead), and **environment normalization** (each slate's lines
+re-centered so the league mean matches the team-line league mean — self-normalizing, no
+fit). Lineups resolved for **100% of games**.
+
+| Model | Dev acc / Brier | Test acc / Brier | Full-span acc / Brier |
+|---|---|---|---|
+| v2 (recent form, team offense) | 52.8% / 0.2480 | **57.2%** / 0.2498 | **54.3%** / 0.2486 |
+| **v5 (lineup + platoon)** | 52.1% / 0.2486 | 55.3% / **0.2486** | 53.2% / 0.2486 |
+| v5 no-platoon | 51.7% / 0.2487 | 54.8% / 0.2496 | 52.7% / 0.2490 |
+| v5 + temperature (a=0.60) | 52.1% / 0.2474 | 55.3% / 0.2476 | 53.2% / 0.2475 |
+| market | 56.4% / 0.2451 | 58.0% / 0.2439 | 57.0% / 0.2447 |
+
+The rebuild works as engineering: v5 goes from clearly-worse (Round 4) to **dead parity**
+with the team-aggregate offense (full-span Brier identical to four decimals), with better
+calibration (test log loss 0.6905 vs 0.6933) but fewer winners picked (44% on changed
+picks). The platoon constants are directionally right (−0.0004 Brier vs no-platoon) but
+tiny. **Ship bar not met** — and the "actual lineups are the single biggest available
+signal" hypothesis from Round 2's headroom list is now *refuted at the moneyline level*:
+who's in the lineup is almost entirely priced into the team's trailing aggregates already.
+
+**Weather.** Temperature and wind at first pitch (roofed parks zeroed), tested as
+walk-forward residual features on top of the market — using **observed** weather, an upper
+bound on anything a forecast could offer. Market alone 0.2447; market + weather + v5
+signal 0.2476 (worse); standardized coefficients ±0.02 (noise). Weather carries no
+moneyline information the line misses. Definitive negative; totals markets (not stored
+here) are where weather signal lives, if anywhere.
+
+### Where this leaves the program
+
+Rounds 4–9 have now systematically resolved every public pre-game signal this codebase
+can reach: bullpen structure (naïve → smart → tiered: parity), schedule/context factors
+(nothing), run-differential model families (dominated), fitted ensembles (lose
+out-of-sample), market biases and vig math (none exploitable), real lineups (parity),
+platoon (tiny positive, kept inside v5's construction), and weather (nothing). The
+tracked models sit at the public-data frontier, ~0.003–0.004 Brier behind the market —
+the gap being precisely the private information the market embeds (injury news latency,
+sharp order flow, line movement). Nothing promotes this round; v5 stays a study artifact
+(`mlb-lineup.ts` is production-quality if a lineup-aware display model is ever wanted).
+The honest next frontier is not another algorithm — it is *data the market prices late*,
+which public APIs do not carry.

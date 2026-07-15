@@ -44,8 +44,72 @@ import {
 } from "../src/lib/mlb-sim";
 import { fetchAllTeamRatesRecent, fetchStarterInfoRecent } from "../src/lib/mlb-recent-form";
 import { fetchAllBullpens, type Appearance } from "../src/lib/mlb-bullpen";
+import { buildLineupOffenses, fetchHandedness } from "../src/lib/mlb-lineup";
 import { STATS_API, fetchWithTimeout, batchedAll } from "../src/lib/mlb-core";
 import { devig, fetchMoneylineForEvent } from "../src/lib/mlb-odds.server";
+
+const LINEUP_WINDOW_DAYS = 30; // hitter trailing window for the v5 offense
+
+// Ballpark coordinates + roof flag for the weather feature (--weather).
+// Roofed/domed parks keep their reading; the analyzer can zero them out.
+const VENUES: Record<string, { lat: number; lon: number; roof: boolean }> = {
+  "American Family Field": { lat: 43.028, lon: -87.971, roof: true },
+  "Angel Stadium": { lat: 33.8, lon: -117.883, roof: false },
+  "Busch Stadium": { lat: 38.6226, lon: -90.1928, roof: false },
+  "Chase Field": { lat: 33.4455, lon: -112.0667, roof: true },
+  "Citi Field": { lat: 40.7571, lon: -73.8458, roof: false },
+  "Citizens Bank Park": { lat: 39.9061, lon: -75.1665, roof: false },
+  "Comerica Park": { lat: 42.339, lon: -83.0485, roof: false },
+  "Coors Field": { lat: 39.7559, lon: -104.9942, roof: false },
+  "Daikin Park": { lat: 29.7573, lon: -95.3555, roof: true },
+  "Estadio Alfredo Harp Helu": { lat: 19.4042, lon: -99.0907, roof: false },
+  "Fenway Park": { lat: 42.3467, lon: -71.0972, roof: false },
+  "Globe Life Field": { lat: 32.7473, lon: -97.0847, roof: true },
+  "Great American Ball Park": { lat: 39.0975, lon: -84.5066, roof: false },
+  "Kauffman Stadium": { lat: 39.0517, lon: -94.4803, roof: false },
+  "Las Vegas Ballpark": { lat: 36.1526, lon: -115.3392, roof: false },
+  "Nationals Park": { lat: 38.873, lon: -77.0074, roof: false },
+  "Oracle Park": { lat: 37.7786, lon: -122.3893, roof: false },
+  "Oriole Park at Camden Yards": { lat: 39.2838, lon: -76.6217, roof: false },
+  "PNC Park": { lat: 40.4469, lon: -80.0057, roof: false },
+  "Petco Park": { lat: 32.7076, lon: -117.157, roof: false },
+  "Progressive Field": { lat: 41.4962, lon: -81.6852, roof: false },
+  "Rate Field": { lat: 41.8299, lon: -87.6338, roof: false },
+  "Rogers Centre": { lat: 43.6414, lon: -79.3894, roof: true },
+  "Sutter Health Park": { lat: 38.5802, lon: -121.5133, roof: false },
+  "T-Mobile Park": { lat: 47.5914, lon: -122.3325, roof: true },
+  "Target Field": { lat: 44.9817, lon: -93.2776, roof: false },
+  "Tropicana Field": { lat: 27.7683, lon: -82.6534, roof: true },
+  "Truist Park": { lat: 33.8908, lon: -84.4678, roof: false },
+  "UNIQLO Field at Dodger Stadium": { lat: 34.0739, lon: -118.24, roof: false },
+  "Wrigley Field": { lat: 41.9484, lon: -87.6553, roof: false },
+  "Yankee Stadium": { lat: 40.8296, lon: -73.9262, roof: false },
+  "loanDepot park": { lat: 25.7781, lon: -80.2196, roof: true },
+};
+
+/** Hourly weather per venue for the whole span, one open-meteo call each. */
+const weatherByVenue = new Map<string, Map<string, { t: number; w: number }> | null>();
+async function venueWeather(venue: string | null): Promise<Map<string, { t: number; w: number }> | null> {
+  if (!venue || !VENUES[venue]) return null;
+  if (weatherByVenue.has(venue)) return weatherByVenue.get(venue)!;
+  try {
+    const { lat, lon } = VENUES[venue];
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m&past_days=92&forecast_days=1&timezone=UTC`;
+    const res = await fetchWithTimeout(url, 20_000);
+    if (!res.ok) throw new Error(String(res.status));
+    const j: any = await res.json();
+    const times: string[] = j?.hourly?.time ?? [];
+    const temps: number[] = j?.hourly?.temperature_2m ?? [];
+    const winds: number[] = j?.hourly?.wind_speed_10m ?? [];
+    const m = new Map<string, { t: number; w: number }>();
+    times.forEach((t, i) => m.set(t, { t: temps[i], w: winds[i] }));
+    weatherByVenue.set(venue, m);
+    return m;
+  } catch {
+    weatherByVenue.set(venue, null);
+    return null;
+  }
+}
 
 const PEN_WINDOW_DAYS = 30; // must match mlb-recent-form.ts
 
@@ -389,6 +453,17 @@ interface GameRecord {
   pMarket: number | null;
   mlHome: number | null;
   mlAway: number | null;
+  /** --lineup extras: v2 base with the smart lineup offense (± platoon). */
+  pSimV5?: number | null;
+  pSimV5np?: number | null;
+  pV5?: number | null;
+  pV5np?: number | null;
+  lineupH?: boolean;
+  lineupA?: boolean;
+  /** --weather extras (nulls when venue unknown or fetch failed). */
+  tempC?: number | null;
+  windKmh?: number | null;
+  roof?: boolean | null;
   f: {
     restH: number | null; restA: number | null;
     g7H: number; g7A: number;
@@ -410,6 +485,8 @@ async function main() {
   const end = arg("end", "2026-07-11");
   const nSims = parseInt(arg("sims", "3000"), 10);
   const outPath = arg("out", ".backtest-cache/records.jsonl");
+  const withLineup = process.argv.includes("--lineup");
+  const withWeather = process.argv.includes("--weather");
   const season = parseInt(start.slice(0, 4), 10);
 
   mkdirSync(dirname(outPath), { recursive: true });
@@ -442,6 +519,7 @@ async function main() {
   // Cross-date caches: full-season logs are date-filtered downstream, so safe.
   const relieverLogCache = new Map<number, Appearance[]>();
   const starterLogCache = new Map<number, StartLog[]>();
+  const handednessCache = new Map<number, { bat: string; throw: string }>();
 
   let collected = 0;
   for (const date of dates) {
@@ -488,6 +566,20 @@ async function main() {
         8,
       ),
     ]);
+
+    // --lineup: starter handedness → smart lineup offenses for the slate.
+    let lineups: Awaited<ReturnType<typeof buildLineupOffenses>> | null = null;
+    if (withLineup) {
+      const hands = await fetchHandedness(Array.from(pitcherIds), handednessCache);
+      const starterHands = new Map<number, { homeHand: string | null; awayHand: string | null }>();
+      for (const g of day) {
+        starterHands.set(g.gamePk, {
+          homeHand: g.hp ? (hands.get(g.hp)?.throw ?? null) : null,
+          awayHand: g.ap ? (hands.get(g.ap)?.throw ?? null) : null,
+        });
+      }
+      lineups = await buildLineupOffenses(day, starterHands, season, date, lg, LINEUP_WINDOW_DAYS, handednessCache);
+    }
 
     // Odds: group by name pair, zip chronologically (doubleheader-safe).
     const evByPair = new Map<string, EspnEventFull[]>();
@@ -572,6 +664,44 @@ async function main() {
         5_000_000 + g.gamePk,
       );
 
+      // --lineup: v2 inputs with the smart lineup offense swapped in (± platoon).
+      let pSimV5: number | null = null, pSimV5np: number | null = null;
+      let lineupH = false, lineupA = false;
+      if (withLineup && lineups) {
+        const lu = lineups.get(g.gamePk) ?? null;
+        lineupH = lu?.home.line != null;
+        lineupA = lu?.away.line != null;
+        const simWith = (hb: typeof lg | null, ab: typeof lg | null, seed: number) =>
+          simulateMatchup(
+            {
+              homeBatting: hb ?? hRecent.batting ?? lg,
+              awayBatting: ab ?? aRecent.batting ?? lg,
+              homeStarter: (g.hp && startersRecent.get(g.hp)) || null,
+              awayStarter: (g.ap && startersRecent.get(g.ap)) || null,
+              homeStaff: reshapeStaff(hRecent.staff, lg),
+              awayStaff: reshapeStaff(aRecent.staff, lg),
+              league: lg,
+              venue: g.venue,
+            },
+            nSims,
+            seed,
+          );
+        pSimV5 = simWith(lu?.home.line ?? null, lu?.away.line ?? null, 6_000_000 + g.gamePk);
+        pSimV5np = simWith(lu?.home.lineNoPlatoon ?? null, lu?.away.lineNoPlatoon ?? null, 7_000_000 + g.gamePk);
+      }
+
+      // --weather: temp/wind at first-pitch hour (nulls when unknown).
+      let tempC: number | null = null, windKmh: number | null = null, roof: boolean | null = null;
+      if (withWeather) {
+        const wm = await venueWeather(g.venue);
+        roof = g.venue && VENUES[g.venue] ? VENUES[g.venue].roof : null;
+        if (wm && g.gameDate) {
+          const key = g.gameDate.slice(0, 13) + ":00";
+          const w = wm.get(key);
+          if (w) { tempC = w.t; windKmh = w.w; }
+        }
+      }
+
       const fH = teamFactors(histories.get(g.homeId), date);
       const fA = teamFactors(histories.get(g.awayId), date);
       const scH = starterContext(g.hp ? (starterLogCache.get(g.hp) ?? []) : [], date);
@@ -597,6 +727,17 @@ async function main() {
         pMarket: odds?.pHome ?? null,
         mlHome: odds?.mlHome ?? null,
         mlAway: odds?.mlAway ?? null,
+        ...(withLineup
+          ? {
+              pSimV5,
+              pSimV5np,
+              pV5: pSimV5 != null ? ensemble(pSimV5, pElo) : null,
+              pV5np: pSimV5np != null ? ensemble(pSimV5np, pElo) : null,
+              lineupH,
+              lineupA,
+            }
+          : {}),
+        ...(withWeather ? { tempC, windKmh, roof } : {}),
         f: {
           restH: fH.rest, restA: fA.rest,
           g7H: fH.g7, g7A: fA.g7,
