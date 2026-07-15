@@ -100,6 +100,7 @@ import {
   buildRecentFormPredictionsForDate,
   buildRecentFormV2PredictionsForDate,
 } from "./mlb-recent-form";
+import { buildDixonColesPredictionsForDate } from "./mlb-dixon-coles";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 import {
@@ -107,6 +108,7 @@ import {
   MODEL_VERSION_RECENT,
   MODEL_VERSION_RECENT_V2,
   MODEL_VERSION_RECENT_CAL,
+  MODEL_VERSION_DIXON,
   RECENT_CAL_A,
 } from "./mlb-models";
 
@@ -350,6 +352,42 @@ export async function ingestAndPredict(date: string) {
     console.error("[ingestAndPredict] sim-recent-v2 predictions failed:", err);
   }
 
+  // Poisson (dixon-coles-nb) — the analytic goal-simulator: a Dixon-Coles
+  // attack/defense fit (walk-forward on season-to-date results) with a
+  // starting-pitcher runs-per-out multiplier and negative-binomial scoring.
+  // No Monte Carlo, no Elo — it's fit directly on game results. The best
+  // analytic model of the program (Round 11a). Returns [] early in the season
+  // before the fit has enough games; tracked side by side with the rest and
+  // never blocks anything else. See src/lib/mlb-dixon-coles.ts.
+  let newDixonPreds = 0;
+  try {
+    const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
+    const dixonGames = await buildDixonColesPredictionsForDate(date);
+    const dixonRows = dixonGames
+      .filter((g) => predictableIds.has(g.gameId))
+      .map((g) => {
+        const base = baselineByGameId.get(g.gameId);
+        return {
+          game_id: g.gameId,
+          model_version: MODEL_VERSION_DIXON,
+          home_win_prob: Number(g.homeWinProb.toFixed(4)),
+          away_win_prob: Number((1 - g.homeWinProb).toFixed(4)),
+          home_win_pct: base ? Number(base.home.winPct.toFixed(4)) : null,
+          away_win_pct: base ? Number(base.away.winPct.toFixed(4)) : null,
+          home_pitcher_id: base?.home.pitcher?.id ?? null,
+          home_pitcher_name: base?.home.pitcher?.name ?? null,
+          home_pitcher_era: base?.home.pitcher?.era ?? null,
+          away_pitcher_id: base?.away.pitcher?.id ?? null,
+          away_pitcher_name: base?.away.pitcher?.name ?? null,
+          away_pitcher_era: base?.away.pitcher?.era ?? null,
+          rationale: g.rationale,
+        };
+      });
+    newDixonPreds = await insertFreshPredictions(dixonRows, MODEL_VERSION_DIXON);
+  } catch (err) {
+    console.error("[ingestAndPredict] dixon-coles-nb predictions failed:", err);
+  }
+
   // Real market odds (ESPN, free/keyless). Best-effort and never blocks game
   // or prediction ingestion — odds may not be posted yet for far-future dates,
   // and the endpoint is unofficial.
@@ -451,6 +489,7 @@ export async function ingestAndPredict(date: string) {
     newRecentPredictions: newRecentPreds,
     newRecentCalPredictions: newRecentCalPreds,
     newRecentV2Predictions: newRecentV2Preds,
+    newDixonPredictions: newDixonPreds,
     newBlendPredictions: newBlendPreds,
     newMarketPredictions: newMarketPreds,
     newOdds,
