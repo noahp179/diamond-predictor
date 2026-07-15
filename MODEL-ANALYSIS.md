@@ -716,3 +716,60 @@ itself (8), lineups and weather (9), and nine manufactured stats (10). Final tal
 **one model improvement shipped** (v4 calibration), **one live lead pre-registered**
 (starter velocity), **zero edges claimed**. The line's remaining advantage is private
 information and the vig; everything public is priced.
+
+---
+
+## Round 11 — the soccer Poisson simulator, ported right; and what Monte Carlo depth buys
+
+*Study run 2026-07-14: `scripts/analyze-round11-poisson.ts` (attack/defense scoring model,
+refit walk-forward every date; distribution/starter/decay knobs dev-selected from 32 combos,
+frozen on test) and `scripts/sim-scaling-study.ts` (production v2 engine at 250 → 50,000
+sims/game on the frozen 376-game test window, production seeds).*
+
+### 11a · The Poisson "goal simulator" family (Dixon-Coles), with the baseball parts added
+
+Round 8's naïve port (pure Poisson, no pitcher) was dominated (0.2493). Adding what
+baseball demands — a **starter-quality multiplier** on the scoring rate (regressed
+runs-per-out from game logs, exponent γ) and **negative-binomial** scoring (runs are
+overdispersed) — transforms it. Dev selected `NB(r=8), γ=1.5, no decay, temperature 0.30`:
+
+| Frozen test | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|
+| market | 58.0% | 0.2439 | 0.6810 |
+| **DC-NB + starter (selected)** | **57.2%** | **0.2480** | **0.6894** |
+| v1 (headline) | 53.5% | 0.2484 | 0.6903 |
+| naïve Poisson port (Round 8) | 52.1% | 0.2493 | 0.6918 |
+| v2 (recent form) | 57.2% | 0.2498 | 0.6933 |
+
+Dev ablation (temperature re-tuned per row): pure-Poisson-no-starter 0.2483 → NB alone
+0.2483 (nothing) → **starter alone 0.2457** → starter+NB 0.2451. **The pitcher is the
+entire story** — exactly what Round 8's autopsy predicted — with NB worth a hair on top.
+Two more findings: the ×Elo ensemble *hurts* it (0.2482, acc → 53.2%): unlike the Monte
+Carlo sim, this model is already fit on game results, so Elo is redundant rather than
+complementary. And it converges to within noise of v4/v5+temp (0.2479/0.2476) — three
+completely different model families hitting the same public-data wall.
+
+**Verdict:** the best analytic model of the program — ties v2's accuracy, beats its Brier,
+runs in milliseconds with no Monte Carlo at all — but it does not clear the pre-committed
+ship bar (no accuracy win over v2; Brier within noise of the calibrated models), and both
+selected knobs sit at grid edges (γ=1.5, a=0.30), a mild overfit flag. Available as a
+tracked model on request; not promoted unilaterally.
+
+### 11b · Monte Carlo depth: 250 → 50,000 sims per game
+
+| N sims | Acc | Brier | mean \|Δp\| vs 50k | Pick flips /376 | Wall time |
+|---|---|---|---|---|---|
+| 250 | 58.2% | 0.2485 | 0.0127 | 17 | 0.2s |
+| 1,000 | 57.7% | 0.2488 | 0.0064 | 5 | 1.0s |
+| **3,000 (production)** | 58.0% | 0.2491 | 0.0037 | 6 | 3.0s |
+| 10,000 | 58.8% | 0.2490 | 0.0018 | 1 | 10.1s |
+| 50,000 | 58.5% | 0.2490 | — | — | 50.3s |
+
+The noise falls exactly on the theoretical 1/√N curve (halves per 4× sims), and **the
+scoreboard doesn't care**: Brier is flat within ±0.0006 across a 200× compute range (250
+sims nominally *beat* 50,000 — pure sampling luck on 376 games), accuracy wobbles without
+trend, and production depth (3,000) differs from the 50k reference by 0.004 in probability
+and 6 picks out of 376. MC noise at 3,000 sims is an order of magnitude below the model's
+intrinsic error, so more simulation cannot help — **the binding constraint is what the
+model knows, not how precisely it integrates it.** Production's 3,000 is validated; even
+1,000 would be defensible if cron time ever mattered.
