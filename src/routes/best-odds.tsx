@@ -34,7 +34,7 @@ const TAB_BLURB: Record<OddsTab, string> = {
   market:
     "The three surest outcomes on the slate according to the market itself — DraftKings' own line, vig removed, ranked by the favorite's win probability.",
   blend:
-    "The three surest outcomes once our sim-elo-v2 prediction is blended with the market line (odds-blend-v1) — the highest confidence picks given both the odds and our model.",
+    "The three surest outcomes once our Simulator prediction is blended with the market line (Market Blend) — the highest confidence picks given both the odds and our model.",
 };
 
 function todayISO() {
@@ -237,7 +237,7 @@ function BestOddsPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Model · sim-elo-v2 · Blend · odds-blend-v1 (market weight {MARKET_BLEND_WEIGHT}) · Market
+          Model · Simulator · Blend · Market Blend (market weight {MARKET_BLEND_WEIGHT}) · Market
           odds · DraftKings via ESPN (free, unofficial) · Not affiliated with MLB or DraftKings
         </div>
       </footer>
@@ -345,7 +345,7 @@ function BestOddCard({ entry, tab, rank }: { entry: GameWithOdds; tab: OddsTab; 
         </div>
         <div className="bg-card px-5 py-4">
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            sim-elo-v2 says
+            Simulator says
           </div>
           <div className="mt-2 font-display text-3xl text-foreground">{pct(modelProb)}</div>
           <div className="mt-1 font-mono text-xs text-muted-foreground">{pickTeam} to win</div>

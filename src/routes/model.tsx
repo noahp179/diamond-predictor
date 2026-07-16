@@ -77,7 +77,7 @@ function ModelPage() {
             <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Best Game</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
               The single game our model is most confident about, plus two runners-up — ranked by
-              sim-elo-v2's confidence in the outcome.
+              the Simulator's confidence in the outcome.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -175,7 +175,7 @@ function BestGameCard({ game }: { game: PredictedGame }) {
           ★ Best Game · #1 by confidence
         </span>
         <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          sim-elo-v2
+          Simulator
         </span>
       </div>
       <div className="border-b border-border/60 px-5 py-5">
@@ -309,7 +309,7 @@ function TopPickCard({ game, rank }: { game: PredictedGame; rank: number }) {
       {/* Probability highlight */}
       <div className="px-5 py-4">
         <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          sim-elo-v2 Win Probability
+          Simulator Win Probability
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`font-display text-4xl ${favHome ? "text-primary" : "text-foreground"}`}>

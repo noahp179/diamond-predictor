@@ -446,3 +446,330 @@ comes from *recent-form team rates*, not the bullpen. If the goal is accuracy, t
 experiment worth running is the properly-built lineup/platoon offense (not the naïve average
 that failed in Round 4), or simply promoting sim-recent-v1 to a longer live trial. All three
 models stay tracked; none is promoted.
+
+---
+
+## Round 7 — the factor & ensemble expedition (1,102 games, dev/test + walk-forward)
+
+*Study run 2026-07-14. New infrastructure: `scripts/collect-backtest-data.ts` sweeps
+Apr 20 → Jul 11 once (84 dates, 1,102 settled games — 3× the Rounds 4–6 sample) and
+caches, per game, the three tracked models' components (production seeds, byte-identical
+reproduction verified), the devigged DraftKings line (matched for 100% of games), and a
+bank of context factors computed point-in-time: rest days, games-in-last-7, last-10 win%,
+win streak, trailing-30d run differential, road-trip length, starter rest, starter
+last-3-starts form, day/night. `scripts/analyze-models.ts` then evaluates candidates as
+pure math. Protocol: every weight/coefficient fit on **dev** (Apr 20 – Jun 13, 726 games),
+scored **once** on the frozen **test** window (Jun 14 – Jul 11 — the exact 376 games
+Rounds 4–6 reported on), and finalists re-scored **walk-forward** (refit on all prior
+games before every date, 947 predictions) — the most honest number here.*
+
+The brief: build algorithms on top of the existing models, hunt for unique factors, and
+question everything — including the models already believed good.
+
+### What was tested
+
+Blends of the tracked models (v1×v2, v2×v3, v1×v2×v3, re-weighted sim×Elo), a
+trailing-30d Pythagorean log5 leg, a logistic "offset" layer adding the schedule/context
+factors on top of v2, a full fitted stacker (sim + Elo logits + all factors), a 3-logit
+ensemble (blend + calibration in one fit), per-model temperature calibration, and market
+blends.
+
+### Results (headline rows)
+
+| Model | Dev acc / Brier | Test acc / Brier | Walk-fwd acc / Brier |
+|---|---|---|---|
+| market (devigged DK) | 56.3% / 0.2453 | 57.7% / 0.2452 | 56.6% / **0.2449** |
+| v1 (sim-elo-v2) | 53.4% / 0.2462 | 53.5% / 0.2483 | 54.0% / **0.2460** |
+| v1 + temperature (a=0.75) | 53.4% / 0.2458 | 53.5% / 0.2476 | 54.0% / 0.2462 |
+| **v2 + temperature (a=0.60) → ships as v4** | 52.8% / 0.2467 | **57.2% / 0.2479** | **55.1% / 0.2472** |
+| v2 (sim-recent-v1) | 52.8% / 0.2480 | 57.2% / 0.2499 | 55.1% / 0.2480 |
+| blend v1×v2 (w refit) | — | — | 54.2% / 0.2465 |
+| full stacker (sim, elo, factors) | 54.7% / **0.2441** | 55.9% / 0.2471 | 53.0% / 0.2512 |
+| v2 + schedule offset layer | 54.0% / 0.2457 | 55.9% / 0.2486 | 54.8% / 0.2516 |
+| 3-logit ensemble | 51.9% / 0.2457 | 54.0% / 0.2480 | 52.9% / 0.2482 |
+| pythag-30 log5 leg (alone) | 52.6% / 0.2591 | 52.9% / 0.2574 | — |
+| v3 (sim-recent-v2) | 52.9% / 0.2483 | 55.6% / 0.2505 | — |
+| home-always-54 | 51.9% / 0.2501 | 50.3% / 0.2514 | — |
+
+### The five findings
+
+1. **v2's celebrated +3.5pp accuracy edge was partly window luck.** On dev (726 earlier
+   games) v1 out-picks v2 (53.4% vs 52.8%) and out-scores it (0.2462 vs 0.2480); on the
+   947-game walk-forward v2's edge is +1.1pp accuracy with *worse* Brier. The durable
+   picture is a trade-off, not a champion: **v1 is the best-calibrated model, v2 the best
+   picker**, and neither dominates. Rounds 4–6's frozen window flattered v2.
+2. **Fitted machinery loses out-of-sample — again.** The full stacker posts the best dev
+   *and* test Briers (0.2441 / 0.2471), then collapses to 0.2512 on walk-forward — worse
+   than everything it was built from. The offset layer and 3-logit ensemble do the same.
+   Round 2 rejected a fitted stacker at n=187; Round 7 re-confirms it at n=947 with far
+   more features. Fixed-weight blends beat fitted weights at this sample size, every time.
+3. **The context factors are a dead end.** Rest, fatigue, streaks, L10, road trips,
+   starter rest, starter recent form, day/night: standardized coefficients all land in
+   [−0.14, +0.09] with unstable signs, and adding them *hurts* walk-forward (0.2480 →
+   0.2516). The simulator + Elo already price everything these public schedule signals
+   carry. The trailing-Pythagorean leg is equally subsumed (its optimal blend weight into
+   v2 is 0.0).
+4. **Temperature calibration is the one free win.** Both models run overconfident —
+   dev-fit shrink factors a=0.75 (v1) and a=0.60 (v2), stable under walk-forward
+   refitting. Shrinking v2's probabilities toward 50% in logit space changes **zero
+   picks** (the favored team is preserved by construction) and improves its Brier on dev,
+   test (0.2499 → 0.2479) and walk-forward (0.2480 → 0.2472). It also closes most of
+   v2's calibration gap to v1 while keeping v2's accuracy lead.
+5. **The market is still the ceiling** (walk-forward 0.2449). Blending v2 into it at 20%
+   ties the market (0.2451–0.2452 test) — no public-data model here adds real information
+   to the line. The shipped odds-blend-v1 (v1×market, w=0.65) tests within noise of
+   optimal; no change warranted.
+
+### What ships (tracked, not headline)
+
+- **`sim-recent-cal-v1` — displayed as "v4"**: v2's prediction with calibrated confidence,
+  `p' = σ(0.60·logit(p))`, a frozen from dev. Same favored team as v2 on every game;
+  honest probabilities. Derived in the daily cron from v2's own build (no extra fetches)
+  and registered in `TRACKED_MODELS`, so it is stored, settled, scored and charted like
+  every other model. It is deliberately **not** a fourth bar on the game cards — its pick
+  duplicates v2's, so a card bar would be redundant; Track Record is where it proves out.
+- **`scripts/collect-backtest-data.ts` / `scripts/analyze-models.ts`** — the reusable
+  study harness (collect once ≈ 3 min thanks to a cross-date game-log cache; analysis is
+  pure math over the cache and runs in seconds). Future candidate models start from here.
+
+### Where this leaves the roadmap
+
+The cheap structural ideas are now exhausted: bullpen construction (Rounds 4–6), schedule
+context, run-differential legs, fitted ensembles (Round 7) all fail to beat what sim+Elo
+already knows. The two experiments still plausibly worth real money are the ones that add
+*new information*, not new arithmetic: a properly-built lineup/platoon offense
+(PA-weighted, handedness-aware, environment-recalibrated — not Round 4's naïve average)
+and weather/park-day effects. Meanwhile the honest live question is simply whether v2's
+accuracy edge and v4's calibration hold on games none of us have seen — which is exactly
+what the Track Record page now measures.
+
+---
+
+## Round 8 — the edge hunt: five attacks on the sportsbook line (verdict: no edge)
+
+*Study run 2026-07-14. Market sample extended with a light early-season collector
+(`scripts/collect-market-history.ts`) to **1,429 games with stored DraftKings lines**
+(Mar 26 → Jul 11; ESPN purges prior-season odds, so 2025 was unavailable). All five
+attacks in `scripts/hunt-edge.ts`. Pre-committed bar for claiming an edge: walk-forward
+ROI > 0 with a 90% bootstrap CI excluding zero AND the same sign in both date-halves —
+or walk-forward Brier ≤ market − 0.001.*
+
+**1 · Devig shootout.** Proportional (shipped) 0.2464 Brier vs power 0.2466 vs Shin
+0.2476 on 1,429 games. The simple normalization is already the best transform of the
+book's own numbers — no free win from fancier vig removal. Shipped code stays.
+
+**2 · Bias scan.** Nine classic pockets (favorite/underdog levels, home/away, day/night,
+coin flips): every flat-bet ROI is negative or CI-straddles zero. The only two CIs that
+exclude zero are *negative* — home favorites −5.5% [−10.0, −1.0] and home sides at night
+−8.0% [−13.5, −2.0] — which is the vig plus this season's weak home-field showing, not an
+exploitable bias (the mirror bets net ≈ −1% after vig). No pocket survives split-half.
+
+**3 · Dixon-Coles.** The time-decayed attack/defense Poisson family that historically
+found soccer-market edges, ported to MLB and refit walk-forward daily (dev-selected: no
+decay, heavy temperature a=0.4 — raw Poisson is overconfident). Test Brier **0.2493** vs
+market 0.2459 and our own sims ~0.248. Without pitcher information it is strictly
+dominated; as a residual feature its coefficient is −0.037 (nothing).
+
+**4 · The residual information test — the decisive one.** Walk-forward logistic with the
+market as a fixed offset and everything we have as features (v1/v2/Elo/DC disagreement
+with the line, sim spread, rest, starter rest): market alone **0.2463**; market plus our
+signals **0.2479**. Adding our full information set makes the market *worse* — every
+coefficient lands in ±0.09 standardized (noise). The line already prices everything this
+codebase knows.
+
+**5 · Betting rules.** Vig-inclusive EV thresholds (t = 0, 0.03, 0.06) for v1, v2, v4 and
+DC — twelve rules, 328–840 bets each: every 90% CI straddles zero (best nominal: v4 at
+t=0.06, +1.7% [−8.0, +11.2] — one of twelve, i.e., exactly what multiple comparisons
+predict). Nothing meets the bar.
+
+### Verdict
+
+**No edge found, on any front.** The pre-committed bar was met by zero of the five
+attacks. The book's ~4.5% vig is the moat: even a model that ties the market on
+probability quality (our blends do) loses ~4–5% betting into it. Honest scope caveats:
+one book (DK via ESPN), one line snapshot per game (near-closing), one season window
+(n=1,429), and no access to the places real edges live — line-shopping across books,
+opener-vs-closer timing, and injury/lineup news latency. Within what public data can see,
+this market is efficient.
+
+### What this round leaves behind
+
+- `scripts/collect-market-history.ts` + `scripts/hunt-edge.ts` — a permanent, reusable
+  edge-testing harness with the honesty guardrails built in (bootstrap CIs, split-half,
+  pre-committed bar). Any future "I think X beats the book" starts as one function here.
+- Nothing ships to the product; the pipeline is untouched. The tracked models (v1–v4)
+  remain the honest offering: probability quality on par with the market, no betting
+  claims.
+
+---
+
+## Round 9 — the last two untried signals: real lineups and weather (verdict: parity and nothing)
+
+*Study run 2026-07-14. Collector extended (`--lineup --weather`): the smart lineup offense
+rebuilt in `src/lib/mlb-lineup.ts` and per-game weather (open-meteo, one call per park for
+the whole span), swept over the same 1,102 games with production seeds (v1/v2/v3 reproduce
+exactly). Analysis: `scripts/analyze-round9.ts`, usual dev / frozen-test / full-span
+protocol. Ship bar unchanged: beat v2 on BOTH accuracy and Brier on the frozen test.*
+
+**The lineup model, done properly this time.** Round 4's naïve lineup average lost badly;
+this rebuild fixed its three specific failures: **PA weighting** by batting-order slot
+(leadoff ~4.65 PA/game → ninth ~3.81), **platoon adjustment** vs the starter's hand (fixed
+league-norm multipliers scaled to the starter's ~60% PA share; handedness from the people
+API — static facts, no lookahead), and **environment normalization** (each slate's lines
+re-centered so the league mean matches the team-line league mean — self-normalizing, no
+fit). Lineups resolved for **100% of games**.
+
+| Model | Dev acc / Brier | Test acc / Brier | Full-span acc / Brier |
+|---|---|---|---|
+| v2 (recent form, team offense) | 52.8% / 0.2480 | **57.2%** / 0.2498 | **54.3%** / 0.2486 |
+| **v5 (lineup + platoon)** | 52.1% / 0.2486 | 55.3% / **0.2486** | 53.2% / 0.2486 |
+| v5 no-platoon | 51.7% / 0.2487 | 54.8% / 0.2496 | 52.7% / 0.2490 |
+| v5 + temperature (a=0.60) | 52.1% / 0.2474 | 55.3% / 0.2476 | 53.2% / 0.2475 |
+| market | 56.4% / 0.2451 | 58.0% / 0.2439 | 57.0% / 0.2447 |
+
+The rebuild works as engineering: v5 goes from clearly-worse (Round 4) to **dead parity**
+with the team-aggregate offense (full-span Brier identical to four decimals), with better
+calibration (test log loss 0.6905 vs 0.6933) but fewer winners picked (44% on changed
+picks). The platoon constants are directionally right (−0.0004 Brier vs no-platoon) but
+tiny. **Ship bar not met** — and the "actual lineups are the single biggest available
+signal" hypothesis from Round 2's headroom list is now *refuted at the moneyline level*:
+who's in the lineup is almost entirely priced into the team's trailing aggregates already.
+
+**Weather.** Temperature and wind at first pitch (roofed parks zeroed), tested as
+walk-forward residual features on top of the market — using **observed** weather, an upper
+bound on anything a forecast could offer. Market alone 0.2447; market + weather + v5
+signal 0.2476 (worse); standardized coefficients ±0.02 (noise). Weather carries no
+moneyline information the line misses. Definitive negative; totals markets (not stored
+here) are where weather signal lives, if anywhere.
+
+### Where this leaves the program
+
+Rounds 4–9 have now systematically resolved every public pre-game signal this codebase
+can reach: bullpen structure (naïve → smart → tiered: parity), schedule/context factors
+(nothing), run-differential model families (dominated), fitted ensembles (lose
+out-of-sample), market biases and vig math (none exploitable), real lineups (parity),
+platoon (tiny positive, kept inside v5's construction), and weather (nothing). The
+tracked models sit at the public-data frontier, ~0.003–0.004 Brier behind the market —
+the gap being precisely the private information the market embeds (injury news latency,
+sharp order flow, line movement). Nothing promotes this round; v5 stays a study artifact
+(`mlb-lineup.ts` is production-quality if a lineup-aware display model is ever wanted).
+The honest next frontier is not another algorithm — it is *data the market prices late*,
+which public APIs do not carry.
+
+---
+
+## Round 10 — invented stats: nine manufactured signals vs the line (verdict: one live lead, no edge)
+
+*Study run 2026-07-14. New harness: `scripts/collect-novel-stats.ts` manufactures nine
+signals that don't exist in standard aggregates — chosen because the market could
+plausibly price them late — and `scripts/analyze-round10.ts` judges them three ways:
+univariate correlation with the market residual (bootstrap CIs), a walk-forward
+multivariate on top of the line, and 14 flat-bet pocket strategies at real prices.
+Sample: 1,078 games with lines + all signals. Edge bar unchanged (CI excluding zero AND
+same-sign halves).*
+
+The stats invented (all strictly point-in-time):
+
+| Signal | Construction | Hypothesis |
+|---|---|---|
+| **veloDelta** | starter's first-inning FF/SI velocity, last start vs his own prior mean (Statcast; inning-1 pitches are starters by construction) | velo drops precede bad outings/injury — news the line prices late |
+| **luck21** | actual runs (21d) minus BaseRuns-expected runs from the same window's raw events | sequencing-lucky teams regress |
+| **pythagLuck** | season W% − Pythagorean W% | run-profile luck regresses |
+| **oneRunLuck** | one-run-game win% − overall win% | coin-flip-game luck regresses |
+| **tzShift / km72h / getaway** | park-coordinate travel: zones crossed, km flown in 72h, night-game→day-game-after-travel | fatigue the line ignores |
+| **down02** | lost first 2+ of the current series | sweep-avoidance psychology |
+| **penBF2d** | bullpen batters faced, last 2 days (from 1,146 boxscores; everyone after the first pitcher is pen) | gassed pens lose late leads |
+
+### Results
+
+**Univariate vs the market residual:** every CI includes zero. The largest correlation —
+and the only one leaning anywhere — is **veloDelta (r = +0.051, CI [−0.013, +0.117])**.
+**Multivariate walk-forward:** market alone 0.2447; market + all nine stats 0.2476
+(worse — same overfit pattern as Rounds 7–9). **Pocket strategies:** eleven of fourteen
+are flat or negative; the luck-fade family actively loses (the market already prices
+regression); consensus rules are dead. The only positive pockets are both velocity rules:
+
+| Strategy | n | Win% | ROI | 90% CI | Halves |
+|---|---|---|---|---|---|
+| back velo-GAIN starter (≥+1.0 mph) | 200 | 59.5% | **+9.4%** | [−1.3, +20.1] | same sign |
+| fade velo-DROP starter (≤−1.0 mph) | 161 | 56.5% | **+8.4%** | [−3.4, +21.4] | same sign |
+| *post-hoc pooled (diff ≥ 1.0)* | 232 | 55.6% | +5.2% | [−4.7, +16.0] | +12.8% → +0.2% |
+
+### The honest read on velocity
+
+It is the single most promising signal of the whole program: pre-nominated on theory
+before any data was seen, positive in both directions (symmetric, as a real effect should
+be), the largest univariate lean, the largest positive multivariate coefficient, and the
+only strategies with same-sign halves. It is also **not an edge by the pre-committed
+bar**: every CI includes zero, the pooled rule decays in the second half, and it emerged
+alongside thirteen dead strategies. Two hundred bets cannot distinguish +9% skill from
+luck; roughly a full remaining season of tracking could. **Disposition: pre-registered,
+not promoted.** The rule as frozen here — flat bet backing the side whose starter's
+first-inning velocity trend leads by ≥1.0 mph — is written down *now*, before any further
+data, so a future live evaluation is clean. Wiring it into the daily pipeline would add a
+Statcast dependency to the cron; that is a product decision, not taken unilaterally.
+
+### Program status after Round 10
+
+Ten rounds, every public signal reachable: model structure (Rounds 4–7), the market
+itself (8), lineups and weather (9), and nine manufactured stats (10). Final tally —
+**one model improvement shipped** (v4 calibration), **one live lead pre-registered**
+(starter velocity), **zero edges claimed**. The line's remaining advantage is private
+information and the vig; everything public is priced.
+
+---
+
+## Round 11 — the soccer Poisson simulator, ported right; and what Monte Carlo depth buys
+
+*Study run 2026-07-14: `scripts/analyze-round11-poisson.ts` (attack/defense scoring model,
+refit walk-forward every date; distribution/starter/decay knobs dev-selected from 32 combos,
+frozen on test) and `scripts/sim-scaling-study.ts` (production v2 engine at 250 → 50,000
+sims/game on the frozen 376-game test window, production seeds).*
+
+### 11a · The Poisson "goal simulator" family (Dixon-Coles), with the baseball parts added
+
+Round 8's naïve port (pure Poisson, no pitcher) was dominated (0.2493). Adding what
+baseball demands — a **starter-quality multiplier** on the scoring rate (regressed
+runs-per-out from game logs, exponent γ) and **negative-binomial** scoring (runs are
+overdispersed) — transforms it. Dev selected `NB(r=8), γ=1.5, no decay, temperature 0.30`:
+
+| Frozen test | Acc | Brier ↓ | Log loss ↓ |
+|---|---|---|---|
+| market | 58.0% | 0.2439 | 0.6810 |
+| **DC-NB + starter (selected)** | **57.2%** | **0.2480** | **0.6894** |
+| v1 (headline) | 53.5% | 0.2484 | 0.6903 |
+| naïve Poisson port (Round 8) | 52.1% | 0.2493 | 0.6918 |
+| v2 (recent form) | 57.2% | 0.2498 | 0.6933 |
+
+Dev ablation (temperature re-tuned per row): pure-Poisson-no-starter 0.2483 → NB alone
+0.2483 (nothing) → **starter alone 0.2457** → starter+NB 0.2451. **The pitcher is the
+entire story** — exactly what Round 8's autopsy predicted — with NB worth a hair on top.
+Two more findings: the ×Elo ensemble *hurts* it (0.2482, acc → 53.2%): unlike the Monte
+Carlo sim, this model is already fit on game results, so Elo is redundant rather than
+complementary. And it converges to within noise of v4/v5+temp (0.2479/0.2476) — three
+completely different model families hitting the same public-data wall.
+
+**Verdict:** the best analytic model of the program — ties v2's accuracy, beats its Brier,
+runs in milliseconds with no Monte Carlo at all — but it does not clear the pre-committed
+ship bar (no accuracy win over v2; Brier within noise of the calibrated models), and both
+selected knobs sit at grid edges (γ=1.5, a=0.30), a mild overfit flag. Available as a
+tracked model on request; not promoted unilaterally.
+
+### 11b · Monte Carlo depth: 250 → 50,000 sims per game
+
+| N sims | Acc | Brier | mean \|Δp\| vs 50k | Pick flips /376 | Wall time |
+|---|---|---|---|---|---|
+| 250 | 58.2% | 0.2485 | 0.0127 | 17 | 0.2s |
+| 1,000 | 57.7% | 0.2488 | 0.0064 | 5 | 1.0s |
+| **3,000 (production)** | 58.0% | 0.2491 | 0.0037 | 6 | 3.0s |
+| 10,000 | 58.8% | 0.2490 | 0.0018 | 1 | 10.1s |
+| 50,000 | 58.5% | 0.2490 | — | — | 50.3s |
+
+The noise falls exactly on the theoretical 1/√N curve (halves per 4× sims), and **the
+scoreboard doesn't care**: Brier is flat within ±0.0006 across a 200× compute range (250
+sims nominally *beat* 50,000 — pure sampling luck on 376 games), accuracy wobbles without
+trend, and production depth (3,000) differs from the 50k reference by 0.004 in probability
+and 6 picks out of 376. MC noise at 3,000 sims is an order of magnitude below the model's
+intrinsic error, so more simulation cannot help — **the binding constraint is what the
+model knows, not how precisely it integrates it.** Production's 3,000 is validated; even
+1,000 would be defensible if cron time ever mattered.

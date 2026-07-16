@@ -25,7 +25,7 @@ export const Route = createFileRoute("/history")({
       {
         name: "description",
         content:
-          "Accuracy, Brier score, log loss, and betting returns at the stored odds for every model — v1, v2, v3, odds-blend-v1, the devigged market, and the baseline — tracked from " +
+          "Accuracy, Brier score, log loss, and betting returns at the stored odds for every model — Poisson, Calibrated, Recent Form, Bullpen, Simulator, Market Blend, and the devigged Market — tracked from " +
           TRACK_RECORD_START +
           " forward.",
       },
@@ -176,8 +176,9 @@ function HistoryPage() {
             </div>
             <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Box Score</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              Every model we run — the simulator ensemble, the odds blend, the devigged market line,
-              and the legacy baseline — scored identically on every settled game since{" "}
+              Every model we run — the Poisson analytic model, the recent-form and bullpen sims, the
+              calibrated and headline Simulator, the market blend and the devigged market line —
+              scored identically on every settled game. A clean start: all lines begin together at{" "}
               {trackingSince}.
             </p>
           </div>
@@ -257,7 +258,7 @@ function HistoryPage() {
                 </span>
               ))}
               <span className="normal-case tracking-normal">
-                (Best Odds picks scored with odds-blend-v1)
+                (Best Odds picks scored with Market Blend)
               </span>
             </div>
           </div>

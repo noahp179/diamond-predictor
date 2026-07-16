@@ -48,7 +48,7 @@ export function GameCard({ game }: { game: PredictedGame }) {
       <div className="px-5 pb-4">
         <div className="mb-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           <span>{game.away.abbreviation} {pct(game.awayWinProb)}</span>
-          <span className="text-primary">v1 · {favName} {pct(favProb)}</span>
+          <span className="text-primary">Simulator · {favName} {pct(favProb)}</span>
           <span>{pct(game.homeWinProb)} {game.home.abbreviation}</span>
         </div>
         <div className="flex h-2 overflow-hidden bg-secondary">
@@ -62,9 +62,9 @@ export function GameCard({ game }: { game: PredictedGame }) {
           />
         </div>
 
-        {/* secondary models (v2 = sim-recent-v1, v3 = sim-recent-v2) — each its
-            own label row + probability bar mirroring the primary above, dimmed
-            so the v1 headline still leads */}
+        {/* secondary models (Recent Form, Bullpen) — each its own label row +
+            probability bar mirroring the primary above, dimmed so the Simulator
+            headline still leads */}
         {game.altModels?.map((m) => (
           <div key={m.label} className="mt-3">
             <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
