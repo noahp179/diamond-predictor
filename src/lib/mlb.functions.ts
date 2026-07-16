@@ -12,8 +12,10 @@ import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } f
 import {
   TRACK_RECORD_START,
   TRACKED_MODELS,
+  DISPLAYED_MODELS,
   MODEL_VERSION_RECENT,
   MODEL_VERSION_RECENT_V2,
+  MODEL_VERSION_DIXON,
   MODEL_LABELS,
 } from "./mlb-models";
 
@@ -391,7 +393,7 @@ function finalizeTotals(
 export const getTrackRecord = createServerFn({ method: "GET" }).handler(async () => {
   const empty = {
     trackingSince: TRACK_RECORD_START,
-    primaryModel: MODEL_VERSION_SIM,
+    primaryModel: MODEL_VERSION_DIXON,
     models: [] as ModelTrack[],
     segments: { all: emptyTotals(), recommended: emptyTotals(), best_odds: emptyTotals() },
     games: [] as TrackedGame[],
@@ -531,34 +533,30 @@ export const getTrackRecord = createServerFn({ method: "GET" }).handler(async ()
       if (tg.isBestOdds && blend?.correct != null) bumpAcc(segTotals.best_odds, blend);
     }
 
-    const knownVersions = TRACKED_MODELS.map((m) => m.version);
-    const orderedVersions = [
-      ...knownVersions,
-      ...Array.from(perModel.keys()).filter((v) => !knownVersions.includes(v)),
-    ];
-    const models: ModelTrack[] = orderedVersions
-      .map((version) => {
-        const m = perModel.get(version)!;
-        return {
-          version,
-          settled: finalizeTotals(m.totals),
-          pending: m.pending,
-          daily: Array.from(m.days.entries())
-            .map(([date, b]) => ({
-              date,
-              n: b.n,
-              accuracy: b.n > 0 ? b.correct / b.n : null,
-              brier: b.n > 0 ? b.brierSum / b.n : null,
-            }))
-            .sort((a, b) => (a.date < b.date ? -1 : 1)),
-        };
-      })
-      // Hide versions with no activity in the window (e.g. retired baselines).
-      .filter((m) => m.settled.n > 0 || m.pending > 0 || knownVersions.includes(m.version));
+    // Only the public-facing models reach the page — our three best plus the
+    // Market benchmark. The rest are still computed and scored (the Simulator
+    // drives the whole site), just kept off the charts for legibility.
+    const displayedVersions = DISPLAYED_MODELS.map((m) => m.version);
+    const models: ModelTrack[] = displayedVersions.map((version) => {
+      const m = perModel.get(version)!;
+      return {
+        version,
+        settled: finalizeTotals(m.totals),
+        pending: m.pending,
+        daily: Array.from(m.days.entries())
+          .map(([date, b]) => ({
+            date,
+            n: b.n,
+            accuracy: b.n > 0 ? b.correct / b.n : null,
+            brier: b.n > 0 ? b.brierSum / b.n : null,
+          }))
+          .sort((a, b) => (a.date < b.date ? -1 : 1)),
+      };
+    });
 
     return {
       trackingSince: TRACK_RECORD_START,
-      primaryModel: MODEL_VERSION_SIM,
+      primaryModel: MODEL_VERSION_DIXON,
       models,
       segments: {
         all: finalizeTotals(segTotals.all),

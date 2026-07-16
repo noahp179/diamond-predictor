@@ -3,7 +3,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 import {
-  Bar,
   CartesianGrid,
   Legend,
   Line,
@@ -105,23 +104,6 @@ function HistoryPage() {
   const totalSettled = models.reduce((a, m) => a + m.settled.n, 0);
   const totalPending = models.reduce((a, m) => a + m.pending, 0);
 
-  // One chart row per date; columns per model for accuracy and Brier.
-  const mergedDaily = React.useMemo(() => {
-    const byDate = new Map<string, Record<string, number | string | null>>();
-    for (const m of models) {
-      for (const d of m.daily) {
-        const row = byDate.get(d.date) ?? { date: d.date };
-        row[`${m.version}_accuracy`] =
-          d.accuracy != null ? Number((d.accuracy * 100).toFixed(1)) : null;
-        row[`${m.version}_brier`] = d.brier != null ? Number(d.brier.toFixed(4)) : null;
-        byDate.set(d.date, row);
-      }
-    }
-    return Array.from(byDate.values()).sort((a, b) =>
-      (a.date as string) < (b.date as string) ? -1 : 1,
-    );
-  }, [models]);
-
   const returns = React.useMemo(
     () =>
       calculateReturns(
@@ -138,8 +120,6 @@ function HistoryPage() {
       tableFilter === "recommended" ? g.isRecommended : g.isBestOdds,
     );
   }, [games, selected, tableFilter]);
-
-  const calibration = React.useMemo(() => calculateCalibration(games, selected), [games, selected]);
 
   // Hero leaderboard: every model's overall win rate, best first.
   const accuracyRanked = React.useMemo(
@@ -234,32 +214,28 @@ function HistoryPage() {
                   {modelLabel(m.version)}
                   {selected === m.version && <span className="text-primary">· selected</span>}
                 </div>
-                <div className="mt-2 grid grid-cols-4 gap-2">
-                  <MiniStat label="Acc" value={pct(m.settled.accuracy)} />
-                  <MiniStat label="Brier" value={num(m.settled.brier)} />
-                  <MiniStat label="n" value={`${m.settled.n}`} />
-                  <MiniStat label="Pending" value={`${m.pending}`} />
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <MiniStat label="Win rate" value={pct(m.settled.accuracy)} />
+                  <MiniStat label="Games" value={`${m.settled.n}`} />
+                  <MiniStat label="Waiting" value={`${m.pending}`} />
                 </div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Primary-model page-pick segments */}
+        {/* How the site's own featured picks are doing */}
         {segments && (
           <div className="border-t border-border">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-2 px-6 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              <span className="text-primary">{modelLabel(primaryModel)} page picks</span>
+              <span className="text-primary">How our featured picks are doing</span>
               {(["all", "recommended", "best_odds"] as Segment[]).map((seg) => (
                 <span key={seg}>
                   {SEGMENT_LABEL[seg]}:{" "}
                   <span className="text-foreground">{pct(segments[seg]?.accuracy)}</span>
-                  <span> · n={segments[seg]?.n ?? 0}</span>
+                  <span> · {segments[seg]?.n ?? 0} games</span>
                 </span>
               ))}
-              <span className="normal-case tracking-normal">
-                (Best Odds picks scored with Market Blend)
-              </span>
             </div>
           </div>
         )}
@@ -380,70 +356,7 @@ function HistoryPage() {
               </ResponsiveContainer>
             </ChartCard>
 
-            {/* 3 — trust: are the stated percentages honest */}
-            <ChartCard
-              title="Do the percentages tell the truth?"
-              subtitle={`When ${modelLabel(selected)} says a team has, say, a 70% chance, does that team really win about 70% of the time? The closer each bar sits to the dashed “perfect” line, the more you can trust the number. Tap another model above to check it.`}
-            >
-              {calibration.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <ComposedChart data={calibration} margin={{ top: 8, right: 16, bottom: 20, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                    <XAxis
-                      dataKey="bucket"
-                      stroke="var(--color-muted-foreground)"
-                      fontSize={11}
-                      label={{ value: "what the model said", position: "insideBottom", offset: -12, fontSize: 11, fill: "var(--color-muted-foreground)" }}
-                    />
-                    <YAxis
-                      domain={[0, 1]}
-                      stroke="var(--color-muted-foreground)"
-                      fontSize={11}
-                      tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-                      width={40}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        fontFamily: "var(--font-mono)",
-                      }}
-                      formatter={(value: any, name: any) =>
-                        name === "actually won"
-                          ? [`${(Number(value) * 100).toFixed(0)}%`, name]
-                          : [`${(Number(value) * 100).toFixed(0)}%`, "perfect"]
-                      }
-                      labelFormatter={(l, p: any) =>
-                        `Model said ${l}${p?.[0]?.payload?.count != null ? ` · ${p[0].payload.count} games` : ""}`
-                      }
-                    />
-                    <Legend wrapperStyle={LEGEND_STYLE} />
-                    <Bar
-                      dataKey="actual"
-                      name="actually won"
-                      fill={colorOf(selected)}
-                      barSize={30}
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="ideal"
-                      name="perfect"
-                      stroke="var(--color-muted-foreground)"
-                      strokeDasharray="4 4"
-                      strokeWidth={1.5}
-                      dot={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-40 items-center justify-center text-muted-foreground">
-                  Not enough settled {modelLabel(selected)} games yet for this chart.
-                </div>
-              )}
-            </ChartCard>
-
-            {/* 4 — money: what betting every pick would have done */}
+            {/* 3 — money: what betting every pick would have done */}
             <ChartCard
               title="If you bet $100 on every pick…"
               subtitle="Running profit or loss from a flat $100 bet on each model’s pick, paid at the real sportsbook price. Above the middle line = up money; below = down. Same games for every model."
@@ -518,49 +431,6 @@ function HistoryPage() {
               )}
             </ChartCard>
 
-            {/* Advanced — the technical scores, tucked away for the curious */}
-            <details className="mt-4 border border-border bg-card">
-              <summary className="cursor-pointer px-5 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground">
-                Advanced stats — Brier score &amp; log loss (for the stat nerds)
-              </summary>
-              <div className="border-t border-border p-4">
-                <p className="mb-4 text-sm text-muted-foreground">
-                  These grade a model on its <em>confidence</em>, not just its win/lose calls: being
-                  90% sure and right beats being 51% sure and right, and being confidently wrong is
-                  punished hardest. For both, <span className="text-foreground">lower is better</span>.
-                  A daily point is one day’s games, so early days are jumpy.
-                </p>
-                <div className="mb-2 font-display text-base">Brier score by day (lower ↓)</div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <ComposedChart data={mergedDaily} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                    <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} minTickGap={24} />
-                    <YAxis stroke="var(--color-muted-foreground)" fontSize={11} width={48} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        fontFamily: "var(--font-mono)",
-                      }}
-                    />
-                    <Legend wrapperStyle={LEGEND_STYLE} />
-                    {models.map((m) => (
-                      <Line
-                        key={m.version}
-                        type="monotone"
-                        dataKey={`${m.version}_brier`}
-                        name={modelLabel(m.version)}
-                        stroke={colorOf(m.version)}
-                        strokeWidth={selected === m.version ? 3 : 1.5}
-                        strokeOpacity={selected === m.version ? 1 : 0.3}
-                        dot={false}
-                        connectNulls
-                      />
-                    ))}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </details>
           </>
         )}
 
@@ -865,31 +735,6 @@ function calculateReturns(games: TrackedGame[], versions: string[]) {
     })
     .filter((t) => t.bets > 0);
   return { rows, totals };
-}
-
-function calculateCalibration(games: TrackedGame[], version: string) {
-  const buckets = Array.from({ length: 10 }, (_, i) => ({
-    min: i * 0.1,
-    max: (i + 1) * 0.1,
-    count: 0,
-    correct: 0,
-  }));
-  games.forEach((game) => {
-    const s = game.models[version];
-    if (!s || s.correct == null) return;
-    const predictedProb = s.prob >= 0.5 ? s.prob : 1 - s.prob;
-    const bucketIndex = Math.min(Math.floor(predictedProb * 10), 9);
-    buckets[bucketIndex].count += 1;
-    if (s.correct) buckets[bucketIndex].correct += 1;
-  });
-  return buckets
-    .filter((bucket) => bucket.count > 0)
-    .map((bucket) => ({
-      bucket: `${(bucket.min * 100).toFixed(0)}-${(bucket.max * 100).toFixed(0)}%`,
-      actual: bucket.correct / bucket.count,
-      ideal: bucket.min + 0.05,
-      count: bucket.count,
-    }));
 }
 
 /**

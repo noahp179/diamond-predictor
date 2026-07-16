@@ -1,41 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import * as React from "react";
 
 import { getBestOddsPicks, type GameWithOdds } from "@/lib/mlb.functions";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import { pickProb, MARKET_BLEND_WEIGHT } from "@/lib/mlb-blend";
 
 export const Route = createFileRoute("/best-odds")({
-  validateSearch: (search: Record<string, unknown>): { tab?: OddsTab } => ({
-    tab: search.tab === "blend" ? "blend" : undefined,
-  }),
   head: () => ({
     meta: [
       { title: "Best Odds — Diamond Edge" },
       {
         name: "description",
         content:
-          "The safest bets on today's slate, ranked by confidence in the outcome — from the market line alone, or blended with our model.",
+          "The safest bets on today's slate — the teams most likely to win, combining the betting line with our model, plus what each pick pays.",
       },
     ],
   }),
   component: BestOddsPage,
 });
-
-type OddsTab = "market" | "blend";
-
-const TAB_LABEL: Record<OddsTab, string> = {
-  market: "Best Odds",
-  blend: "Odds × Model",
-};
-const TAB_BLURB: Record<OddsTab, string> = {
-  market:
-    "The three surest outcomes on the slate according to the market itself — DraftKings' own line, vig removed, ranked by the favorite's win probability.",
-  blend:
-    "The three surest outcomes once our Simulator prediction is blended with the market line (Market Blend) — the highest confidence picks given both the odds and our model.",
-};
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -49,9 +32,8 @@ function formatMoneyline(ml: number): string {
   return ml > 0 ? `+${ml}` : `${ml}`;
 }
 
-/** Confidence of the entry's pick under a tab's ranking. */
-function tabConfidence(entry: GameWithOdds, tab: OddsTab): number | null {
-  if (tab === "market") return entry.odds ? pickProb(entry.odds.homeImpliedProb) : null;
+/** Our combined (model + market) chance for the entry's pick to win. */
+function pickConfidence(entry: GameWithOdds): number | null {
   return entry.blendedHomeProb != null ? pickProb(entry.blendedHomeProb) : null;
 }
 
@@ -59,12 +41,6 @@ function BestOddsPage() {
   const fetchPicks = useServerFn(getBestOddsPicks);
   const today = todayISO();
   const tomorrow = offsetDate(today, 1);
-  const tab: OddsTab = Route.useSearch().tab ?? "market";
-  const navigate = Route.useNavigate();
-  const setTab = React.useCallback(
-    (t: OddsTab) => navigate({ search: t === "blend" ? { tab: t } : {}, replace: true }),
-    [navigate],
-  );
 
   const todayQuery = useQuery({
     queryKey: ["best-odds-picks", today],
@@ -80,8 +56,7 @@ function BestOddsPage() {
   });
 
   let allGames: GameWithOdds[] = [];
-  let marketPicks: GameWithOdds[] = [];
-  let blendPicks: GameWithOdds[] = [];
+  let picks: GameWithOdds[] = [];
   const isLoading = todayQuery.isLoading || tomorrowQuery.isLoading;
   const isError = todayQuery.isError || tomorrowQuery.isError;
   const isFetching = todayQuery.isFetching || tomorrowQuery.isFetching;
@@ -95,15 +70,13 @@ function BestOddsPage() {
     const todayDone = slateComplete(todayGames.map((g) => g.game.status));
     const chosen = todayDone ? tomorrowQuery.data : todayQuery.data;
     allGames = chosen?.games ?? [];
-    marketPicks = chosen?.marketPicks ?? [];
-    blendPicks = chosen?.blendPicks ?? [];
+    picks = chosen?.blendPicks ?? [];
     chosenDate = todayDone ? tomorrow : today;
     source = chosen?.source;
   }
 
   const withOdds = allGames.filter((g) => g.odds != null).length;
-  const picks = tab === "market" ? marketPicks : blendPicks;
-  const topConfidence = picks.length > 0 ? tabConfidence(picks[0], tab) : null;
+  const topConfidence = picks.length > 0 ? pickConfidence(picks[0]) : null;
 
   return (
     <div className="min-h-screen">
@@ -115,8 +88,8 @@ function BestOddsPage() {
             </div>
             <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Safest Bets</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              Ranked by confidence in the outcome — the market's line alone, or the market blended
-              with our model's prediction.
+              The teams most likely to win tonight — we combine the betting line with our own model,
+              then show you what each pick pays.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -158,7 +131,7 @@ function BestOddsPage() {
             <Stat label="Games" value={`${allGames.length}`} />
             <Stat label="With market odds" value={`${withOdds}/${allGames.length || 0}`} />
             <Stat
-              label="Top pick confidence"
+              label="Top pick chance"
               value={topConfidence != null ? pct(topConfidence) : "—"}
             />
             <Stat
@@ -178,24 +151,13 @@ function BestOddsPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-10">
-        {/* Tab controls */}
         <div className="border-b border-border pb-4">
-          <div className="-mb-px flex flex-wrap">
-            {(["market", "blend"] as OddsTab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`inline-flex items-center border-b-2 border-transparent px-4 py-2 text-sm font-medium first:pl-0 ${
-                  tab === t
-                    ? "border-primary text-primary"
-                    : "text-muted-foreground hover:border-primary/50 hover:text-primary"
-                }`}
-              >
-                {TAB_LABEL[t]}
-              </button>
-            ))}
-          </div>
-          <p className="mt-3 max-w-2xl font-mono text-xs text-muted-foreground">{TAB_BLURB[tab]}</p>
+          <h2 className="font-display text-2xl">Tonight's three safest picks</h2>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            We take the sportsbook's line, strip out its built-in margin, and blend it with our own
+            model to get each team's real chance of winning. The three biggest chances are below,
+            along with the payout on a winning bet.
+          </p>
         </div>
 
         <div className="mt-6">
@@ -226,7 +188,7 @@ function BestOddsPage() {
               ) : (
                 <div className="grid gap-6">
                   {picks.map((g, i) => (
-                    <BestOddCard key={g.game.gameId} entry={g} tab={tab} rank={i + 1} />
+                    <BestOddCard key={g.game.gameId} entry={g} rank={i + 1} />
                   ))}
                 </div>
               )}
@@ -237,8 +199,9 @@ function BestOddsPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Model · Simulator · Blend · Market Blend (market weight {MARKET_BLEND_WEIGHT}) · Market
-          odds · DraftKings via ESPN (free, unofficial) · Not affiliated with MLB or DraftKings
+          Our model blended with the market ({Math.round(MARKET_BLEND_WEIGHT * 100)}% weight on the
+          line) · Odds from DraftKings via ESPN (free, unofficial) · Not affiliated with MLB or
+          DraftKings
         </div>
       </footer>
     </div>
@@ -254,12 +217,12 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BestOddCard({ entry, tab, rank }: { entry: GameWithOdds; tab: OddsTab; rank: number }) {
+function BestOddCard({ entry, rank }: { entry: GameWithOdds; rank: number }) {
   const { game, odds, edge, blendedHomeProb } = entry;
   if (!odds) return null;
 
-  // The pick is the side the active tab's probability favors.
-  const rankProb = tab === "market" ? odds.homeImpliedProb : (blendedHomeProb ?? 0.5);
+  // The pick is the side our combined (model + market) estimate favors.
+  const rankProb = blendedHomeProb ?? 0.5;
   const pickIsHome = rankProb >= 0.5;
   const pickTeam = pickIsHome ? game.home.abbreviation : game.away.abbreviation;
   const confidence = pickProb(rankProb);
@@ -267,7 +230,7 @@ function BestOddCard({ entry, tab, rank }: { entry: GameWithOdds; tab: OddsTab; 
   const modelProb = pickIsHome ? game.homeWinProb : 1 - game.homeWinProb;
   const pickMoneyline = pickIsHome ? odds.homeMoneyLine : odds.awayMoneyLine;
 
-  // Did the pick win? (game.correct tracks the model's side, not the tab's.)
+  // Did the pick win? (game.correct tracks the model's side, not the pick's.)
   const pickResult =
     game.winner === "home" || game.winner === "away"
       ? (game.winner === "home") === pickIsHome
@@ -315,58 +278,49 @@ function BestOddCard({ entry, tab, rank }: { entry: GameWithOdds; tab: OddsTab; 
         </div>
       </div>
 
-      {/* Confidence headline */}
+      {/* Chance-to-win headline */}
       <div className="border-b border-border/60 px-5 py-4">
         <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          {tab === "market" ? "Market confidence" : "Blended confidence (odds × model)"}
+          {pickTeam} chance to win
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className="font-display text-4xl text-primary">{pct(confidence)}</span>
           <span className="font-mono text-xs text-foreground">
-            {pickTeam} to win · {formatMoneyline(pickMoneyline)}
+            pays {formatMoneyline(pickMoneyline)} on a win
           </span>
         </div>
       </div>
 
-      {/* Model vs market breakdown */}
+      {/* Where that number comes from */}
       <div className="grid grid-cols-2 gap-px bg-border/60">
         <div className="bg-card px-5 py-4">
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            DraftKings market says
+            The betting line says
           </div>
-          <div
-            className={`mt-2 font-display text-3xl ${tab === "market" ? "text-primary" : "text-foreground"}`}
-          >
-            {pct(marketProb)}
-          </div>
-          <div className="mt-1 font-mono text-xs text-muted-foreground">
-            {pickTeam} to win (vig removed)
-          </div>
+          <div className="mt-2 font-display text-3xl text-foreground">{pct(marketProb)}</div>
+          <div className="mt-1 font-mono text-xs text-muted-foreground">{pickTeam} to win</div>
         </div>
         <div className="bg-card px-5 py-4">
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            Simulator says
+            Our model says
           </div>
           <div className="mt-2 font-display text-3xl text-foreground">{pct(modelProb)}</div>
           <div className="mt-1 font-mono text-xs text-muted-foreground">{pickTeam} to win</div>
         </div>
       </div>
 
-      {/* Agreement note */}
+      {/* Plain-English agreement note */}
       <div className="border-t border-border/60 px-5 py-3">
         <p className="font-mono text-xs text-muted-foreground">
           {edge != null && Math.abs(edge) >= 0.005 ? (
             <>
-              Our model is {(Math.abs(pickIsHome ? edge : -edge) * 100).toFixed(1)}pp{" "}
-              {(pickIsHome ? edge : -edge) > 0 ? "higher" : "lower"} than the market on {pickTeam}
-              {tab === "blend"
-                ? " — the blend leans on the market but keeps our signal."
-                : (pickIsHome ? edge : -edge) > 0
-                  ? " — the model agrees and then some."
-                  : " — the model is more cautious than the price."}
+              Our model gives {pickTeam} a{" "}
+              {(Math.abs(pickIsHome ? edge : -edge) * 100).toFixed(1)}-point{" "}
+              {(pickIsHome ? edge : -edge) > 0 ? "better" : "worse"} chance than the betting line
+              does — {(pickIsHome ? edge : -edge) > 0 ? "we like this pick even more." : "we're a bit more cautious than the price."}
             </>
           ) : (
-            <>Our model and the market are in near-perfect agreement on this game.</>
+            <>Our model and the betting line agree almost exactly on this game.</>
           )}
         </p>
       </div>

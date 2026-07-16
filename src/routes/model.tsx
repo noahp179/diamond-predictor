@@ -28,11 +28,6 @@ function pct(p: number) {
   return `${(p * 100).toFixed(1)}%`;
 }
 
-function confidenceScore(game: PredictedGame): number {
-  // Distance from 50% (0.5) scaled to 0-1
-  return Math.abs(game.homeWinProb - 0.5) * 2;
-}
-
 function ModelPage() {
   const fetchPicks = useServerFn(getRecommendedPicks);
   const today = todayISO();
@@ -76,8 +71,8 @@ function ModelPage() {
             </div>
             <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Best Game</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              The single game our model is most confident about, plus two runners-up — ranked by
-              the Simulator's confidence in the outcome.
+              The one game tonight our model feels surest about, plus the next two. The bigger the
+              win chance, the more of a lock we think the pick is.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -172,10 +167,10 @@ function BestGameCard({ game }: { game: PredictedGame }) {
     <div className="border-2 border-primary/60 bg-card transition-colors hover:border-primary">
       <div className="flex items-center justify-between border-b border-border/60 bg-primary/10 px-5 py-2">
         <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-          ★ Best Game · #1 by confidence
+          ★ Best Game · our surest pick
         </span>
         <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Simulator
+          Our model
         </span>
       </div>
       <div className="border-b border-border/60 px-5 py-5">
@@ -227,16 +222,13 @@ function BestGameCard({ game }: { game: PredictedGame }) {
 
       <div className="px-5 py-5">
         <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Win probability
+          Chance to win
         </div>
         <div className="mt-2 flex items-baseline gap-3">
           <span className={`font-display text-6xl ${favHome ? "text-primary" : "text-foreground"}`}>
             {pct(favProb)}
           </span>
           <span className="font-mono text-sm">{favTeam} to win</span>
-          <span className="ml-auto font-mono text-xs text-muted-foreground">
-            confidence {pct(confidenceScore(game))}
-          </span>
         </div>
         <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-secondary">
           <div
@@ -262,7 +254,6 @@ function TopPickCard({ game, rank }: { game: PredictedGame; rank: number }) {
   const favHome = homeProb >= 0.5;
   const favProb = favHome ? homeProb : 1 - homeProb;
   const favTeam = favHome ? game.home.abbreviation : game.away.abbreviation;
-  const confidence = pct(confidenceScore(game));
 
   return (
     <div className="border border-border bg-card hover:border-primary/50 transition-colors">
@@ -309,7 +300,7 @@ function TopPickCard({ game, rank }: { game: PredictedGame; rank: number }) {
       {/* Probability highlight */}
       <div className="px-5 py-4">
         <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Simulator Win Probability
+          Chance to win
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`font-display text-4xl ${favHome ? "text-primary" : "text-foreground"}`}>
@@ -331,17 +322,6 @@ function TopPickCard({ game, rank }: { game: PredictedGame; rank: number }) {
             {game.away.abbreviation} {pct(1 - homeProb)}
           </span>
         </div>
-      </div>
-
-      {/* Confidence badge */}
-      <div className="px-5 py-3 border-t border-border/60">
-        <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Confidence
-        </div>
-        <div className="mt-2 font-display text-3xl text-primary">{confidence}</div>
-        <p className="mt-1 font-mono text-sm text-muted-foreground">
-          Distance from 50% (higher = more confident)
-        </p>
       </div>
     </div>
   );
