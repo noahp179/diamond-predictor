@@ -89,50 +89,67 @@ export const MODEL_LABELS: Record<string, string> = {
 };
 
 /**
- * Display order and labels for every tracked model, best-accuracy-first from the
- * Round 11 frozen-test study so the strongest models lead the scoreboard and take
- * the primary chart colors. The Track Record leaderboard re-sorts live by actual
- * settled accuracy, so this order is just the launch default.
+ * Every model the pipeline computes, best-accuracy-first from the Round 11
+ * frozen-test study. `hidden` models are still predicted, settled, and scored —
+ * the Simulator drives the whole site, the blend powers Best Odds, and the
+ * baseline is a live fallback — but they're kept off the public Track Record so
+ * a casual visitor sees a short, legible list instead of eight near-identical
+ * lines. The three shown models are our best; Market is the benchmark.
  */
-export const TRACKED_MODELS: Array<{ version: string; label: string; note: string }> = [
+export const TRACKED_MODELS: Array<{
+  version: string;
+  label: string;
+  note: string;
+  hidden?: boolean;
+}> = [
   {
     version: MODEL_VERSION_DIXON,
     label: "Poisson",
-    note: "Dixon-Coles attack/defense with a starting-pitcher multiplier and negative-binomial scoring — the best analytic model (Round 11)",
+    note: "Rates each team's scoring, adjusts for tonight's starting pitcher, and simulates the runs — our best model at calling winners",
   },
   {
     version: MODEL_VERSION_RECENT_CAL,
     label: "Calibrated",
-    note: "Recent Form with calibrated confidence — same picks, honest probabilities (Round 7)",
+    note: "Our recent-form model with its confidence tuned so a stated 70% really means about 70%",
   },
   {
     version: MODEL_VERSION_RECENT,
     label: "Recent Form",
-    note: "The game simulator fed trailing 21-day team form instead of season-to-date rates",
-  },
-  {
-    version: MODEL_VERSION_RECENT_V2,
-    label: "Bullpen",
-    note: "Recent Form with a leverage-tiered, relievers-only bullpen the sim deploys by game state",
-  },
-  {
-    version: MODEL_VERSION_HEADLINE,
-    label: "Simulator",
-    note: "Monte Carlo game simulator blended with multi-season Elo — the site's live engine",
-  },
-  {
-    version: MODEL_VERSION_BLEND,
-    label: "Market Blend",
-    note: "The Simulator blended with the market line (Best Odds tab 2)",
+    note: "Judges each team on how it has played over the last few weeks rather than the whole season",
   },
   {
     version: MODEL_VERSION_MARKET,
     label: "Market",
-    note: "DraftKings moneyline with the vig removed — the benchmark to beat",
+    note: "The Las Vegas betting line with its built-in margin removed — the number to beat",
+  },
+  {
+    version: MODEL_VERSION_RECENT_V2,
+    label: "Bullpen",
+    note: "Recent Form with a smarter, leverage-aware bullpen",
+    hidden: true,
+  },
+  {
+    version: MODEL_VERSION_HEADLINE,
+    label: "Simulator",
+    note: "The Monte Carlo simulator that powers the site's live picks",
+    hidden: true,
+  },
+  {
+    version: MODEL_VERSION_BLEND,
+    label: "Market Blend",
+    note: "Our simulator combined with the betting line — powers the Best Odds page",
+    hidden: true,
   },
   {
     version: "baseline-v0.4",
     label: "Baseline",
-    note: "Legacy hand-tuned blend, kept for comparison",
+    note: "Legacy hand-tuned model, kept only as a fallback",
+    hidden: true,
   },
 ];
+
+/**
+ * The models shown on the public Track Record: our three best plus the Market
+ * benchmark. Everything else is computed and scored but kept off the charts.
+ */
+export const DISPLAYED_MODELS = TRACKED_MODELS.filter((m) => !m.hidden);
