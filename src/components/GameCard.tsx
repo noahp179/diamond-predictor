@@ -62,9 +62,9 @@ export function GameCard({ game }: { game: PredictedGame }) {
           />
         </div>
 
-        {/* secondary models (Recent Form, Bullpen) — each its own label row +
-            probability bar mirroring the primary above, dimmed so the Simulator
-            headline still leads */}
+        {/* secondary models (Recent Form, Bullpen, Poisson) — each its own label
+            row + probability bar mirroring the primary above, dimmed so the
+            Simulator headline still leads */}
         {game.altModels?.map((m) => (
           <div key={m.label} className="mt-3">
             <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
