@@ -89,12 +89,12 @@ export const MODEL_LABELS: Record<string, string> = {
 };
 
 /**
- * Every model the pipeline computes, best-accuracy-first from the Round 11
- * frozen-test study. `hidden` models are still predicted, settled, and scored —
- * the Simulator drives the whole site, the blend powers Best Odds, and the
- * baseline is a live fallback — but they're kept off the public Track Record so
- * a casual visitor sees a short, legible list instead of eight near-identical
- * lines. The three shown models are our best; Market is the benchmark.
+ * Every model the pipeline computes. The shown models mirror the ones on the
+ * main-page game cards — Simulator, Recent Form, Bullpen — plus Poisson (our
+ * best) and the Market benchmark, so the Track Record and the home page name the
+ * same models. `hidden` models are still predicted, settled, and scored (the
+ * blend powers Best Odds, Calibrated and the baseline are kept for reference)
+ * but stay off the public Track Record for legibility.
  */
 export const TRACKED_MODELS: Array<{
   version: string;
@@ -108,9 +108,9 @@ export const TRACKED_MODELS: Array<{
     note: "Rates each team's scoring, adjusts for tonight's starting pitcher, and simulates the runs — our best model at calling winners",
   },
   {
-    version: MODEL_VERSION_RECENT_CAL,
-    label: "Calibrated",
-    note: "Our recent-form model with its confidence tuned so a stated 70% really means about 70%",
+    version: MODEL_VERSION_HEADLINE,
+    label: "Simulator",
+    note: "The Monte Carlo simulator that powers the site's live picks on the home page",
   },
   {
     version: MODEL_VERSION_RECENT,
@@ -118,20 +118,19 @@ export const TRACKED_MODELS: Array<{
     note: "Judges each team on how it has played over the last few weeks rather than the whole season",
   },
   {
+    version: MODEL_VERSION_RECENT_V2,
+    label: "Bullpen",
+    note: "Recent Form with a smarter, leverage-aware bullpen",
+  },
+  {
     version: MODEL_VERSION_MARKET,
     label: "Market",
     note: "The Las Vegas betting line with its built-in margin removed — the number to beat",
   },
   {
-    version: MODEL_VERSION_RECENT_V2,
-    label: "Bullpen",
-    note: "Recent Form with a smarter, leverage-aware bullpen",
-    hidden: true,
-  },
-  {
-    version: MODEL_VERSION_HEADLINE,
-    label: "Simulator",
-    note: "The Monte Carlo simulator that powers the site's live picks",
+    version: MODEL_VERSION_RECENT_CAL,
+    label: "Calibrated",
+    note: "Our recent-form model with its confidence tuned so a stated 70% really means about 70%",
     hidden: true,
   },
   {

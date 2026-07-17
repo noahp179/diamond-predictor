@@ -199,7 +199,7 @@ function HistoryPage() {
 
         {/* Model scoreboard — every tracked model, click to inspect */}
         <div className="border-t border-border bg-secondary/30">
-          <div className="mx-auto grid max-w-6xl grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x lg:grid-cols-4 lg:divide-y-0">
+          <div className="mx-auto grid max-w-6xl grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x lg:grid-cols-5 lg:divide-y-0">
             {models.map((m) => (
               <button
                 key={m.version}

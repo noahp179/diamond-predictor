@@ -7,6 +7,7 @@ import {
   buildRecentFormPredictionsForDate,
   buildRecentFormV2PredictionsForDate,
 } from "./mlb-recent-form";
+import { buildDixonColesPredictionsForDate } from "./mlb-dixon-coles";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 import {
@@ -52,8 +53,13 @@ function mergeSimIntoBaseline(
   });
 }
 
-// The two secondary models shown beneath the primary (v1) number, in order.
-const ALT_ORDER = [MODEL_LABELS[MODEL_VERSION_RECENT], MODEL_LABELS[MODEL_VERSION_RECENT_V2]]; // ["v2","v3"]
+// The secondary models shown beneath the primary (Simulator) number, in order:
+// Recent Form, Bullpen, Poisson.
+const ALT_ORDER = [
+  MODEL_LABELS[MODEL_VERSION_RECENT],
+  MODEL_LABELS[MODEL_VERSION_RECENT_V2],
+  MODEL_LABELS[MODEL_VERSION_DIXON],
+];
 
 function sortAlt(alt: PredictedGame["altModels"]): PredictedGame["altModels"] {
   if (!alt) return alt;
@@ -120,6 +126,7 @@ async function loadGamesForDate(
           preds[0];
         const recent = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT);
         const recentV2 = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT_V2);
+        const dixon = preds.find((x: any) => x.model_version === MODEL_VERSION_DIXON);
         const altModels: NonNullable<PredictedGame["altModels"]> = [];
         if (recent && recent.home_win_prob != null) {
           altModels.push({
@@ -133,6 +140,13 @@ async function loadGamesForDate(
             label: MODEL_LABELS[MODEL_VERSION_RECENT_V2],
             homeWinProb: Number(recentV2.home_win_prob),
             awayWinProb: Number(recentV2.away_win_prob),
+          });
+        }
+        if (dixon && dixon.home_win_prob != null) {
+          altModels.push({
+            label: MODEL_LABELS[MODEL_VERSION_DIXON],
+            homeWinProb: Number(dixon.home_win_prob),
+            awayWinProb: Number(dixon.away_win_prob),
           });
         }
         return {
@@ -193,15 +207,19 @@ async function loadGamesForDate(
       // seeds, identical to the numbers the cron will later store.
       const v2Label = MODEL_LABELS[MODEL_VERSION_RECENT];
       const v3Label = MODEL_LABELS[MODEL_VERSION_RECENT_V2];
+      const dixonLabel = MODEL_LABELS[MODEL_VERSION_DIXON];
       const needV2 = games.some((g) => !g.altModels?.some((m) => m.label === v2Label));
       const needV3 = games.some((g) => !g.altModels?.some((m) => m.label === v3Label));
-      if (needV2 || needV3) {
-        const [recentGames, recentV2Games] = await Promise.all([
+      const needDixon = games.some((g) => !g.altModels?.some((m) => m.label === dixonLabel));
+      if (needV2 || needV3 || needDixon) {
+        const [recentGames, recentV2Games, dixonGames] = await Promise.all([
           needV2 ? buildRecentFormPredictionsForDate(date).catch(() => []) : Promise.resolve([]),
           needV3 ? buildRecentFormV2PredictionsForDate(date).catch(() => []) : Promise.resolve([]),
+          needDixon ? buildDixonColesPredictionsForDate(date).catch(() => []) : Promise.resolve([]),
         ]);
         let out = attachAltModel(games, recentGames, v2Label);
         out = attachAltModel(out, recentV2Games, v3Label);
+        out = attachAltModel(out, dixonGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })), dixonLabel);
         return { games: out, source: "db" };
       }
       return { games, source: "db" };
@@ -211,18 +229,24 @@ async function loadGamesForDate(
     console.error("[loadGamesForDate] Supabase error, falling back to live API:", err);
   }
 
-  // Fallback: compute live (no persistence) — baseline for metadata, sim-elo-v2
-  // for the primary (v1) probability, sim-recent-v1 (v2) and sim-recent-v2 (v3)
-  // for the two secondary display numbers.
-  const [baseGames, simGames, recentGames, recentV2Games] = await Promise.all([
+  // Fallback: compute live (no persistence) — baseline for metadata, the
+  // Simulator for the primary probability, and Recent Form, Bullpen and Poisson
+  // for the secondary display numbers.
+  const [baseGames, simGames, recentGames, recentV2Games, dixonGames] = await Promise.all([
     buildPredictionsForDate(date),
     buildSimPredictionsForDate(date).catch(() => []),
     buildRecentFormPredictionsForDate(date).catch(() => []),
     buildRecentFormV2PredictionsForDate(date).catch(() => []),
+    buildDixonColesPredictionsForDate(date).catch(() => []),
   ]);
   const merged = simGames.length > 0 ? mergeSimIntoBaseline(baseGames, simGames) : baseGames;
   let games = attachAltModel(merged, recentGames, MODEL_LABELS[MODEL_VERSION_RECENT]);
   games = attachAltModel(games, recentV2Games, MODEL_LABELS[MODEL_VERSION_RECENT_V2]);
+  games = attachAltModel(
+    games,
+    dixonGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })),
+    MODEL_LABELS[MODEL_VERSION_DIXON],
+  );
   return { games, source: "live" };
 }
 
