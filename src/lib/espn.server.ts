@@ -421,3 +421,326 @@ function toTeamSide(t: EspnTeam, elo: number): TeamSide {
     // the rating is surfaced in the rationale instead.
   };
 }
+
+// ------------------------------------------------------------- Recommended
+
+/** The confidence in a pick's outcome (how likely the favored side is to win). */
+export function pickConfidence(homeWinProb: number): number {
+  return Math.max(homeWinProb, 1 - homeWinProb);
+}
+
+/** Today's slate ranked by model confidence — the Recommended surface.
+ *  Reuses predictSlate; no extra fetches. */
+export async function recommendedSlate(
+  sport: Sport,
+  date: string,
+): Promise<{ games: PredictedGame[]; picks: PredictedGame[]; season: number }> {
+  const { games, season } = await predictSlate(sport, date);
+  const upcoming = games; // include finals too so the page can score itself
+  const picks = [...upcoming]
+    .sort((a, b) => pickConfidence(b.homeWinProb) - pickConfidence(a.homeWinProb))
+    .slice(0, 5);
+  return { games, picks, season };
+}
+
+// ------------------------------------------------------------------ odds
+
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+const logit = (p: number) => {
+  const q = Math.min(1 - 1e-9, Math.max(1e-9, p));
+  return Math.log(q / (1 - q));
+};
+
+/** American odds → implied probability (vig included). */
+function americanImplied(ml: number): number {
+  return ml > 0 ? 100 / (ml + 100) : -ml / (-ml + 100);
+}
+
+/** Proportional devig of a two-way market → P(home). */
+function devigHomeProb(homeML: number, awayML: number): number {
+  const qh = americanImplied(homeML);
+  const qa = americanImplied(awayML);
+  return qh / (qh + qa);
+}
+
+// Research-frozen market blend weight per sport (NBA-NFL-ANALYSIS.md §4/§5).
+const MARKET_BLEND_W: Record<Sport, number> = { nba: 0.9, nfl: 0.8 };
+
+function blendWithMarket(sport: Sport, modelHome: number, marketHome: number): number {
+  const w = MARKET_BLEND_W[sport];
+  return sigmoid((1 - w) * logit(modelHome) + w * logit(marketHome));
+}
+
+export type GameOdds = {
+  provider: string;
+  homeML: number;
+  awayML: number;
+  homeImplied: number;
+  awayImplied: number;
+  /** Devigged home win probability. */
+  devigHome: number;
+};
+
+type OddsEntry = { at: number; odds: GameOdds | null };
+const oddsCache = new Map<number, OddsEntry>();
+const ODDS_TTL = 10 * 60 * 1000;
+
+function coreOddsUrl(sport: Sport, eventId: number): string {
+  const [seg, league] = ESPN_PATH[sport].split("/");
+  return `https://sports.core.api.espn.com/v2/sports/${seg}/leagues/${league}/events/${eventId}/competitions/${eventId}/odds`;
+}
+
+function parseMoneyLine(side: unknown): number | null {
+  if (!side || typeof side !== "object") return null;
+  const s = side as {
+    moneyLine?: number;
+    current?: { moneyLine?: { american?: string } };
+  };
+  if (typeof s.moneyLine === "number" && Math.abs(s.moneyLine) >= 100) return s.moneyLine;
+  const am = s.current?.moneyLine?.american;
+  if (am) {
+    const n = Number(am.replace(/[^-\d.]/g, ""));
+    if (Number.isFinite(n) && Math.abs(n) >= 100) return Math.round(n);
+  }
+  return null;
+}
+
+async function fetchOneEventOdds(sport: Sport, eventId: number): Promise<GameOdds | null> {
+  const cached = oddsCache.get(eventId);
+  if (cached && Date.now() - cached.at < ODDS_TTL) return cached.odds;
+  let odds: GameOdds | null = null;
+  try {
+    const res = await fetch(coreOddsUrl(sport, eventId), {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      const json = (await res.json()) as {
+        items?: { provider?: { name?: string }; homeTeamOdds?: unknown; awayTeamOdds?: unknown }[];
+      };
+      // Prefer the first provider that quotes both moneylines.
+      for (const item of json.items ?? []) {
+        const homeML = parseMoneyLine(item.homeTeamOdds);
+        const awayML = parseMoneyLine(item.awayTeamOdds);
+        if (homeML == null || awayML == null) continue;
+        odds = {
+          provider: item.provider?.name ?? "book",
+          homeML,
+          awayML,
+          homeImplied: americanImplied(homeML),
+          awayImplied: americanImplied(awayML),
+          devigHome: devigHomeProb(homeML, awayML),
+        };
+        break;
+      }
+    }
+  } catch (err) {
+    console.error(`[odds] ${sport} ${eventId}:`, err);
+  }
+  oddsCache.set(eventId, { at: Date.now(), odds });
+  return odds;
+}
+
+async function fetchOddsForEvents(sport: Sport, ids: number[]): Promise<Map<number, GameOdds>> {
+  const map = new Map<number, GameOdds>();
+  const results = await Promise.all(ids.map((id) => fetchOneEventOdds(sport, id)));
+  ids.forEach((id, i) => {
+    const o = results[i];
+    if (o) map.set(id, o);
+  });
+  return map;
+}
+
+export type OddsRow = {
+  game: PredictedGame;
+  odds: GameOdds | null;
+  /** Model minus devigged-market home probability; null with no market. */
+  edge: number | null;
+  /** sim×market blend home probability; null with no market. */
+  blendHome: number | null;
+};
+
+/** Best Odds surface: today's slate priced with live ESPN odds, ranked by
+ *  confidence two ways — the market's own devigged line, and the model×market
+ *  blend. Same "safest bets" framing as MLB (not a +EV claim). */
+export async function bestOddsSlate(
+  sport: Sport,
+  date: string,
+): Promise<{
+  rows: OddsRow[];
+  marketPicks: OddsRow[];
+  blendPicks: OddsRow[];
+  season: number;
+  priced: number;
+  blendWeight: number;
+}> {
+  const { games, season } = await predictSlate(sport, date);
+  const oddsMap = await fetchOddsForEvents(
+    sport,
+    games.map((g) => g.gameId),
+  );
+  const rows: OddsRow[] = games.map((game) => {
+    const odds = oddsMap.get(game.gameId) ?? null;
+    const edge = odds ? game.homeWinProb - odds.devigHome : null;
+    const blendHome = odds ? blendWithMarket(sport, game.homeWinProb, odds.devigHome) : null;
+    return { game, odds, edge, blendHome };
+  });
+  const priced = rows.filter(
+    (r): r is OddsRow & { odds: GameOdds; blendHome: number } => r.odds != null,
+  );
+  const marketPicks = [...priced]
+    .sort((a, b) => pickConfidence(b.odds.devigHome) - pickConfidence(a.odds.devigHome))
+    .slice(0, 5);
+  const blendPicks = [...priced]
+    .sort((a, b) => pickConfidence(b.blendHome) - pickConfidence(a.blendHome))
+    .slice(0, 5);
+  return {
+    rows,
+    marketPicks,
+    blendPicks,
+    season,
+    priced: priced.length,
+    blendWeight: MARKET_BLEND_W[sport],
+  };
+}
+
+// -------------------------------------------------------------- track record
+
+export type TrackGame = {
+  date: string;
+  home: string; // abbr
+  away: string;
+  homeScore: number;
+  awayScore: number;
+  pickHome: boolean; // model favored home
+  pickProb: number; // confidence in the pick
+  correct: boolean;
+};
+
+export type SeasonMetrics = {
+  season: number;
+  seasonLabel: string;
+  n: number;
+  accuracy: number;
+  brier: number;
+  logLoss: number;
+};
+
+/** Which recent seasons to score for the track record: the most recent
+ *  completed season and, if it has games, the in-progress one. */
+function trackSeasons(sport: Sport, today: string): number[] {
+  const cur = ratingSeason(sport, today);
+  const out: number[] = [];
+  // the current season (if underway) plus the two most recent completed
+  // seasons — a stable multi-season sample without an unbounded replay.
+  for (let s = cur; s >= cur - 2; s--) out.push(s);
+  return out.sort((a, b) => a - b);
+}
+
+/** Replay warmup + scored seasons, scoring every completed game the Elo model
+ *  predicted point-in-time. */
+export async function trackRecord(
+  sport: Sport,
+  today: string,
+): Promise<{
+  overall: SeasonMetrics;
+  perSeason: SeasonMetrics[];
+  recent: TrackGame[];
+  running: { i: number; accuracy: number }[];
+  seasonLabels: string[];
+}> {
+  const scored = trackSeasons(sport, today);
+  const firstScored = scored[0];
+  const warmupStart = firstScored - WARMUP_SEASONS;
+  const teams = await fetchTeams(sport);
+  const abbr = (id: string) => teams.get(id)?.abbr ?? id;
+
+  const elo = new Elo(ELO[sport]);
+  const perSeasonAcc = new Map<number, { n: number; correct: number; brier: number; ll: number }>();
+  const all: (TrackGame & { season: number })[] = [];
+
+  for (let s = warmupStart; s <= firstScored + (scored.length - 1); s++) {
+    if (s > warmupStart) elo.carrySeason();
+    const finals = await fetchSeasonFinals(sport, s);
+    for (const g of finals) {
+      if (scored.includes(s)) {
+        const pHome = elo.prob(g.home, g.away, g.neutral);
+        const result = g.hs > g.as ? 1 : 0;
+        const pickHome = pHome >= 0.5;
+        const correct = pickHome === (result === 1);
+        const bucket = perSeasonAcc.get(s) ?? { n: 0, correct: 0, brier: 0, ll: 0 };
+        bucket.n++;
+        bucket.correct += correct ? 1 : 0;
+        bucket.brier += (pHome - result) ** 2;
+        const pc = Math.min(1 - 1e-9, Math.max(1e-9, pHome));
+        bucket.ll += -(result * Math.log(pc) + (1 - result) * Math.log(1 - pc));
+        perSeasonAcc.set(s, bucket);
+        all.push({
+          season: s,
+          date: g.date,
+          home: abbr(g.home),
+          away: abbr(g.away),
+          homeScore: g.hs,
+          awayScore: g.as,
+          pickHome,
+          pickProb: pickConfidence(pHome),
+          correct,
+        });
+      }
+      elo.update(g.home, g.away, g.hs, g.as, g.neutral);
+    }
+  }
+
+  const mk = (
+    season: number,
+    b: { n: number; correct: number; brier: number; ll: number },
+  ): SeasonMetrics => ({
+    season,
+    seasonLabel:
+      sport === "nba" ? `${season - 1}-${String(season % 100).padStart(2, "0")}` : `${season}`,
+    n: b.n,
+    accuracy: b.n ? b.correct / b.n : 0,
+    brier: b.n ? b.brier / b.n : 0,
+    logLoss: b.n ? b.ll / b.n : 0,
+  });
+
+  const perSeason = [...perSeasonAcc.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([s, b]) => mk(s, b));
+
+  const totals = [...perSeasonAcc.values()].reduce(
+    (acc, b) => ({
+      n: acc.n + b.n,
+      correct: acc.correct + b.correct,
+      brier: acc.brier + b.brier,
+      ll: acc.ll + b.ll,
+    }),
+    { n: 0, correct: 0, brier: 0, ll: 0 },
+  );
+  const overall = mk(0, totals);
+  overall.seasonLabel = "All";
+
+  // running cumulative accuracy over the scored sequence (in date order),
+  // downsampled to ~60 points for a compact sparkline.
+  all.sort((a, b) => a.date.localeCompare(b.date));
+  const running: { i: number; accuracy: number }[] = [];
+  let cum = 0;
+  const step = Math.max(1, Math.floor(all.length / 60));
+  all.forEach((g, i) => {
+    cum += g.correct ? 1 : 0;
+    if (i % step === 0 || i === all.length - 1) running.push({ i: i + 1, accuracy: cum / (i + 1) });
+  });
+
+  const recent = all
+    .slice(-25)
+    .reverse()
+    .map(({ season: _s, ...g }) => g);
+
+  return {
+    overall,
+    perSeason,
+    recent,
+    running,
+    seasonLabels: perSeason.map((p) => p.seasonLabel),
+  };
+}

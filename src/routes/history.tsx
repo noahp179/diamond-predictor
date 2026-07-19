@@ -17,6 +17,7 @@ import {
 import { getTrackRecord, type ModelTrack, type TrackedGame } from "@/lib/mlb.functions";
 import { TRACKED_MODELS, TRACK_RECORD_START } from "@/lib/mlb-models";
 import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 
 export const Route = createFileRoute("/history")({
   head: () => ({
@@ -163,7 +164,7 @@ function HistoryPage() {
               {trackingSince}.
             </p>
           </div>
-          <SiteNav />
+          <SiteNav current="mlb" />
         </div>
 
         {/* Model scoreboard — every tracked model, click to inspect */}
@@ -209,6 +210,8 @@ function HistoryPage() {
           </div>
         )}
       </header>
+
+      <SportTabs sport="mlb" current="trackRecord" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         {/* Tab Controls */}

@@ -6,6 +6,7 @@ import { getRecommendedPicks } from "@/lib/mlb.functions";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import type { PredictedGame } from "@/lib/mlb-core";
 import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 
 export const Route = createFileRoute("/model")({
   head: () => ({
@@ -76,9 +77,11 @@ function ModelPage() {
               win chance, the more of a lock we think the pick is.
             </p>
           </div>
-          <SiteNav current="model" />
+          <SiteNav current="mlb" />
         </div>
       </header>
+
+      <SportTabs sport="mlb" current="recommended" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         {isLoading && <p className="text-center py-10">Loading…</p>}

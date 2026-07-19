@@ -1,18 +1,16 @@
 import { Link } from "@tanstack/react-router";
 
 /**
- * Shared top navigation. Three sport tabs (MLB · NFL · NBA) lead, with the
- * MLB-specific tools as secondary links. Best Odds and Track Record are
- * intentionally hidden for now (being reorganized) — their routes still exist
- * and resolve by direct URL, they're just off the nav.
+ * Primary top navigation: the sport switcher. Each sport's own views
+ * (Slate · Recommended · Best Odds · Track Record) live in the secondary
+ * SportTabs bar, not here.
  */
 
-type NavKey = "mlb" | "nfl" | "nba" | "teams" | "model";
+type NavKey = "mlb" | "nfl" | "nba" | "teams";
 
 const base = "border px-4 py-2 font-mono text-xs uppercase tracking-widest transition-colors";
 const idle = "border-border bg-secondary text-foreground hover:border-primary";
 const active = "border-primary bg-primary/10 text-primary";
-const accent = "border-primary/60 bg-primary/10 text-primary hover:border-primary";
 
 export function SiteNav({ current }: { current?: NavKey }) {
   return (
@@ -29,9 +27,6 @@ export function SiteNav({ current }: { current?: NavKey }) {
       <span className="mx-1 hidden h-5 w-px bg-border sm:inline-block" aria-hidden />
       <Link to="/teams" className={`${base} ${current === "teams" ? active : idle}`}>
         Teams
-      </Link>
-      <Link to="/model" className={`${base} ${current === "model" ? active : accent}`}>
-        Recommended
       </Link>
     </nav>
   );

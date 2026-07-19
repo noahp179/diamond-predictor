@@ -6,6 +6,7 @@ import { getBestOddsPicks, type GameWithOdds } from "@/lib/mlb.functions";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import { pickProb, MARKET_BLEND_WEIGHT } from "@/lib/mlb-blend";
 import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 
 export const Route = createFileRoute("/best-odds")({
   head: () => ({
@@ -93,7 +94,7 @@ function BestOddsPage() {
               then show you what each pick pays.
             </p>
           </div>
-          <SiteNav />
+          <SiteNav current="mlb" />
         </div>
         <div className="border-t border-border bg-secondary/30">
           <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-border font-mono text-xs uppercase tracking-widest text-muted-foreground md:grid-cols-4">
@@ -118,6 +119,8 @@ function BestOddsPage() {
           </div>
         </div>
       </header>
+
+      <SportTabs sport="mlb" current="bestOdds" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="border-b border-border pb-4">

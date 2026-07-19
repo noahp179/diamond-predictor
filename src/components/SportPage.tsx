@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { GameCard } from "@/components/GameCard";
 import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 import type { getNbaSlate } from "@/lib/sports.functions";
 
 type SlateResult = Awaited<ReturnType<typeof getNbaSlate>>;
@@ -83,6 +84,8 @@ export function SportPage({
           </div>
         </div>
       </header>
+
+      <SportTabs sport={sport} current="slate" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         {isLoading && <SkeletonGrid />}

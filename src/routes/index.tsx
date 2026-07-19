@@ -6,6 +6,7 @@ import { useState } from "react";
 import { getDailyGames, getMetrics } from "@/lib/mlb.functions";
 import { GameCard } from "@/components/GameCard";
 import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -101,6 +102,8 @@ function Index() {
           </div>
         </div>
       </header>
+
+      <SportTabs sport="mlb" current="slate" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         {isLoading && <SkeletonGrid />}
