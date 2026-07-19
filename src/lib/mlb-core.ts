@@ -57,6 +57,14 @@ export interface PredictedGame {
    * display order.
    */
   altModels?: Array<{ label: string; homeWinProb: number; awayWinProb: number }>;
+  /**
+   * A SEPARATE confidence in the model's pick — the devigged market's own
+   * probability for whichever side the model favored. Distinct from the
+   * prediction (which is the model's win probability): it's an independent
+   * read that grades the pick, and it's what the card's confidence badge shows.
+   * Null when no market line is available. See CONFIDENCE-MODEL.md.
+   */
+  pickConfidence?: number | null;
 }
 
 export interface StandingsRow {
@@ -88,9 +96,8 @@ export async function fetchStandings(season: number): Promise<Map<number, Standi
       const rs = tr.runsScored ?? 0;
       const ra = tr.runsAllowed ?? 0;
       // Pythagorean expectation with exponent 1.83 (Bill James).
-      const pythag = rs + ra > 0
-        ? Math.pow(rs, 1.83) / (Math.pow(rs, 1.83) + Math.pow(ra, 1.83))
-        : 0.5;
+      const pythag =
+        rs + ra > 0 ? Math.pow(rs, 1.83) / (Math.pow(rs, 1.83) + Math.pow(ra, 1.83)) : 0.5;
       const splits: any[] = tr.records?.splitRecords ?? [];
       const split = (type: string) => {
         const s = splits.find((x) => x.type === type);
@@ -145,7 +152,9 @@ export async function fetchTeamStats(season: number): Promise<Map<number, TeamSt
         init(id).ops = ops != null && Number.isFinite(ops) ? ops : null;
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   try {
     if (pitRes.ok) {
       const j: any = await pitRes.json();
@@ -159,7 +168,9 @@ export async function fetchTeamStats(season: number): Promise<Map<number, TeamSt
         row.teamWhip = whip != null && Number.isFinite(whip) ? whip : null;
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return map;
 }
 
@@ -184,7 +195,7 @@ export async function fetchRestDays(date: string): Promise<Map<number, number>> 
       for (const g of d?.games ?? []) {
         const status: string = g?.status?.detailedState ?? "";
         if (!/final|game over|completed/i.test(status)) continue;
-        const gd: string = (d.date as string) ?? (g.gameDate?.slice(0, 10) ?? "");
+        const gd: string = (d.date as string) ?? g.gameDate?.slice(0, 10) ?? "";
         const hid = g?.teams?.home?.team?.id;
         const aid = g?.teams?.away?.team?.id;
         if (hid) {
@@ -202,7 +213,9 @@ export async function fetchRestDays(date: string): Promise<Map<number, number>> 
       const days = Math.round((target.getTime() - last.getTime()) / 86400000) - 1;
       map.set(id, Math.max(0, days));
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return map;
 }
 
@@ -234,13 +247,14 @@ export async function fetchPitcherEra(
       const innings = parseInt(parts[0], 10) || 0;
       const outs = parts[1] ? parseInt(parts[1], 10) : 0;
       const ip = innings + outs / 3;
-      if (ip >= 5.0) { // Require at least 5 innings pitched to compute a stable FIP
+      if (ip >= 5.0) {
+        // Require at least 5 innings pitched to compute a stable FIP
         const hr = split.homeRuns ?? 0;
         const bb = split.baseOnBalls ?? 0;
         const hbp = split.hitByPitch ?? 0;
         const k = split.strikeOuts ?? 0;
         // FIP = (13*HR + 3*(BB+HBP) - 2*K)/IP + 4.20 (aligned with average ERA)
-        fip = (13 * hr + 3 * (bb + hbp) - 2 * k) / ip + 4.20;
+        fip = (13 * hr + 3 * (bb + hbp) - 2 * k) / ip + 4.2;
       }
     }
 
@@ -358,13 +372,13 @@ export function predict({
   const ht = hEraReg == null ? null : 4.2 - hEraReg;
   const at = aEraReg == null ? null : 4.2 - aEraReg;
   if (ht != null && at != null) {
-    lo += (ht - at) * 0.20;
+    lo += (ht - at) * 0.2;
     step(`Starter ERA ${hEraReg!.toFixed(2)} vs ${aEraReg!.toFixed(2)} (regressed)`, lo);
   } else if (ht != null) {
-    lo += ht * 0.10;
+    lo += ht * 0.1;
     step(`Home starter ERA ${hEraReg!.toFixed(2)} vs lg 4.20`, lo);
   } else if (at != null) {
-    lo += -at * 0.10;
+    lo += -at * 0.1;
     step(`Away starter ERA ${aEraReg!.toFixed(2)} vs lg 4.20`, lo);
   }
 
@@ -379,7 +393,7 @@ export function predict({
   // Full-staff team ERA gap (bullpen + rotation depth signal, distinct from
   // the named starter). League anchor 4.20.
   if (homeStats?.teamEra != null && awayStats?.teamEra != null) {
-    lo += ((4.2 - homeStats.teamEra) - (4.2 - awayStats.teamEra)) * 0.10;
+    lo += (4.2 - homeStats.teamEra - (4.2 - awayStats.teamEra)) * 0.1;
     step(`Staff ERA ${homeStats.teamEra.toFixed(2)} vs ${awayStats.teamEra.toFixed(2)}`, lo);
   }
 
@@ -435,7 +449,9 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
   }
   const pitcherStats = new Map<number, Awaited<ReturnType<typeof fetchPitcherEra>>>();
   await Promise.all(
-    Array.from(pitcherIds).map(async (id) => pitcherStats.set(id, await fetchPitcherEra(id, season))),
+    Array.from(pitcherIds).map(async (id) =>
+      pitcherStats.set(id, await fetchPitcherEra(id, season)),
+    ),
   );
 
   return games.map((g: any) => {
@@ -515,10 +531,7 @@ export async function buildPredictionsForDate(date: string): Promise<PredictedGa
  * before starting the next. Prevents the per-date burst of 30+ simultaneous
  * HTTP requests that can trigger anti-abuse throttling.
  */
-export async function batchedAll<T>(
-  tasks: Array<() => Promise<T>>,
-  batchSize = 8,
-): Promise<T[]> {
+export async function batchedAll<T>(tasks: Array<() => Promise<T>>, batchSize = 8): Promise<T[]> {
   const results: T[] = [];
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize).map((t) => t());
