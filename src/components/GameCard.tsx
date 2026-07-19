@@ -43,7 +43,11 @@ export function GameCard({
   const homeFav = game.homeWinProb >= game.awayWinProb;
   const favProb = homeFav ? game.homeWinProb : game.awayWinProb;
   const favName = homeFav ? game.home.abbreviation : game.away.abbreviation;
-  const tier = tierOf(favProb);
+  // The SEPARATE confidence: the market's own read on the side the model picked
+  // — a different number and a different algorithm than the prediction. Null
+  // when no line is available (offseason / unpriced game).
+  const pickConf = game.pickConfidence ?? null;
+  const tier = pickConf != null ? tierOf(pickConf) : null;
 
   return (
     <article className="group relative overflow-hidden border border-border bg-card transition-colors hover:border-primary/60">
@@ -75,26 +79,30 @@ export function GameCard({
         <TeamBlock side={game.home} prob={game.homeWinProb} align="right" />
       </div>
 
-      {/* headline confidence — the model's pick and how sure it is */}
-      <div className="flex items-center justify-between border-t border-border bg-secondary/20 px-5 py-2.5">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          {modelLabel} confidence
-        </span>
-        <span className="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-widest">
-          <span className="text-foreground">{favName}</span>
-          <span className="font-display text-xl leading-none text-primary">{pct(favProb)}</span>
-          <span className={tier.cls}>{tier.label}</span>
-        </span>
-      </div>
+      {/* SEPARATE confidence — the market's own read on the pick, a different
+          number and algorithm than the model's prediction shown on the bar
+          below. Hidden when no line is available. */}
+      {pickConf != null && tier && (
+        <div className="flex items-center justify-between border-t border-border bg-secondary/20 px-5 py-2.5">
+          <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            Confidence <span className="text-muted-foreground/60">· market read</span>
+          </span>
+          <span className="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-widest">
+            <span className="text-foreground">{favName}</span>
+            <span className="font-display text-xl leading-none text-primary">{pct(pickConf)}</span>
+            <span className={tier.cls}>{tier.label}</span>
+          </span>
+        </div>
+      )}
 
-      {/* probability bar */}
+      {/* prediction — each model's own win probability */}
       <div className="px-5 pb-4 pt-4">
         <div className="mb-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           <span>
             {game.away.abbreviation} {pct(game.awayWinProb)}
           </span>
           <span className="text-primary">
-            {modelLabel} · {favName} {pct(favProb)} · <span className={tier.cls}>{tier.label}</span>
+            {modelLabel} · {favName} {pct(favProb)}
           </span>
           <span>
             {pct(game.homeWinProb)} {game.home.abbreviation}
@@ -115,7 +123,6 @@ export function GameCard({
             game.home.abbreviation,
             game.away.abbreviation,
           );
-          const mTier = tierOf(mf.conf);
           return (
             <div key={m.label} className="mt-3">
               <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
@@ -123,8 +130,7 @@ export function GameCard({
                   {game.away.abbreviation} {pct(m.awayWinProb)}
                 </span>
                 <span>
-                  {m.label} · {mf.abbr} {pct(mf.conf)} ·{" "}
-                  <span className={mTier.cls}>{mTier.label}</span>
+                  {m.label} · {mf.abbr} {pct(mf.conf)}
                 </span>
                 <span>
                   {pct(m.homeWinProb)} {game.home.abbreviation}

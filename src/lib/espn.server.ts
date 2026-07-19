@@ -357,11 +357,19 @@ export async function fetchScoreboard(sport: Sport, date: string): Promise<Slate
 export type PowerRow = { rank: number; abbr: string; name: string; elo: number };
 
 /** Build PredictedGame cards for a date: fetch the slate, replay Elo, predict.
- *  Also returns a full Elo power ranking (useful in the offseason gap). */
+ *  Also fetches live odds so each game carries a SEPARATE confidence (the
+ *  market's read on the model's pick) and returns the odds map (so the Best
+ *  Odds page can reuse it) plus a full Elo power ranking. */
 export async function predictSlate(
   sport: Sport,
   date: string,
-): Promise<{ games: PredictedGame[]; season: number; gamesReplayed: number; power: PowerRow[] }> {
+): Promise<{
+  games: PredictedGame[];
+  season: number;
+  gamesReplayed: number;
+  power: PowerRow[];
+  oddsMap: Map<number, GameOdds>;
+}> {
   const [slate, ratings, teams] = await Promise.all([
     fetchScoreboard(sport, date),
     computeRatingsAsOf(sport, date),
@@ -379,12 +387,20 @@ export async function predictSlate(
       return { rank: i + 1, abbr: meta.abbr, name: meta.name, elo: t.elo };
     });
 
+  // separate confidence: the market's own probability for the model's pick
+  const oddsMap = await fetchOddsForEvents(
+    sport,
+    slate.map((g) => g.id),
+  );
+
   const games = slate.map((g): PredictedGame => {
     const homeWinProb = elo.prob(g.home.id, g.away.id, g.neutral);
     const awayWinProb = 1 - homeWinProb;
     const correct = g.winner != null ? (homeWinProb >= 0.5 ? "home" : "away") === g.winner : null;
     const eloH = Math.round(elo.rating(g.home.id));
     const eloA = Math.round(elo.rating(g.away.id));
+    const odds = oddsMap.get(g.id) ?? null;
+    const pickConfidence = odds ? (homeWinProb >= 0.5 ? odds.devigHome : 1 - odds.devigHome) : null;
     return {
       gameId: g.id,
       date: g.date,
@@ -394,6 +410,7 @@ export async function predictSlate(
       away: toTeamSide(g.away, eloA),
       homeWinProb,
       awayWinProb,
+      pickConfidence,
       homeScore: g.homeScore,
       awayScore: g.awayScore,
       winner: g.winner,
@@ -401,12 +418,14 @@ export async function predictSlate(
       rationale: [
         `${SPORT_LABEL[sport]} margin-of-victory Elo, replayed point-in-time (${gamesReplayed.toLocaleString()} games through ${date}).`,
         `Elo ${g.home.abbr} ${eloH} vs ${g.away.abbr} ${eloA}${g.neutral ? " · neutral site" : ` · +${ELO[sport].hfa} home edge`}.`,
-        `Win probability from the 400-point Elo logistic; no injuries, rest, or market inputs.`,
+        odds
+          ? `Confidence = the market's read on the pick (${g.home.abbr} ${Math.round(odds.devigHome * 100)}% / ${g.away.abbr} ${Math.round((1 - odds.devigHome) * 100)}%), independent of the Elo model.`
+          : `No market line available, so no separate confidence for this game.`,
       ],
     };
   });
 
-  return { games, season, gamesReplayed, power };
+  return { games, season, gamesReplayed, power, oddsMap };
 }
 
 function toTeamSide(t: EspnTeam, elo: number): TeamSide {
@@ -574,11 +593,7 @@ export async function bestOddsSlate(
   priced: number;
   blendWeight: number;
 }> {
-  const { games, season } = await predictSlate(sport, date);
-  const oddsMap = await fetchOddsForEvents(
-    sport,
-    games.map((g) => g.gameId),
-  );
+  const { games, season, oddsMap } = await predictSlate(sport, date);
   const rows: OddsRow[] = games.map((game) => {
     const odds = oddsMap.get(game.gameId) ?? null;
     const edge = odds ? game.homeWinProb - odds.devigHome : null;

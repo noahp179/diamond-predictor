@@ -219,7 +219,11 @@ async function loadGamesForDate(
         ]);
         let out = attachAltModel(games, recentGames, v2Label);
         out = attachAltModel(out, recentV2Games, v3Label);
-        out = attachAltModel(out, dixonGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })), dixonLabel);
+        out = attachAltModel(
+          out,
+          dixonGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })),
+          dixonLabel,
+        );
         return { games: out, source: "db" };
       }
       return { games, source: "db" };
@@ -251,21 +255,94 @@ async function loadGamesForDate(
 }
 
 // Read-side: prefer DB (populated by the cron); fall back to live MLB API.
+/**
+ * Attach a SEPARATE confidence to each game — the devigged market's probability
+ * for whichever side the model picked (see CONFIDENCE-MODEL.md). It's an
+ * independent read on the pick, not the model's own probability restated.
+ * Best-effort: reuses the cached `game_odds` rows the pipeline writes and falls
+ * back to a live fetch for anything missing; on any failure the games are
+ * returned unchanged (pickConfidence stays undefined and the card omits it).
+ */
+async function attachPickConfidence(
+  date: string,
+  games: PredictedGame[],
+): Promise<PredictedGame[]> {
+  if (games.length === 0) return games;
+  const devigHome = new Map<number, number>();
+  const STALE_MS = 6 * 60 * 60 * 1000;
+  try {
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data: rows } = await supabase
+      .from("game_odds")
+      .select("game_id, home_implied_prob, away_implied_prob, fetched_at")
+      .in(
+        "game_id",
+        games.map((g) => g.gameId),
+      );
+    const now = Date.now();
+    for (const r of rows ?? []) {
+      const g = games.find((x) => x.gameId === r.game_id);
+      const fresh = now - new Date(r.fetched_at).getTime() < STALE_MS;
+      if (!fresh && g?.correct == null && g?.winner == null) continue;
+      const h = Number(r.home_implied_prob);
+      const a = Number(r.away_implied_prob);
+      if (h > 0 && a > 0) devigHome.set(r.game_id, h / (h + a));
+    }
+  } catch (err) {
+    console.error("[attachPickConfidence] game_odds read failed:", err);
+  }
+  const missing = games.filter((g) => !devigHome.has(g.gameId));
+  if (missing.length > 0) {
+    try {
+      const fetched = await fetchOddsForDate(
+        date,
+        missing.map((g) => ({
+          gameId: g.gameId,
+          homeName: g.home.name,
+          awayName: g.away.name,
+          homeAbbr: g.home.abbreviation,
+          awayAbbr: g.away.abbreviation,
+        })),
+      );
+      for (const o of fetched) {
+        const h = o.homeImpliedProb;
+        const a = o.awayImpliedProb;
+        if (h > 0 && a > 0) devigHome.set(o.gameId, h / (h + a));
+      }
+    } catch (err) {
+      console.error("[attachPickConfidence] live odds fetch failed:", err);
+    }
+  }
+  return games.map((g) => {
+    const dh = devigHome.get(g.gameId);
+    if (dh == null) return g;
+    return { ...g, pickConfidence: g.homeWinProb >= 0.5 ? dh : 1 - dh };
+  });
+}
+
 export const getDailyGames = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
-    await runPipelineIfDue().catch((err) => console.error("[getDailyGames] runPipelineIfDue failed:", err));
+    await runPipelineIfDue().catch((err) =>
+      console.error("[getDailyGames] runPipelineIfDue failed:", err),
+    );
     const date = data?.date ?? todayISO();
     const { games, source } = await loadGamesForDate(date);
-    return { date, games, source };
+    const withConf = await attachPickConfidence(date, games).catch((err) => {
+      console.error("[getDailyGames] attachPickConfidence failed:", err);
+      return games;
+    });
+    return { date, games: withConf, source };
   });
 
 // Aggregate metrics for the dashboard
 export const getMetrics = createServerFn({ method: "GET" }).handler(async () => {
   try {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
-    await runPipelineIfDue().catch((err) => console.error("[getMetrics] runPipelineIfDue failed:", err));
+    await runPipelineIfDue().catch((err) =>
+      console.error("[getMetrics] runPipelineIfDue failed:", err),
+    );
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: daily } = await supabase
       .from("daily_metrics")
@@ -424,7 +501,9 @@ export const getTrackRecord = createServerFn({ method: "GET" }).handler(async ()
   };
   try {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
-    await runPipelineIfDue().catch((err) => console.error("[getTrackRecord] runPipelineIfDue failed:", err));
+    await runPipelineIfDue().catch((err) =>
+      console.error("[getTrackRecord] runPipelineIfDue failed:", err),
+    );
     const { supabase } = await import("@/integrations/supabase/client");
     const { data: rows, error } = await supabase
       .from("games")
@@ -704,7 +783,8 @@ export const getRecommendedPicks = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
     const date = data?.date ?? todayISO();
-    const { games, source } = await loadGamesForDate(date);
+    const { games: raw, source } = await loadGamesForDate(date);
+    const games = await attachPickConfidence(date, raw).catch(() => raw);
     const picks = [...games].sort((a, b) => confidenceOf(b) - confidenceOf(a)).slice(0, 3);
     return { date, games, picks, source, modelVersion: MODEL_VERSION_SIM };
   });
