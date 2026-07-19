@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
@@ -16,6 +16,8 @@ import {
 
 import { getTrackRecord, type ModelTrack, type TrackedGame } from "@/lib/mlb.functions";
 import { TRACKED_MODELS, TRACK_RECORD_START } from "@/lib/mlb-models";
+import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 
 export const Route = createFileRoute("/history")({
   head: () => ({
@@ -162,39 +164,7 @@ function HistoryPage() {
               {trackingSince}.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Today's slate
-            </Link>
-            <Link
-              to="/history"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-              aria-current="page"
-            >
-              Track record
-            </Link>
-            <Link
-              to="/teams"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Teams
-            </Link>
-            <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
-              to="/best-odds"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Best Odds
-            </Link>
-          </div>
+          <SiteNav current="mlb" />
         </div>
 
         {/* Model scoreboard — every tracked model, click to inspect */}
@@ -240,6 +210,8 @@ function HistoryPage() {
           </div>
         )}
       </header>
+
+      <SportTabs sport="mlb" current="trackRecord" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         {/* Tab Controls */}
@@ -314,9 +286,21 @@ function HistoryPage() {
               better="up"
             >
               <ResponsiveContainer width="100%" height={300}>
-                <ComposedChart data={runningAccuracy} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                  <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} minTickGap={24} />
+                <ComposedChart
+                  data={runningAccuracy}
+                  margin={{ top: 8, right: 16, bottom: 4, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    stroke="var(--color-muted-foreground)"
+                    fontSize={11}
+                    minTickGap={24}
+                  />
                   <YAxis
                     domain={["auto", "auto"]}
                     stroke="var(--color-muted-foreground)"
@@ -337,7 +321,12 @@ function HistoryPage() {
                     y={50}
                     stroke="var(--color-muted-foreground)"
                     strokeDasharray="4 4"
-                    label={{ value: "coin flip", position: "insideBottomRight", fontSize: 10, fill: "var(--color-muted-foreground)" }}
+                    label={{
+                      value: "coin flip",
+                      position: "insideBottomRight",
+                      fontSize: 10,
+                      fill: "var(--color-muted-foreground)",
+                    }}
                   />
                   {models.map((m) => (
                     <Line
@@ -366,7 +355,10 @@ function HistoryPage() {
                 <>
                   <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1.5 text-sm">
                     {returns.totals.map((t) => (
-                      <span key={t.version} className="inline-flex items-center gap-1.5 font-mono text-xs">
+                      <span
+                        key={t.version}
+                        className="inline-flex items-center gap-1.5 font-mono text-xs"
+                      >
                         <span
                           className="inline-block h-2.5 w-2.5 rounded-full"
                           style={{ background: colorOf(t.version) }}
@@ -378,15 +370,28 @@ function HistoryPage() {
                           {fmtDollars(t.units)}
                         </span>
                         <span className="text-muted-foreground">
-                          · {t.roi != null ? `${(t.roi * 100).toFixed(1)}% ROI` : "—"} · {t.bets} bets
+                          · {t.roi != null ? `${(t.roi * 100).toFixed(1)}% ROI` : "—"} · {t.bets}{" "}
+                          bets
                         </span>
                       </span>
                     ))}
                   </div>
                   <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={returns.rows} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                      <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} minTickGap={24} />
+                    <ComposedChart
+                      data={returns.rows}
+                      margin={{ top: 8, right: 16, bottom: 4, left: 4 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="var(--color-border)"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        stroke="var(--color-muted-foreground)"
+                        fontSize={11}
+                        minTickGap={24}
+                      />
                       <YAxis
                         stroke="var(--color-muted-foreground)"
                         fontSize={11}
@@ -402,7 +407,11 @@ function HistoryPage() {
                         formatter={(value) => fmtDollars(Number(value))}
                       />
                       <Legend wrapperStyle={LEGEND_STYLE} />
-                      <ReferenceLine y={0} stroke="var(--color-muted-foreground)" strokeDasharray="4 4" />
+                      <ReferenceLine
+                        y={0}
+                        stroke="var(--color-muted-foreground)"
+                        strokeDasharray="4 4"
+                      />
                       {returns.totals.map((t) => (
                         <Line
                           key={t.version}
@@ -419,9 +428,9 @@ function HistoryPage() {
                     </ComposedChart>
                   </ResponsiveContainer>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Losing favorites don’t pay much, so a model can pick lots of winners and still lose
-                    money — that’s the sportsbook’s edge, not a bug. Games with no stored price are
-                    skipped for every model so the lines compare on the same slate.
+                    Losing favorites don’t pay much, so a model can pick lots of winners and still
+                    lose money — that’s the sportsbook’s edge, not a bug. Games with no stored price
+                    are skipped for every model so the lines compare on the same slate.
                   </p>
                 </>
               ) : (
@@ -430,7 +439,6 @@ function HistoryPage() {
                 </div>
               )}
             </ChartCard>
-
           </>
         )}
 
@@ -662,7 +670,11 @@ function AccuracyLeaderboard({
             <div className="relative h-3 w-full overflow-hidden rounded bg-secondary">
               <div
                 className="h-full rounded"
-                style={{ width: `${acc}%`, background: colorOf(r.version), opacity: isSel ? 1 : 0.6 }}
+                style={{
+                  width: `${acc}%`,
+                  background: colorOf(r.version),
+                  opacity: isSel ? 1 : 0.6,
+                }}
               />
               {/* 50% coin-flip reference marker */}
               <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-foreground/40" />

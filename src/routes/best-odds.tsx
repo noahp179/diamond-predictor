@@ -1,10 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { getBestOddsPicks, type GameWithOdds } from "@/lib/mlb.functions";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import { pickProb, MARKET_BLEND_WEIGHT } from "@/lib/mlb-blend";
+import { SiteNav } from "@/components/SiteNav";
+import { SportTabs } from "@/components/SportTabs";
 
 export const Route = createFileRoute("/best-odds")({
   head: () => ({
@@ -92,39 +94,7 @@ function BestOddsPage() {
               then show you what each pick pays.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Today's slate
-            </Link>
-            <Link
-              to="/history"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Track record
-            </Link>
-            <Link
-              to="/teams"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Teams
-            </Link>
-            <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
-              to="/best-odds"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-              aria-current="page"
-            >
-              Best Odds
-            </Link>
-          </div>
+          <SiteNav current="mlb" />
         </div>
         <div className="border-t border-border bg-secondary/30">
           <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-border font-mono text-xs uppercase tracking-widest text-muted-foreground md:grid-cols-4">
@@ -149,6 +119,8 @@ function BestOddsPage() {
           </div>
         </div>
       </header>
+
+      <SportTabs sport="mlb" current="bestOdds" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="border-b border-border pb-4">
@@ -314,10 +286,12 @@ function BestOddCard({ entry, rank }: { entry: GameWithOdds; rank: number }) {
         <p className="font-mono text-xs text-muted-foreground">
           {edge != null && Math.abs(edge) >= 0.005 ? (
             <>
-              Our model gives {pickTeam} a{" "}
-              {(Math.abs(pickIsHome ? edge : -edge) * 100).toFixed(1)}-point{" "}
-              {(pickIsHome ? edge : -edge) > 0 ? "better" : "worse"} chance than the betting line
-              does — {(pickIsHome ? edge : -edge) > 0 ? "we like this pick even more." : "we're a bit more cautious than the price."}
+              Our model gives {pickTeam} a {(Math.abs(pickIsHome ? edge : -edge) * 100).toFixed(1)}
+              -point {(pickIsHome ? edge : -edge) > 0 ? "better" : "worse"} chance than the betting
+              line does —{" "}
+              {(pickIsHome ? edge : -edge) > 0
+                ? "we like this pick even more."
+                : "we're a bit more cautious than the price."}
             </>
           ) : (
             <>Our model and the betting line agree almost exactly on this game.</>

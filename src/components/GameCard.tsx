@@ -4,6 +4,22 @@ function pct(n: number) {
   return `${Math.round(n * 100)}%`;
 }
 
+/** Confidence tier for a prediction, keyed to the historical win rates in
+ *  MODEL-BAKEOFF.md (≥80% ≈ 86% hit, ≥70% ≈ 78–80%, ≥60% ≈ 64–70%). */
+type Tier = { label: string; cls: string };
+function tierOf(conf: number): Tier {
+  if (conf >= 0.8) return { label: "Safe", cls: "text-grass" };
+  if (conf >= 0.7) return { label: "Strong", cls: "text-primary" };
+  if (conf >= 0.6) return { label: "Lean", cls: "text-foreground" };
+  return { label: "Toss-up", cls: "text-muted-foreground" };
+}
+
+/** The favored side of a prediction and the confidence in it. */
+function favOf(homeProb: number, awayProb: number, homeAbbr: string, awayAbbr: string) {
+  const homeFav = homeProb >= awayProb;
+  return { abbr: homeFav ? homeAbbr : awayAbbr, conf: homeFav ? homeProb : awayProb };
+}
+
 function formatTime(iso: string) {
   try {
     return new Date(iso).toLocaleTimeString(undefined, {
@@ -15,17 +31,32 @@ function formatTime(iso: string) {
   }
 }
 
-export function GameCard({ game }: { game: PredictedGame }) {
+export function GameCard({
+  game,
+  modelLabel = "Simulator",
+}: {
+  game: PredictedGame;
+  /** Headline model name shown on the probability bar (MLB uses the Simulator;
+   *  NFL/NBA use the Elo engine). */
+  modelLabel?: string;
+}) {
   const homeFav = game.homeWinProb >= game.awayWinProb;
   const favProb = homeFav ? game.homeWinProb : game.awayWinProb;
   const favName = homeFav ? game.home.abbreviation : game.away.abbreviation;
+  const tier = tierOf(favProb);
 
   return (
     <article className="group relative overflow-hidden border border-border bg-card transition-colors hover:border-primary/60">
       {/* status strip */}
       <div className="flex items-center justify-between border-b border-border bg-secondary/40 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        <span>{formatTime(game.date)} · {game.venue}</span>
-        <span className={game.correct == null ? "text-primary" : game.correct ? "text-grass" : "text-clay"}>
+        <span>
+          {formatTime(game.date)} · {game.venue}
+        </span>
+        <span
+          className={
+            game.correct == null ? "text-primary" : game.correct ? "text-grass" : "text-clay"
+          }
+        >
           {game.correct == null ? game.status : game.correct ? "✓ Correct" : "✗ Miss"}
         </span>
       </div>
@@ -44,46 +75,68 @@ export function GameCard({ game }: { game: PredictedGame }) {
         <TeamBlock side={game.home} prob={game.homeWinProb} align="right" />
       </div>
 
+      {/* headline confidence — the model's pick and how sure it is */}
+      <div className="flex items-center justify-between border-t border-border bg-secondary/20 px-5 py-2.5">
+        <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          {modelLabel} confidence
+        </span>
+        <span className="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-widest">
+          <span className="text-foreground">{favName}</span>
+          <span className="font-display text-xl leading-none text-primary">{pct(favProb)}</span>
+          <span className={tier.cls}>{tier.label}</span>
+        </span>
+      </div>
+
       {/* probability bar */}
-      <div className="px-5 pb-4">
+      <div className="px-5 pb-4 pt-4">
         <div className="mb-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          <span>{game.away.abbreviation} {pct(game.awayWinProb)}</span>
-          <span className="text-primary">Simulator · {favName} {pct(favProb)}</span>
-          <span>{pct(game.homeWinProb)} {game.home.abbreviation}</span>
+          <span>
+            {game.away.abbreviation} {pct(game.awayWinProb)}
+          </span>
+          <span className="text-primary">
+            {modelLabel} · {favName} {pct(favProb)} · <span className={tier.cls}>{tier.label}</span>
+          </span>
+          <span>
+            {pct(game.homeWinProb)} {game.home.abbreviation}
+          </span>
         </div>
         <div className="flex h-2 overflow-hidden bg-secondary">
-          <div
-            className="bg-chalk/70"
-            style={{ width: `${game.awayWinProb * 100}%` }}
-          />
-          <div
-            className="bg-signal"
-            style={{ width: `${game.homeWinProb * 100}%` }}
-          />
+          <div className="bg-chalk/70" style={{ width: `${game.awayWinProb * 100}%` }} />
+          <div className="bg-signal" style={{ width: `${game.homeWinProb * 100}%` }} />
         </div>
 
         {/* secondary models (Recent Form, Bullpen, Poisson) — each its own label
             row + probability bar mirroring the primary above, dimmed so the
             Simulator headline still leads */}
-        {game.altModels?.map((m) => (
-          <div key={m.label} className="mt-3">
-            <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
-              <span>{game.away.abbreviation} {pct(m.awayWinProb)}</span>
-              <span>{m.label}</span>
-              <span>{pct(m.homeWinProb)} {game.home.abbreviation}</span>
+        {game.altModels?.map((m) => {
+          const mf = favOf(
+            m.homeWinProb,
+            m.awayWinProb,
+            game.home.abbreviation,
+            game.away.abbreviation,
+          );
+          const mTier = tierOf(mf.conf);
+          return (
+            <div key={m.label} className="mt-3">
+              <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
+                <span>
+                  {game.away.abbreviation} {pct(m.awayWinProb)}
+                </span>
+                <span>
+                  {m.label} · {mf.abbr} {pct(mf.conf)} ·{" "}
+                  <span className={mTier.cls}>{mTier.label}</span>
+                </span>
+                <span>
+                  {pct(m.homeWinProb)} {game.home.abbreviation}
+                </span>
+              </div>
+              <div className="flex h-2 overflow-hidden bg-secondary opacity-70">
+                <div className="bg-chalk/70" style={{ width: `${m.awayWinProb * 100}%` }} />
+                <div className="bg-signal" style={{ width: `${m.homeWinProb * 100}%` }} />
+              </div>
             </div>
-            <div className="flex h-2 overflow-hidden bg-secondary opacity-70">
-              <div
-                className="bg-chalk/70"
-                style={{ width: `${m.awayWinProb * 100}%` }}
-              />
-              <div
-                className="bg-signal"
-                style={{ width: `${m.homeWinProb * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <details className="border-t border-border bg-background/30 px-5 py-3 text-sm">
@@ -126,7 +179,9 @@ function TeamBlock({
           )}
         </div>
       )}
-      <div className={`mt-3 font-display text-2xl ${prob >= 0.5 ? "text-primary" : "text-muted-foreground"}`}>
+      <div
+        className={`mt-3 font-display text-2xl ${prob >= 0.5 ? "text-primary" : "text-muted-foreground"}`}
+      >
         {Math.round(prob * 100)}%
       </div>
     </div>

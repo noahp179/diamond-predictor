@@ -1,8 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { getTeamLeaderboard } from "@/lib/mlb.functions";
+import { SiteNav } from "@/components/SiteNav";
 
 export const Route = createFileRoute("/teams")({
   head: () => ({
@@ -10,8 +11,7 @@ export const Route = createFileRoute("/teams")({
       { title: "Teams — Diamond Edge" },
       {
         name: "description",
-        content:
-          "Per-team standings and Diamond Edge model accuracy for every MLB club.",
+        content: "Per-team standings and Diamond Edge model accuracy for every MLB club.",
       },
       { property: "og:title", content: "Teams — Diamond Edge" },
       {
@@ -54,62 +54,25 @@ function TeamsPage() {
               Clubhouse Ledger
             </h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              Records, run differential, and how well the model has predicted each
-              team's settled games since{" "}
+              Records, run differential, and how well the model has predicted each team's settled
+              games since{" "}
               <span className="font-mono text-foreground">
                 {data?.trackingSince ?? "the tracking reset"}
               </span>{" "}
               (the current-model era). Model version{" "}
-              <span className="font-mono text-foreground">
-                {data?.modelVersion ?? "—"}
-              </span>
-              .
+              <span className="font-mono text-foreground">{data?.modelVersion ?? "—"}</span>.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Today's slate
-            </Link>
-            <Link
-              to="/history"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Track record
-            </Link>
-            <Link
-              to="/teams"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-              aria-current="page"
-            >
-              Teams
-            </Link>
-            <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
-              to="/best-odds"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Best Odds
-            </Link>
-          </div>
+          <SiteNav current="teams" />
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-10">
-        {isLoading && (
-          <div className="h-96 animate-pulse border border-border bg-card" />
-        )}
+        {isLoading && <div className="h-96 animate-pulse border border-border bg-card" />}
         {!isLoading && teams.length === 0 && (
           <div className="border border-border bg-card p-10 text-center font-mono text-sm text-muted-foreground">
-            No settled games since {data?.trackingSince ?? "the tracking reset"} — the ledger
-            starts fresh with the current models and fills in as games finish.
+            No settled games since {data?.trackingSince ?? "the tracking reset"} — the ledger starts
+            fresh with the current models and fills in as games finish.
           </div>
         )}
         {teams.length > 0 && (
@@ -135,22 +98,16 @@ function TeamsPage() {
                     key={t.id}
                     className="border-b border-border/60 last:border-0 hover:bg-secondary/30"
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {i + 1}
-                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{i + 1}</td>
                     <td className="px-4 py-3">
-                      <div className="font-display text-base text-foreground">
-                        {t.name}
-                      </div>
+                      <div className="font-display text-base text-foreground">{t.name}</div>
                       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                         {t.abbr}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right font-mono">{t.wins}</td>
                     <td className="px-4 py-3 text-right font-mono">{t.losses}</td>
-                    <td className="px-4 py-3 text-right font-mono">
-                      {pct(t.winPct)}
-                    </td>
+                    <td className="px-4 py-3 text-right font-mono">{pct(t.winPct)}</td>
                     <td className="px-4 py-3 text-right font-mono text-muted-foreground">
                       {t.runsFor}
                     </td>
@@ -162,9 +119,7 @@ function TeamsPage() {
                     >
                       {t.runDiff > 0 ? `+${t.runDiff}` : t.runDiff}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">
-                      {pct(t.modelAccuracy)}
-                    </td>
+                    <td className="px-4 py-3 text-right font-mono">{pct(t.modelAccuracy)}</td>
                     <td className="px-4 py-3 text-right font-mono text-muted-foreground">
                       {t.predicted}
                     </td>
