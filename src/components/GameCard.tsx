@@ -15,7 +15,15 @@ function formatTime(iso: string) {
   }
 }
 
-export function GameCard({ game }: { game: PredictedGame }) {
+export function GameCard({
+  game,
+  modelLabel = "Simulator",
+}: {
+  game: PredictedGame;
+  /** Headline model name shown on the probability bar (MLB uses the Simulator;
+   *  NFL/NBA use the Elo engine). */
+  modelLabel?: string;
+}) {
   const homeFav = game.homeWinProb >= game.awayWinProb;
   const favProb = homeFav ? game.homeWinProb : game.awayWinProb;
   const favName = homeFav ? game.home.abbreviation : game.away.abbreviation;
@@ -24,8 +32,14 @@ export function GameCard({ game }: { game: PredictedGame }) {
     <article className="group relative overflow-hidden border border-border bg-card transition-colors hover:border-primary/60">
       {/* status strip */}
       <div className="flex items-center justify-between border-b border-border bg-secondary/40 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        <span>{formatTime(game.date)} · {game.venue}</span>
-        <span className={game.correct == null ? "text-primary" : game.correct ? "text-grass" : "text-clay"}>
+        <span>
+          {formatTime(game.date)} · {game.venue}
+        </span>
+        <span
+          className={
+            game.correct == null ? "text-primary" : game.correct ? "text-grass" : "text-clay"
+          }
+        >
           {game.correct == null ? game.status : game.correct ? "✓ Correct" : "✗ Miss"}
         </span>
       </div>
@@ -47,19 +61,19 @@ export function GameCard({ game }: { game: PredictedGame }) {
       {/* probability bar */}
       <div className="px-5 pb-4">
         <div className="mb-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          <span>{game.away.abbreviation} {pct(game.awayWinProb)}</span>
-          <span className="text-primary">Simulator · {favName} {pct(favProb)}</span>
-          <span>{pct(game.homeWinProb)} {game.home.abbreviation}</span>
+          <span>
+            {game.away.abbreviation} {pct(game.awayWinProb)}
+          </span>
+          <span className="text-primary">
+            {modelLabel} · {favName} {pct(favProb)}
+          </span>
+          <span>
+            {pct(game.homeWinProb)} {game.home.abbreviation}
+          </span>
         </div>
         <div className="flex h-2 overflow-hidden bg-secondary">
-          <div
-            className="bg-chalk/70"
-            style={{ width: `${game.awayWinProb * 100}%` }}
-          />
-          <div
-            className="bg-signal"
-            style={{ width: `${game.homeWinProb * 100}%` }}
-          />
+          <div className="bg-chalk/70" style={{ width: `${game.awayWinProb * 100}%` }} />
+          <div className="bg-signal" style={{ width: `${game.homeWinProb * 100}%` }} />
         </div>
 
         {/* secondary models (Recent Form, Bullpen, Poisson) — each its own label
@@ -68,19 +82,17 @@ export function GameCard({ game }: { game: PredictedGame }) {
         {game.altModels?.map((m) => (
           <div key={m.label} className="mt-3">
             <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
-              <span>{game.away.abbreviation} {pct(m.awayWinProb)}</span>
+              <span>
+                {game.away.abbreviation} {pct(m.awayWinProb)}
+              </span>
               <span>{m.label}</span>
-              <span>{pct(m.homeWinProb)} {game.home.abbreviation}</span>
+              <span>
+                {pct(m.homeWinProb)} {game.home.abbreviation}
+              </span>
             </div>
             <div className="flex h-2 overflow-hidden bg-secondary opacity-70">
-              <div
-                className="bg-chalk/70"
-                style={{ width: `${m.awayWinProb * 100}%` }}
-              />
-              <div
-                className="bg-signal"
-                style={{ width: `${m.homeWinProb * 100}%` }}
-              />
+              <div className="bg-chalk/70" style={{ width: `${m.awayWinProb * 100}%` }} />
+              <div className="bg-signal" style={{ width: `${m.homeWinProb * 100}%` }} />
             </div>
           </div>
         ))}
@@ -126,7 +138,9 @@ function TeamBlock({
           )}
         </div>
       )}
-      <div className={`mt-3 font-display text-2xl ${prob >= 0.5 ? "text-primary" : "text-muted-foreground"}`}>
+      <div
+        className={`mt-3 font-display text-2xl ${prob >= 0.5 ? "text-primary" : "text-muted-foreground"}`}
+      >
         {Math.round(prob * 100)}%
       </div>
     </div>

@@ -1,10 +1,11 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { getRecommendedPicks } from "@/lib/mlb.functions";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import type { PredictedGame } from "@/lib/mlb-core";
+import { SiteNav } from "@/components/SiteNav";
 
 export const Route = createFileRoute("/model")({
   head: () => ({
@@ -75,38 +76,7 @@ function ModelPage() {
               win chance, the more of a lock we think the pick is.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Today's slate
-            </Link>
-            <Link
-              to="/history"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Track record
-            </Link>
-            <Link
-              to="/teams"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Teams
-            </Link>
-            <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
-              to="/best-odds"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Best Odds
-            </Link>
-          </div>
+          <SiteNav current="model" />
         </div>
       </header>
 

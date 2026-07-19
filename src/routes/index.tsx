@@ -1,18 +1,26 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { getDailyGames, getMetrics } from "@/lib/mlb.functions";
 import { GameCard } from "@/components/GameCard";
+import { SiteNav } from "@/components/SiteNav";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Diamond Edge — MLB Win Probabilities" },
-      { name: "description", content: "Daily MLB matchups with transparent win-probability predictions powered by live MLB Stats data." },
+      {
+        name: "description",
+        content:
+          "Daily MLB matchups with transparent win-probability predictions powered by live MLB Stats data.",
+      },
       { property: "og:title", content: "Diamond Edge — MLB Win Probabilities" },
-      { property: "og:description", content: "Daily MLB matchups with transparent win-probability predictions." },
+      {
+        property: "og:description",
+        content: "Daily MLB matchups with transparent win-probability predictions.",
+      },
     ],
   }),
   component: Index,
@@ -51,51 +59,20 @@ function Index() {
             <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
               Diamond Edge · MLB Forecast
             </div>
-            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">
-              Today's Slate
-            </h1>
+            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">MLB Slate</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              Live matchups from the MLB Stats API. Win probabilities blend season form,
-              home-field, and starting-pitcher ERA into a transparent baseline model.
+              Live matchups from the MLB Stats API. Win probabilities blend season form, home-field,
+              and starting-pitcher ERA into a transparent baseline model.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end gap-3">
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="border border-border bg-secondary px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary"
             />
-            <Link
-              to="/"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Today's slate
-            </Link>
-            <Link
-              to="/history"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Track record
-            </Link>
-            <Link
-              to="/teams"
-              className="border border-border bg-secondary px-4 py-2 font-mono text-xs uppercase tracking-widest text-foreground hover:border-primary"
-            >
-              Teams
-            </Link>
-            <Link
-              to="/model"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Recommended
-            </Link>
-            <Link
-              to="/best-odds"
-              className="border border-primary/60 bg-primary/10 px-4 py-2 font-mono text-xs uppercase tracking-widest text-primary hover:border-primary"
-            >
-              Best Odds
-            </Link>
+            <SiteNav current="mlb" />
           </div>
         </div>
         <div className="border-t border-border bg-secondary/30">
@@ -103,17 +80,24 @@ function Index() {
             <Stat label="Games" value={`${games.length}`} />
             <Stat
               label="Historical accuracy"
-              value={
-                metrics?.accuracy != null
-                  ? `${(metrics.accuracy * 100).toFixed(1)}%`
-                  : "—"
-              }
+              value={metrics?.accuracy != null ? `${(metrics.accuracy * 100).toFixed(1)}%` : "—"}
             />
             <Stat
               label="Today settled"
               value={settledToday.length ? `${correctToday}/${settledToday.length}` : "—"}
             />
-            <Stat label="Source" value={isFetching ? "Updating…" : data?.source === "db" ? "Stored" : data?.source === "live" ? "Live" : "—"} />
+            <Stat
+              label="Source"
+              value={
+                isFetching
+                  ? "Updating…"
+                  : data?.source === "db"
+                    ? "Stored"
+                    : data?.source === "live"
+                      ? "Live"
+                      : "—"
+              }
+            />
           </div>
         </div>
       </header>

@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TeamsRouteImport } from './routes/teams'
+import { Route as NflRouteImport } from './routes/nfl'
+import { Route as NbaRouteImport } from './routes/nba'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as BestOddsRouteImport } from './routes/best-odds'
@@ -20,6 +22,16 @@ import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/publ
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NflRoute = NflRouteImport.update({
+  id: '/nfl',
+  path: '/nfl',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NbaRoute = NbaRouteImport.update({
+  id: '/nba',
+  path: '/nba',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModelRoute = ModelRouteImport.update({
@@ -60,6 +72,8 @@ export interface FileRoutesByFullPath {
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/nba': typeof NbaRoute
+  '/nfl': typeof NflRoute
   '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
@@ -69,6 +83,8 @@ export interface FileRoutesByTo {
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/nba': typeof NbaRoute
+  '/nfl': typeof NflRoute
   '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
@@ -79,6 +95,8 @@ export interface FileRoutesById {
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/nba': typeof NbaRoute
+  '/nfl': typeof NflRoute
   '/teams': typeof TeamsRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
@@ -90,6 +108,8 @@ export interface FileRouteTypes {
     | '/best-odds'
     | '/history'
     | '/model'
+    | '/nba'
+    | '/nfl'
     | '/teams'
     | '/api/public/hooks/run-pipeline'
   fileRoutesByTo: FileRoutesByTo
@@ -99,6 +119,8 @@ export interface FileRouteTypes {
     | '/best-odds'
     | '/history'
     | '/model'
+    | '/nba'
+    | '/nfl'
     | '/teams'
     | '/api/public/hooks/run-pipeline'
   id:
@@ -108,6 +130,8 @@ export interface FileRouteTypes {
     | '/best-odds'
     | '/history'
     | '/model'
+    | '/nba'
+    | '/nfl'
     | '/teams'
     | '/api/public/hooks/run-pipeline'
   fileRoutesById: FileRoutesById
@@ -118,6 +142,8 @@ export interface RootRouteChildren {
   BestOddsRoute: typeof BestOddsRoute
   HistoryRoute: typeof HistoryRoute
   ModelRoute: typeof ModelRoute
+  NbaRoute: typeof NbaRoute
+  NflRoute: typeof NflRoute
   TeamsRoute: typeof TeamsRoute
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
 }
@@ -129,6 +155,20 @@ declare module '@tanstack/react-router' {
       path: '/teams'
       fullPath: '/teams'
       preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nfl': {
+      id: '/nfl'
+      path: '/nfl'
+      fullPath: '/nfl'
+      preLoaderRoute: typeof NflRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nba': {
+      id: '/nba'
+      path: '/nba'
+      fullPath: '/nba'
+      preLoaderRoute: typeof NbaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/model': {
@@ -182,6 +222,8 @@ const rootRouteChildren: RootRouteChildren = {
   BestOddsRoute: BestOddsRoute,
   HistoryRoute: HistoryRoute,
   ModelRoute: ModelRoute,
+  NbaRoute: NbaRoute,
+  NflRoute: NflRoute,
   TeamsRoute: TeamsRoute,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
 }
