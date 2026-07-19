@@ -773,3 +773,8 @@ and 6 picks out of 376. MC noise at 3,000 sims is an order of magnitude below th
 intrinsic error, so more simulation cannot help — **the binding constraint is what the
 model knows, not how precisely it integrates it.** Production's 3,000 is validated; even
 1,000 would be defensible if cron time ever mattered.
+
+---
+
+*The program's first non-MLB round — NBA & NFL algorithm bake-off, backtested
+against 19 and 27 seasons of market odds — lives in `NBA-NFL-ANALYSIS.md`.*
