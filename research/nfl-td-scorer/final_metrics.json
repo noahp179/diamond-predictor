@@ -1,0 +1,156 @@
+{
+  "test_seasons": [
+    2023,
+    2024
+  ],
+  "n_player_games": 9612,
+  "n_games": 569,
+  "base_rate": 0.2135871826883063,
+  "platt": {
+    "a": 0.709321977357556,
+    "b": -0.328017845712687
+  },
+  "brier_base": 0.16796769807957837,
+  "brier_raw": 0.15572229044241007,
+  "brier_cal": 0.15591889090663774,
+  "logloss_raw": 0.48521142570891423,
+  "logloss_cal": 0.4842733413307454,
+  "auc": 0.6797840427506893,
+  "ece_raw": 0.01637338125735529,
+  "ece_cal": 0.010011839447893313,
+  "top1_hit": 0.4833040421792619,
+  "top2_hit": 0.6889279437609842,
+  "vol_top1_hit": 0.46748681898066785,
+  "top1_lift": 2.262795155103295,
+  "recall_at2": 0.22888014886238686,
+  "recall_at3": 0.31295849897093236,
+  "scorer_coverage": 0.9028144239226034,
+  "examples": [
+    {
+      "game_id": "2023_02_IND_HOU",
+      "picks": [
+        {
+          "player": "Anthony Richardson Sr.",
+          "team": "IND",
+          "opp": "HOU",
+          "likelihood": 0.426,
+          "confidence": 48.9,
+          "scored": 1
+        },
+        {
+          "player": "Zack Moss",
+          "team": "IND",
+          "opp": "HOU",
+          "likelihood": 0.336,
+          "confidence": 47.0,
+          "scored": 1
+        }
+      ]
+    },
+    {
+      "game_id": "2023_08_PHI_WAS",
+      "picks": [
+        {
+          "player": "A.J. Brown",
+          "team": "PHI",
+          "opp": "WAS",
+          "likelihood": 0.369,
+          "confidence": 76.6,
+          "scored": 1
+        },
+        {
+          "player": "D'Andre Swift",
+          "team": "PHI",
+          "opp": "WAS",
+          "likelihood": 0.285,
+          "confidence": 55.0,
+          "scored": 1
+        }
+      ]
+    },
+    {
+      "game_id": "2023_17_ATL_CHI",
+      "picks": [
+        {
+          "player": "Bijan Robinson",
+          "team": "ATL",
+          "opp": "CHI",
+          "likelihood": 0.308,
+          "confidence": 71.2,
+          "scored": 0
+        },
+        {
+          "player": "Justin Fields",
+          "team": "CHI",
+          "opp": "ATL",
+          "likelihood": 0.273,
+          "confidence": 43.9,
+          "scored": 1
+        }
+      ]
+    },
+    {
+      "game_id": "2024_05_NYJ_MIN",
+      "picks": [
+        {
+          "player": "Breece Hall",
+          "team": "NYJ",
+          "opp": "MIN",
+          "likelihood": 0.36,
+          "confidence": 80.2,
+          "scored": 0
+        },
+        {
+          "player": "Justin Jefferson",
+          "team": "MIN",
+          "opp": "NYJ",
+          "likelihood": 0.296,
+          "confidence": 42.0,
+          "scored": 0
+        }
+      ]
+    },
+    {
+      "game_id": "2024_14_BUF_LA",
+      "picks": [
+        {
+          "player": "James Cook III",
+          "team": "BUF",
+          "opp": "LA",
+          "likelihood": 0.457,
+          "confidence": 61.4,
+          "scored": 0
+        },
+        {
+          "player": "Josh Allen",
+          "team": "BUF",
+          "opp": "LA",
+          "likelihood": 0.434,
+          "confidence": 38.8,
+          "scored": 1
+        }
+      ]
+    },
+    {
+      "game_id": "2024_18_BUF_NE",
+      "picks": [
+        {
+          "player": "James Cook III",
+          "team": "BUF",
+          "opp": "NE",
+          "likelihood": 0.526,
+          "confidence": 89.3,
+          "scored": 1
+        },
+        {
+          "player": "Keon Coleman",
+          "team": "BUF",
+          "opp": "NE",
+          "likelihood": 0.384,
+          "confidence": 35.9,
+          "scored": 0
+        }
+      ]
+    }
+  ]
+}

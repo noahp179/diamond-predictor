@@ -1,0 +1,4 @@
+# Regenerable artifacts (rebuild with fetch_espn.py / backtest.py)
+__pycache__/
+data/
+predictions.csv
