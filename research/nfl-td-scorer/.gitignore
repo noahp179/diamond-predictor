@@ -1,4 +1,5 @@
-# Regenerable artifacts (rebuild with fetch_espn.py / backtest.py)
+# Regenerable artifacts (rebuild with fetch_espn.py / backtest.py / bakeoff.py)
 __pycache__/
 data/
 predictions.csv
+features.csv

@@ -92,9 +92,11 @@ def calibration(y, p, bins=10):
 
 
 # ------------------------------ walk forward ------------------------------- #
-def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True):
+def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True, collect_features=False):
+    from model import team_expected_tds
     pg, tg, order = load()
     pri = league_priors(pg, tg)
+    feat_rows = []
     if verbose:
         print(f"League priors (from {PRIOR_SEASON}): "
               f"rushTD/carry={pri.rush_td_per_carry:.4f}  recTD/target={pri.rec_td_per_target:.4f}  "
@@ -123,6 +125,7 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True):
                 continue
             two = list(tinfo.itertuples())
             game_preds = []
+            ctx = {}   # player_id -> feature context (for the bake-off feature matrix)
             for trow in two:
                 team, opp = trow.team, trow.opp
                 off_state = teams.get(team) or TeamState(team)
@@ -136,6 +139,15 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True):
                         roster.append(st)
                 preds = predict_team(off_state, def_state, roster, opp, pri)
                 game_preds.extend(preds)
+                if collect_features:
+                    ter, tec = team_expected_tds(off_state, def_state, pri)
+                    tpc = sum(p.proj_carries() for p in roster) or 1e-9
+                    tpt = sum(p.proj_targets() for p in roster) or 1e-9
+                    home = gid.split("_")[-1]      # game_id = SEASON_WEEK_AWAY_HOME
+                    for p in roster:
+                        ctx[p.player_id] = dict(
+                            st=p, off=off_state, deff=def_state, ter=ter, tec=tec,
+                            tpc=tpc, tpt=tpt, is_home=int(team == home))
 
             if not game_preds:
                 continue
@@ -152,6 +164,33 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True):
                     "conf": confidence(pr, ranked), "proj_touch": pr.proj_carries + pr.proj_targets,
                     "games_hist": pr.games, "scored": scored,
                 })
+                if collect_features and pr.player_id in ctx:
+                    c = ctx[pr.player_id]; p = c["st"]
+                    feat_rows.append({
+                        "game_id": gid, "season": season, "week": week,
+                        "player_id": pr.player_id, "player": pr.player,
+                        "team": pr.team, "opp": pr.opp, "scored": scored,
+                        # --- usage ---
+                        "proj_carries": p.proj_carries(), "proj_targets": p.proj_targets(),
+                        "proj_rush_yds": p.proj_rush_yds(), "proj_rec_yds": p.proj_rec_yds(),
+                        "proj_touches": p.proj_carries() + p.proj_targets(),
+                        "carry_share": p.proj_carries() / c["tpc"],
+                        "target_share": p.proj_targets() / c["tpt"],
+                        # --- efficiency / form ---
+                        "rush_td_rate": p.rush_td_rate(pri), "rec_td_rate": p.rec_td_rate(pri),
+                        "anytime_rate": p.anytime_rate(), "ewma_scored": p.ewma_scored,
+                        "games_hist": p.games,
+                        # --- team / matchup ---
+                        "team_off_rush": c["off"].off_rating(pri, "rush"),
+                        "team_off_rec": c["off"].off_rating(pri, "rec"),
+                        "opp_def_rush": c["deff"].def_rating(pri, "rush"),
+                        "opp_def_rec": c["deff"].def_rating(pri, "rec"),
+                        "team_exp_rush_td": c["ter"], "team_exp_rec_td": c["tec"],
+                        "is_home": c["is_home"],
+                        # --- incumbent model output (so ML can refine it) ---
+                        "poisson_p": pr.p_td, "poisson_lam": pr.lam,
+                        "poisson_lam_rush": pr.lam_rush, "poisson_lam_rec": pr.lam_rec,
+                    })
             # ---- game-level pick metrics ----
             actual_scorers = {str(r.player_id) for r in box.itertuples()
                               if (r.rush_td + r.rec_td) > 0}
@@ -184,7 +223,8 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True):
                 pid = str(r.player_id)
                 st = players.get(pid) or PlayerState(pid, r.player, r.team)
                 st.player = r.player
-                st.update(r.carries, r.targets, r.rush_td, r.rec_td, r.team)
+                st.update(r.carries, r.targets, r.rush_td, r.rec_td, r.team,
+                          rush_yds=r.rush_yds, rec_yds=r.rec_yds)
                 players[pid] = st
             for trow in tinfo.itertuples():
                 team, opp = trow.team, trow.opp
@@ -197,6 +237,8 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True):
                 teams[opp] = ds
 
     rec, games = pd.DataFrame(records), pd.DataFrame(game_rows)
+    if collect_features:
+        return rec, games, pd.DataFrame(feat_rows)
     if do_report:
         return report(rec, games, pri)
     return rec, games

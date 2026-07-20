@@ -61,29 +61,51 @@ class PlayerState:
     games: int = 0
     ewma_carries: float = 0.0
     ewma_targets: float = 0.0
+    ewma_rush_yds: float = 0.0
+    ewma_rec_yds: float = 0.0
+    ewma_scored: float = 0.0        # hot-hand: EWMA of scored-a-TD (0/1)
     # cumulative counts feed the shrunk per-touch scoring rates
     cum_carries: float = 0.0
     cum_targets: float = 0.0
     cum_rush_td: float = 0.0
     cum_rec_td: float = 0.0
+    cum_scored: float = 0.0         # games with >=1 TD
     recent_touches: list = field(default_factory=list)  # for role-stability
 
-    def update(self, carries, targets, rush_td, rec_td, team):
+    def update(self, carries, targets, rush_td, rec_td, team, rush_yds=0.0, rec_yds=0.0):
         self.team = team
+        scored = 1.0 if (rush_td + rec_td) > 0 else 0.0
         if self.games == 0:                      # seed EWMA with first observation
             self.ewma_carries = carries
             self.ewma_targets = targets
+            self.ewma_rush_yds = rush_yds
+            self.ewma_rec_yds = rec_yds
+            self.ewma_scored = scored
         else:
             self.ewma_carries += ALPHA_VOL * (carries - self.ewma_carries)
             self.ewma_targets += ALPHA_VOL * (targets - self.ewma_targets)
+            self.ewma_rush_yds += ALPHA_VOL * (rush_yds - self.ewma_rush_yds)
+            self.ewma_rec_yds += ALPHA_VOL * (rec_yds - self.ewma_rec_yds)
+            self.ewma_scored += ALPHA_VOL * (scored - self.ewma_scored)
         self.cum_carries += carries
         self.cum_targets += targets
         self.cum_rush_td += rush_td
         self.cum_rec_td += rec_td
+        self.cum_scored += scored
         self.recent_touches.append(carries + targets)
         if len(self.recent_touches) > 6:
             self.recent_touches.pop(0)
         self.games += 1
+
+    def proj_rush_yds(self):
+        return self.ewma_rush_yds
+
+    def proj_rec_yds(self):
+        return self.ewma_rec_yds
+
+    def anytime_rate(self, prior_mean=0.21, k=6.0):
+        """Shrunk historical rate of scoring >=1 TD in a game."""
+        return (self.cum_scored + k * prior_mean) / (self.games + k)
 
     # --- projections used at prediction time ---
     def proj_carries(self):

@@ -10,6 +10,11 @@ happened** in 1,139 real games (2021–2024). No app/product changes were made �
 this is the algorithm and its evidence only. All code lives in
 [`research/nfl-td-scorer/`](research/nfl-td-scorer/).
 
+> **See also:** [`NFL-TD-SCORER-BAKEOFF.md`](NFL-TD-SCORER-BAKEOFF.md) ranks this
+> model against **17 other algorithms** (heuristics, statistical, and ML) on the
+> same held-out games. Short version: a plain **logistic regression** edges this
+> Poisson model; simple models beat gradient boosting and neural nets.
+
 ---
 
 ## TL;DR — headline results (out-of-sample: 2023–2024, 569 games)
