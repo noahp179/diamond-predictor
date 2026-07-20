@@ -57,56 +57,49 @@ def load_merged():
 
 
 # ------------------------- Stage B: conditional logit ---------------------- #
-def _group_indices(df):
-    """list of (row-index arrays) for each (game_id, team)."""
-    groups = []
-    for _, idx in df.groupby(["game_id", "team"]).indices.items():
-        groups.append(np.asarray(idx))
-    return groups
+# Vectorized over (game_id, team) groups via integer segment codes - no Python
+# loop over groups, so each optimizer step is O(n*d) and fits run in ms.
+def group_codes(df):
+    key = df["game_id"].astype(str) + "|" + df["team"].astype(str)
+    codes, uniq = pd.factorize(key)
+    return codes.astype(np.int64), len(uniq)
 
 
-def fit_softmax_shares(X, events, groups, l2=1.0, iters=200):
+def _softmax_by_group(z, codes, ng):
+    gmax = np.full(ng, -np.inf)
+    np.maximum.at(gmax, codes, z)
+    e = np.exp(z - gmax[codes])
+    gsum = np.bincount(codes, weights=e, minlength=ng)
+    return e / gsum[codes]
+
+
+def fit_softmax_shares(X, events, codes, ng, l2=1.0, iters=200):
     """
     Conditional-logit MLE: weight_i = exp(x_i . b); share within group = softmax.
     Maximize sum_g sum_i events_i * log(share_i)  (multinomial allocation kernel).
-    Analytic gradient; L-BFGS. Groups with no events contribute nothing.
+    Vectorized analytic gradient; L-BFGS. Zero-event groups contribute nothing.
     """
     X = np.asarray(X, float)
     events = np.asarray(events, float)
-    active = [g for g in groups if events[g].sum() > 0]
+    d = X.shape[1]
 
     def negll(b):
-        ll = 0.0
-        grad = np.zeros(X.shape[1])
-        for g in active:
-            xg, eg = X[g], events[g]
-            z = xg @ b
-            z -= z.max()
-            w = np.exp(z)
-            p = w / w.sum()
-            ll += (eg * np.log(p + 1e-12)).sum()
-            xbar = p @ xg
-            grad += (eg[:, None] * (xg - xbar)).sum(axis=0)
-        ll -= l2 * (b @ b)
-        grad -= 2 * l2 * b
+        p = _softmax_by_group(X @ b, codes, ng)
+        ll = np.sum(events * np.log(p + 1e-12)) - l2 * (b @ b)
+        xbar = np.empty((ng, d))
+        for j in range(d):
+            xbar[:, j] = np.bincount(codes, weights=p * X[:, j], minlength=ng)
+        grad = (events[:, None] * (X - xbar[codes])).sum(axis=0) - 2 * l2 * b
         return -ll, -grad
 
-    res = minimize(negll, np.zeros(X.shape[1]), jac=True, method="L-BFGS-B",
+    res = minimize(negll, np.zeros(d), jac=True, method="L-BFGS-B",
                    options={"maxiter": iters})
     return res.x
 
 
-def softmax_within(df, X, beta):
-    """Return per-row share, normalized within each (game_id, team)."""
-    z = np.asarray(X, float) @ beta
-    out = np.zeros(len(df))
-    tmp = df.copy()
-    tmp["_z"] = z
-    for _, idx in tmp.groupby(["game_id", "team"]).indices.items():
-        zz = z[idx]; zz = zz - zz.max()
-        w = np.exp(zz)
-        out[np.asarray(idx)] = w / w.sum()
-    return out
+def softmax_within(codes, ng, X, beta):
+    """Per-row share, normalized within each group."""
+    return _softmax_by_group(np.asarray(X, float) @ beta, codes, ng)
 
 
 # ------------------------------ HTS assembly ------------------------------- #
@@ -131,12 +124,12 @@ class HTS:
         tt = self._team_table(tr)
         self.rush_count.fit(tt[TEAM_FEATS].values, tt["rush_td_team"].values)
         self.rec_count.fit(tt[TEAM_FEATS].values, tt["rec_td_team"].values)
-        groups = _group_indices(tr.reset_index(drop=True))
         trr = tr.reset_index(drop=True)
+        codes, ng = group_codes(trr)
         Xr = self.scaler_r.fit_transform(trr[RUSH_SHARE_FEATS].values)
         Xc = self.scaler_c.fit_transform(trr[REC_SHARE_FEATS].values)
-        self.beta_r = fit_softmax_shares(Xr, trr["rush_td"].values, groups)
-        self.beta_c = fit_softmax_shares(Xc, trr["rec_td"].values, groups)
+        self.beta_r = fit_softmax_shares(Xr, trr["rush_td"].values, codes, ng)
+        self.beta_c = fit_softmax_shares(Xc, trr["rec_td"].values, codes, ng)
         return self
 
     def predict(self, df):
@@ -146,8 +139,9 @@ class HTS:
         tt["rush_cnt"] = np.clip(self.rush_count.predict(tt[TEAM_FEATS].values), 0, None)
         tt["rec_cnt"] = np.clip(self.rec_count.predict(tt[TEAM_FEATS].values), 0, None)
         d = d.merge(tt[["game_id", "team", "rush_cnt", "rec_cnt"]], on=["game_id", "team"], how="left")
-        share_r = softmax_within(d, self.scaler_r.transform(d[RUSH_SHARE_FEATS].values), self.beta_r)
-        share_c = softmax_within(d, self.scaler_c.transform(d[REC_SHARE_FEATS].values), self.beta_c)
+        codes, ng = group_codes(d)
+        share_r = softmax_within(codes, ng, self.scaler_r.transform(d[RUSH_SHARE_FEATS].values), self.beta_r)
+        share_c = softmax_within(codes, ng, self.scaler_c.transform(d[REC_SHARE_FEATS].values), self.beta_c)
         lam = d["rush_cnt"].values * share_r + d["rec_cnt"].values * share_c
         return 1 - np.exp(-np.clip(lam, 0, None))
 
