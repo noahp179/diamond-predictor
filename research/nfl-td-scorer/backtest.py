@@ -147,7 +147,8 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True, collect_featu
                     for p in roster:
                         ctx[p.player_id] = dict(
                             st=p, off=off_state, deff=def_state, ter=ter, tec=tec,
-                            tpc=tpc, tpt=tpt, is_home=int(team == home))
+                            tpc=tpc, tpt=tpt, is_home=int(team == home),
+                            team=team, opp=opp)   # CURRENT game team, not stale state
 
             if not game_preds:
                 continue
@@ -169,7 +170,7 @@ def run(score_seasons=SCORE_SEASONS, do_report=True, verbose=True, collect_featu
                     feat_rows.append({
                         "game_id": gid, "season": season, "week": week,
                         "player_id": pr.player_id, "player": pr.player,
-                        "team": pr.team, "opp": pr.opp, "scored": scored,
+                        "team": c["team"], "opp": c["opp"], "scored": scored,
                         # --- usage ---
                         "proj_carries": p.proj_carries(), "proj_targets": p.proj_targets(),
                         "proj_rush_yds": p.proj_rush_yds(), "proj_rec_yds": p.proj_rec_yds(),

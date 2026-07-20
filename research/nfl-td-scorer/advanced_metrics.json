@@ -1,0 +1,53 @@
+{
+  "models": [
+    {
+      "model": "HTS hierarchical (team x share)",
+      "top1": 0.4903339191564148,
+      "top2": 0.6889279437609842,
+      "auc": 0.700918064465368,
+      "brier": 0.15377093011352713,
+      "logloss": 0.4781020521334848,
+      "ece": 0.01831556091094385
+    },
+    {
+      "model": "STACK super-learner (6 models)",
+      "top1": 0.5166959578207382,
+      "top2": 0.7082601054481547,
+      "auc": 0.7039102750520391,
+      "brier": 0.15252147743077402,
+      "logloss": 0.4751763965222338,
+      "ece": 0.016679752725434725
+    },
+    {
+      "model": "RANKAVG ensemble (5 models)",
+      "top1": 0.4956063268892794,
+      "top2": 0.7135325131810193,
+      "auc": 0.7022600968500629,
+      "brier": 0.15289693913393754,
+      "logloss": 0.47602739354606505,
+      "ece": 0.018877988980711153
+    }
+  ],
+  "stack_weights": {
+    "logistic": 1.563,
+    "hist_gbm": -0.439,
+    "random_forest": 0.137,
+    "naive_bayes": 0.346,
+    "hts": 1.74,
+    "incumbent_poisson": 0.739
+  },
+  "beta_rush": {
+    "proj_carries": 0.228,
+    "carry_share": 0.756,
+    "rush_td_rate": 0.323,
+    "proj_rush_yds": 0.171,
+    "anytime_rate": -0.232
+  },
+  "beta_rec": {
+    "proj_targets": 0.166,
+    "target_share": 0.421,
+    "rec_td_rate": 0.191,
+    "proj_rec_yds": 0.07,
+    "anytime_rate": -0.146
+  }
+}

@@ -7,6 +7,10 @@ every one on the **same held-out games (2023–2024)**, over the **same candidat
 players per game**, with the **same metrics**. Code: `research/nfl-td-scorer/`
 (`bakeoff.py`, `features.py`/`backtest.py`).
 
+> **Next round:** [`NFL-TD-SCORER-ADVANCED.md`](NFL-TD-SCORER-ADVANCED.md) adds a
+> hierarchical competing-risks model and a stacked super-learner that top this
+> leaderboard — and shows why we've hit the signal ceiling.
+
 ---
 
 ## TL;DR — the ranking
