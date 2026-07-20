@@ -3,3 +3,4 @@ __pycache__/
 data/
 predictions.csv
 features.csv
+market_run.log

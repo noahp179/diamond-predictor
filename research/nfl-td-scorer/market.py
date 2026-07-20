@@ -17,11 +17,41 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.metrics import roc_auc_score
 import backtest as bt
 import bakeoff as bo
 import advanced as A
 
 warnings.filterwarnings("ignore")
+
+
+def _p(*a):
+    print(*a, flush=True)
+
+
+def light_stack(tr, te, feats, team_feats):
+    """Lean but strong stack: logistic + hist-GBM + HTS + incumbent Poisson,
+    combined by a meta-logistic on group-out-of-fold predictions."""
+    ytr = tr.scored.values
+    g = tr.game_id.values
+    Xtr, Xte = tr[feats].values, te[feats].values
+    log = lambda: make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
+    gbm = lambda: HistGradientBoostingClassifier(random_state=0, learning_rate=0.05,
+              max_iter=400, max_leaf_nodes=15, l2_regularization=1.0,
+              early_stopping=True, validation_fraction=0.15)
+    lo_tr, lo_te = A.oof_sklearn(log, Xtr, ytr, Xte, g)
+    gb_tr, gb_te = A.oof_sklearn(gbm, Xtr, ytr, Xte, g)
+    saved = A.TEAM_FEATS
+    A.TEAM_FEATS = team_feats
+    try:
+        ht_tr, ht_te = A.oof_hts(tr, te)
+    finally:
+        A.TEAM_FEATS = saved
+    OOF = np.column_stack([lo_tr, gb_tr, ht_tr, tr.poisson_p.values])
+    TEST = np.column_stack([lo_te, gb_te, ht_te, te.poisson_p.values])
+    meta = LogisticRegression(max_iter=2000).fit(OOF, ytr)
+    return meta.predict_proba(OOF)[:, 1], meta.predict_proba(TEST)[:, 1]
 HERE = os.path.dirname(os.path.abspath(__file__))
 SEASONS = [2021, 2022, 2023, 2024]
 MKT = ["mkt_implied_total", "mkt_total", "mkt_team_margin", "mkt_is_fav"]
@@ -103,12 +133,14 @@ def main():
     results, scores = [], {}
 
     # ---------- logistic: no market vs market ----------
+    _p("  ... logistic +/- market")
     m, s = eval_sklearn("logistic (no market)", logit, bo.FEATURES, tr, te)
     results.append(m); scores["log_nomkt"] = s
     m, s = eval_sklearn("logistic + MARKET", logit, bo.FEATURES + MKT, tr, te)
     results.append(m); scores["log_mkt"] = s
 
     # ---------- HTS: no market vs market vs market-only team total ----------
+    _p("  ... HTS +/- market")
     m, s = run_hts(tr, te, A.TEAM_FEATS)
     m["model"] = "HTS (no market)"; results.append(m); scores["hts_nomkt"] = s
     m, s = run_hts(tr, te, A.TEAM_FEATS + MKT)
@@ -116,16 +148,12 @@ def main():
     m, s = run_hts(tr, te, MKT)
     m["model"] = "Market-Poisson (mkt total x share)"; results.append(m); scores["mktpois"] = s
 
-    # ---------- STACK: no market vs market ----------
-    saved_feats, saved_team = bo.FEATURES, A.TEAM_FEATS
-    s_tr, s_te, w0, _, _ = A.build_stack(tr, te)
+    # ---------- STACK (lean): no market vs market ----------
+    _p("  ... stacking (no market)")
+    s_tr, s_te = light_stack(tr, te, bo.FEATURES, A.TEAM_FEATS)
     results.append(A.metrics("STACK (no market)", s_tr, ytr, s_te, yte, te)); scores["stk_nomkt"] = s_te
-    bo.FEATURES = saved_feats + MKT
-    A.TEAM_FEATS = saved_team + MKT
-    try:
-        s_tr, s_te, w1, _, _ = A.build_stack(tr, te)
-    finally:
-        bo.FEATURES, A.TEAM_FEATS = saved_feats, saved_team
+    _p("  ... stacking (+ market)")
+    s_tr, s_te = light_stack(tr, te, bo.FEATURES + MKT, A.TEAM_FEATS + MKT)
     results.append(A.metrics("STACK + MARKET", s_tr, ytr, s_te, yte, te)); scores["stk_mkt"] = s_te
 
     # ---------- how much does logistic lean on the market? ----------
@@ -149,17 +177,20 @@ def main():
 
     # ---------- significance: market vs no-market ----------
     rb = np.random.default_rng(0)
-    game_rows = {gid: te.index[te.game_id == gid].to_numpy() for gid in games}
+    gr = [te.index[te.game_id == gid].to_numpy() for gid in games]
 
-    def boot_auc(sa, sb, n=2000):
+    def boot_auc(sa, sb, n=1000):
         d = []
         for _ in range(n):
             gsel = rb.integers(0, len(games), len(games))
-            ridx = np.concatenate([game_rows[games[k]] for k in gsel])
-            d.append(bt.auc(yte[ridx], sa[ridx]) - bt.auc(yte[ridx], sb[ridx]))
+            ridx = np.concatenate([gr[k] for k in gsel])
+            yy = yte[ridx]
+            if yy.min() == yy.max():
+                continue
+            d.append(roc_auc_score(yy, sa[ridx]) - roc_auc_score(yy, sb[ridx]))
         return np.mean(d), np.percentile(d, 2.5), np.percentile(d, 97.5)
 
-    def boot_top1(sa, sb, n=5000):
+    def boot_top1(sa, sb, n=2000):
         ha = np.array([per_game_top1(te, sa)[g] for g in games])
         hb = np.array([per_game_top1(te, sb)[g] for g in games])
         idx = rb.integers(0, len(games), (n, len(games)))
