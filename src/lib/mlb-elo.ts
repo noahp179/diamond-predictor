@@ -26,7 +26,7 @@
 // already absorbs most of what the rotation contributes. See PITCHER_WEIGHT.
 
 import { STATS_API, fetchWithTimeout } from "./mlb-core";
-import { fetchSeasonResults, type SeasonGameResult } from "./mlb-sim";
+import { type SeasonGameResult } from "./mlb-sim";
 
 /** Rating move per game. Small on purpose — one baseball game says little. */
 const ELO_K = 4;
@@ -90,14 +90,73 @@ function carryOver(elo: Map<number, number>): void {
   for (const [id, r] of elo) elo.set(id, 1500 + ELO_CARRY * (r - 1500));
 }
 
+/**
+ * Final regular-season results in [start, end], fetched lean.
+ *
+ * mlb-sim's fetchSeasonResults pulls the full schedule payload (~2-3 MB per
+ * season). Elo needs four fields per game, and `fields=` trims the same request
+ * to ~190 KB — a 91% reduction. That matters because this runs inside the
+ * request path: the display fallback in mlb.functions.ts computes Elo live
+ * whenever the cron hasn't written rows yet, alongside three other models.
+ */
+async function fetchResultsLean(start: string, end: string): Promise<SeasonGameResult[]> {
+  const url =
+    `${STATS_API}/schedule?sportId=1&gameType=R&startDate=${start}&endDate=${end}` +
+    `&fields=dates,games,gameDate,teams,home,away,team,id,score,status,detailedState`;
+  const res = await fetchWithTimeout(url, 20_000);
+  if (!res.ok) return [];
+  const json: any = await res.json();
+  const out: SeasonGameResult[] = [];
+  for (const d of json?.dates ?? []) {
+    for (const g of d?.games ?? []) {
+      const status: string = g?.status?.detailedState ?? "";
+      if (!/final|game over|completed/i.test(status)) continue;
+      const h = g?.teams?.home;
+      const a = g?.teams?.away;
+      if (h?.score == null || a?.score == null) continue;
+      out.push({
+        date: (g?.gameDate ?? "").slice(0, 10),
+        home: h.team.id,
+        away: a.team.id,
+        homeScore: h.score,
+        awayScore: a.score,
+      });
+    }
+  }
+  return out;
+}
+
 type Rated = { elo: Map<number, number>; seasonGames: number };
 
-// Ratings for a given (season, date) are immutable — the inputs are all games
-// strictly before `date`. Cache them at module scope so the display fallback in
-// mlb.functions.ts (which can run on every page load before the cron has
-// written rows) doesn't re-fetch three seasons of schedule each time.
+// A completed season never changes, so the post-warm-up rating table for a
+// given target season is immutable — cache it for a day. Without this, every
+// cold request replayed two full prior seasons just to get back to the same
+// numbers.
+const warmupCache = new Map<number, { at: number; elo: Map<number, number> }>();
+const WARMUP_TTL = 24 * 60 * 60 * 1000;
+// Ratings for a given (season, date) are immutable too — same reasoning, but
+// the current season grows daily, so a shorter TTL.
 const ratingsCache = new Map<string, { at: number; value: Rated }>();
 const RATINGS_TTL = 6 * 60 * 60 * 1000;
+
+/** Ratings after replaying the warm-up seasons (cached; excludes `season`). */
+async function warmupRatings(season: number): Promise<Map<number, number>> {
+  const hit = warmupCache.get(season);
+  if (hit && Date.now() - hit.at < WARMUP_TTL) return new Map(hit.elo);
+
+  const priorSeasons = Array.from({ length: WARMUP_SEASONS }, (_, i) => season - WARMUP_SEASONS + i);
+  const logs = await Promise.all(
+    priorSeasons.map((s) => fetchResultsLean(`${s}-03-01`, `${s}-12-31`)),
+  );
+  const elo = new Map<number, number>();
+  for (const log of logs) {
+    if (log.length === 0) continue;
+    replay(elo, log);
+    carryOver(elo);
+  }
+  warmupCache.set(season, { at: Date.now(), elo });
+  return new Map(elo);
+}
 
 /**
  * Ratings as of `date`: two prior seasons replayed in full for warm-up, then
@@ -109,19 +168,15 @@ export async function computeMlbElo(season: number, date: string): Promise<Rated
   const hit = ratingsCache.get(key);
   if (hit && Date.now() - hit.at < RATINGS_TTL) return hit.value;
 
-  const priorSeasons = Array.from({ length: WARMUP_SEASONS }, (_, i) => season - WARMUP_SEASONS + i);
-  const [priorLogs, current] = await Promise.all([
-    Promise.all(priorSeasons.map((s) => fetchSeasonResults(s, `${s + 1}-01-01`))),
-    fetchSeasonResults(season, date),
+  const yesterday = new Date(new Date(`${date}T00:00:00Z`).getTime() - 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const [elo, current] = await Promise.all([
+    warmupRatings(season),
+    fetchResultsLean(`${season}-03-01`, yesterday),
   ]);
-
-  const elo = new Map<number, number>();
-  for (const log of priorLogs) {
-    if (log.length === 0) continue;
-    replay(elo, log);
-    carryOver(elo);
-  }
   replay(elo, current);
+
   const value: Rated = { elo, seasonGames: current.length };
   ratingsCache.set(key, { at: Date.now(), value });
   return value;
