@@ -90,15 +90,25 @@ function carryOver(elo: Map<number, number>): void {
   for (const [id, r] of elo) elo.set(id, 1500 + ELO_CARRY * (r - 1500));
 }
 
+type Rated = { elo: Map<number, number>; seasonGames: number };
+
+// Ratings for a given (season, date) are immutable — the inputs are all games
+// strictly before `date`. Cache them at module scope so the display fallback in
+// mlb.functions.ts (which can run on every page load before the cron has
+// written rows) doesn't re-fetch three seasons of schedule each time.
+const ratingsCache = new Map<string, { at: number; value: Rated }>();
+const RATINGS_TTL = 6 * 60 * 60 * 1000;
+
 /**
  * Ratings as of `date`: two prior seasons replayed in full for warm-up, then
  * the current season up to (but not including) `date`. Walk-forward safe — it
  * never reads a game on or after the target date.
  */
-export async function computeMlbElo(
-  season: number,
-  date: string,
-): Promise<{ elo: Map<number, number>; seasonGames: number }> {
+export async function computeMlbElo(season: number, date: string): Promise<Rated> {
+  const key = `${season}|${date}`;
+  const hit = ratingsCache.get(key);
+  if (hit && Date.now() - hit.at < RATINGS_TTL) return hit.value;
+
   const priorSeasons = Array.from({ length: WARMUP_SEASONS }, (_, i) => season - WARMUP_SEASONS + i);
   const [priorLogs, current] = await Promise.all([
     Promise.all(priorSeasons.map((s) => fetchSeasonResults(s, `${s + 1}-01-01`))),
@@ -112,7 +122,9 @@ export async function computeMlbElo(
     carryOver(elo);
   }
   replay(elo, current);
-  return { elo, seasonGames: current.length };
+  const value: Rated = { elo, seasonGames: current.length };
+  ratingsCache.set(key, { at: Date.now(), value });
+  return value;
 }
 
 /** Home win probability from two ratings, using the fitted MLB scale. */

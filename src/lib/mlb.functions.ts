@@ -8,6 +8,7 @@ import {
   buildRecentFormV2PredictionsForDate,
 } from "./mlb-recent-form";
 import { buildDixonColesPredictionsForDate } from "./mlb-dixon-coles";
+import { buildEloPredictionsForDate } from "./mlb-elo";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, pickProb, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 import {
@@ -218,14 +219,17 @@ async function loadGamesForDate(
       const v2Label = MODEL_LABELS[MODEL_VERSION_RECENT];
       const v3Label = MODEL_LABELS[MODEL_VERSION_RECENT_V2];
       const dixonLabel = MODEL_LABELS[MODEL_VERSION_DIXON];
+      const eloLabel = MODEL_LABELS[MODEL_VERSION_ELO];
       const needV2 = games.some((g) => !g.altModels?.some((m) => m.label === v2Label));
       const needV3 = games.some((g) => !g.altModels?.some((m) => m.label === v3Label));
       const needDixon = games.some((g) => !g.altModels?.some((m) => m.label === dixonLabel));
-      if (needV2 || needV3 || needDixon) {
-        const [recentGames, recentV2Games, dixonGames] = await Promise.all([
+      const needElo = games.some((g) => !g.altModels?.some((m) => m.label === eloLabel));
+      if (needV2 || needV3 || needDixon || needElo) {
+        const [recentGames, recentV2Games, dixonGames, eloGames] = await Promise.all([
           needV2 ? buildRecentFormPredictionsForDate(date).catch(() => []) : Promise.resolve([]),
           needV3 ? buildRecentFormV2PredictionsForDate(date).catch(() => []) : Promise.resolve([]),
           needDixon ? buildDixonColesPredictionsForDate(date).catch(() => []) : Promise.resolve([]),
+          needElo ? buildEloPredictionsForDate(date).catch(() => []) : Promise.resolve([]),
         ]);
         let out = attachAltModel(games, recentGames, v2Label);
         out = attachAltModel(out, recentV2Games, v3Label);
@@ -233,6 +237,11 @@ async function loadGamesForDate(
           out,
           dixonGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })),
           dixonLabel,
+        );
+        out = attachAltModel(
+          out,
+          eloGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })),
+          eloLabel,
         );
         return { games: out, source: "db" };
       }
@@ -246,12 +255,13 @@ async function loadGamesForDate(
   // Fallback: compute live (no persistence) — baseline for metadata, the
   // Simulator for the primary probability, and Recent Form, Bullpen and Poisson
   // for the secondary display numbers.
-  const [baseGames, simGames, recentGames, recentV2Games, dixonGames] = await Promise.all([
+  const [baseGames, simGames, recentGames, recentV2Games, dixonGames, eloGames] = await Promise.all([
     buildPredictionsForDate(date),
     buildSimPredictionsForDate(date).catch(() => []),
     buildRecentFormPredictionsForDate(date).catch(() => []),
     buildRecentFormV2PredictionsForDate(date).catch(() => []),
     buildDixonColesPredictionsForDate(date).catch(() => []),
+    buildEloPredictionsForDate(date).catch(() => []),
   ]);
   const merged = simGames.length > 0 ? mergeSimIntoBaseline(baseGames, simGames) : baseGames;
   let games = attachAltModel(merged, recentGames, MODEL_LABELS[MODEL_VERSION_RECENT]);
@@ -260,6 +270,11 @@ async function loadGamesForDate(
     games,
     dixonGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })),
     MODEL_LABELS[MODEL_VERSION_DIXON],
+  );
+  games = attachAltModel(
+    games,
+    eloGames.map((g) => ({ gameId: g.gameId, ensembleProb: g.homeWinProb })),
+    MODEL_LABELS[MODEL_VERSION_ELO],
   );
   return { games, source: "live" };
 }
