@@ -110,10 +110,39 @@ measurably worse here.
 
 ---
 
+---
+
+## Follow-up: confidence tiers (the same treatment applied to MLB)
+
+The MLB bake-off found that the biggest available product win is not a better
+model but **leading with confidence tiers instead of the full slate**. That
+applies here too, and the TD page now reflects it
+(`research/nfl-td-scorer/selective_td.py`, 2024 test season, 285 games):
+
+**Top pick in a game, by confidence tier**
+
+| Confidence | Coverage | Hit rate |
+|---|--:|--:|
+| below 60 ("Toss-up") | 31% | **43.8%** |
+| 60–79 ("Solid") | 24% | **58.2%** |
+| 80+ ("Strong") | 43% | **61.1%** |
+
+**Precision of the picks actually surfaced** (top 3 per game): 42.7% overall,
+rising to **54.3%** if you only surface picks at ≥45% likelihood.
+
+The sharp break is at **confidence 60** (43.8% → 58.2%) — the app previously
+tiered at 55/70, which straddled it. The TD Scorers page now uses the measured
+breakpoints (60 / 80), labels tiers **Toss-up / Solid / Strong** with their real
+hit rates, and offers a **"Solid+ only"** filter so the slate can be narrowed to
+the picks that actually separate.
+
+---
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `research/nfl-td-scorer/rz_features.py` | Extracts red-zone / goal-line usage from cached ESPN play-by-play |
+| `research/nfl-td-scorer/selective_td.py` | Confidence-tier / precision analysis behind the shipped tiers |
 | `research/nfl-td-scorer/exhaustive.py` | Builds the enriched feature set and runs the full algorithm sweep |
 | `research/nfl-td-scorer/exhaustive_results.json` | Saved sweep results |

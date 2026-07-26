@@ -101,6 +101,7 @@ import {
   buildRecentFormV2PredictionsForDate,
 } from "./mlb-recent-form";
 import { buildDixonColesPredictionsForDate } from "./mlb-dixon-coles";
+import { buildEloPredictionsForDate } from "./mlb-elo";
 import { fetchOddsForDate } from "./mlb-odds.server";
 import { blendWithMarket, MODEL_VERSION_BLEND, MARKET_BLEND_WEIGHT } from "./mlb-blend";
 import {
@@ -109,6 +110,7 @@ import {
   MODEL_VERSION_RECENT_V2,
   MODEL_VERSION_RECENT_CAL,
   MODEL_VERSION_DIXON,
+  MODEL_VERSION_ELO,
   RECENT_CAL_A,
 } from "./mlb-models";
 
@@ -386,6 +388,39 @@ export async function ingestAndPredict(date: string) {
     newDixonPreds = await insertFreshPredictions(dixonRows, MODEL_VERSION_DIXON);
   } catch (err) {
     console.error("[ingestAndPredict] dixon-coles-nb predictions failed:", err);
+  }
+
+  // Margin-of-victory Elo — winner of the MLB game-outcome bake-off, where the
+  // Dixon-Coles line above placed 27th of 35 (MLB-GAME-OUTCOME-BAKEOFF.md).
+  // Records nothing early in the season, before the ratings mean anything;
+  // tracked side by side and never blocks anything else. See src/lib/mlb-elo.ts.
+  let newEloPreds = 0;
+  try {
+    const baselineByGameId = new Map(games.map((g) => [g.gameId, g]));
+    const eloGames = await buildEloPredictionsForDate(date);
+    const eloRows = eloGames
+      .filter((g) => predictableIds.has(g.gameId))
+      .map((g) => {
+        const base = baselineByGameId.get(g.gameId);
+        return {
+          game_id: g.gameId,
+          model_version: MODEL_VERSION_ELO,
+          home_win_prob: Number(g.homeWinProb.toFixed(4)),
+          away_win_prob: Number((1 - g.homeWinProb).toFixed(4)),
+          home_win_pct: base ? Number(base.home.winPct.toFixed(4)) : null,
+          away_win_pct: base ? Number(base.away.winPct.toFixed(4)) : null,
+          home_pitcher_id: base?.home.pitcher?.id ?? null,
+          home_pitcher_name: base?.home.pitcher?.name ?? null,
+          home_pitcher_era: base?.home.pitcher?.era ?? null,
+          away_pitcher_id: base?.away.pitcher?.id ?? null,
+          away_pitcher_name: base?.away.pitcher?.name ?? null,
+          away_pitcher_era: base?.away.pitcher?.era ?? null,
+          rationale: g.rationale,
+        };
+      });
+    newEloPreds = await insertFreshPredictions(eloRows, MODEL_VERSION_ELO);
+  } catch (err) {
+    console.error("[ingestAndPredict] mov-elo-v1 predictions failed:", err);
   }
 
   // Real market odds (ESPN, free/keyless). Best-effort and never blocks game

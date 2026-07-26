@@ -17,6 +17,7 @@ import {
   MODEL_VERSION_RECENT,
   MODEL_VERSION_RECENT_V2,
   MODEL_VERSION_DIXON,
+  MODEL_VERSION_ELO,
   MODEL_LABELS,
 } from "./mlb-models";
 
@@ -59,6 +60,7 @@ const ALT_ORDER = [
   MODEL_LABELS[MODEL_VERSION_RECENT],
   MODEL_LABELS[MODEL_VERSION_RECENT_V2],
   MODEL_LABELS[MODEL_VERSION_DIXON],
+  MODEL_LABELS[MODEL_VERSION_ELO],
 ];
 
 function sortAlt(alt: PredictedGame["altModels"]): PredictedGame["altModels"] {
@@ -127,6 +129,7 @@ async function loadGamesForDate(
         const recent = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT);
         const recentV2 = preds.find((x: any) => x.model_version === MODEL_VERSION_RECENT_V2);
         const dixon = preds.find((x: any) => x.model_version === MODEL_VERSION_DIXON);
+        const elo = preds.find((x: any) => x.model_version === MODEL_VERSION_ELO);
         const altModels: NonNullable<PredictedGame["altModels"]> = [];
         if (recent && recent.home_win_prob != null) {
           altModels.push({
@@ -147,6 +150,13 @@ async function loadGamesForDate(
             label: MODEL_LABELS[MODEL_VERSION_DIXON],
             homeWinProb: Number(dixon.home_win_prob),
             awayWinProb: Number(dixon.away_win_prob),
+          });
+        }
+        if (elo && elo.home_win_prob != null) {
+          altModels.push({
+            label: MODEL_LABELS[MODEL_VERSION_ELO],
+            homeWinProb: Number(elo.home_win_prob),
+            awayWinProb: Number(elo.away_win_prob),
           });
         }
         return {

@@ -147,9 +147,30 @@ wins 50.8%.
 
 ---
 
+## ✅ Shipped
+
+**Priority 1 is implemented.** `src/lib/mlb-elo.ts` adds the backtested
+margin-of-victory Elo, registered as **`mov-elo-v1`** ("Elo") in
+`mlb-models.ts`, computed each day by the pipeline alongside the incumbents and
+surfaced on the game cards + Track Record. It follows the repo's existing
+shadow-model convention — tracked side by side so live results confirm the
+backtest before anything is promoted over Dixon-Coles.
+
+Constants are the tuned ones: **K = 4, home edge = 24 Elo, season carry = 0.70,
+2-season warm-up**, and a **fitted 189-point probability scale** (the canonical
+`10^(-gap/400)` curve, ~174 points, is measurably overconfident for baseball).
+The starting-pitcher term is present as `PITCHER_WEIGHT` but set to **0**,
+because the study could not confirm it.
+
+The TypeScript port was verified against the Python backtest by replaying the
+same 9,737 games through the shipped math: **identical to four decimals**
+(2024: accuracy 56.3%, AUC 0.5876, Brier 0.2440).
+
+---
+
 ## What to integrate into the platform
 
-**Priority 1 — swap the MLB headline model to margin-of-victory Elo.**
+**Priority 1 — swap the MLB headline model to margin-of-victory Elo.** ✅ *done*
 The app already has a proven MOV Elo implementation powering NFL and NBA
 (`src/lib/espn.server.ts`, with per-sport `k` / `hfa` / `carry`). Extending it to
 MLB is a small change to an existing, tested engine — not new machinery — and
