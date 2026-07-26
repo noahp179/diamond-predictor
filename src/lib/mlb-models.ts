@@ -26,6 +26,23 @@ export const TRACK_RECORD_START = "2026-07-16";
  */
 export const MODEL_VERSION_DIXON = "dixon-coles-nb";
 
+/**
+ * Margin-of-victory Elo — the winner of the first MLB game-outcome bake-off
+ * (MLB-GAME-OUTCOME-BAKEOFF.md). 35 algorithms were replayed walk-forward over
+ * 9,737 games (2021-2024) and scored on the held-out 2024 season: Elo finished
+ * first, the Dixon-Coles/Poisson family above finished 27th, and a paired
+ * bootstrap put Elo ahead by +0.0273 AUC (95% CI [+0.0106, +0.0448]) — about
+ * +1.2 points of straight-up accuracy. Notably it also beat every ML learner
+ * tried (XGBoost, LightGBM, random forest, a neural net) and every fancier
+ * statistical model (Kalman, Bayesian hierarchical, Massey, Colley,
+ * Bradley-Terry). Constants are small and MLB-specific: K=4 and a fitted
+ * 189-point probability scale, because baseball games carry little information
+ * and the canonical Elo curve is overconfident here. Tracked side by side with
+ * the incumbents so live results confirm the backtest before anything is
+ * promoted. See src/lib/mlb-elo.ts.
+ */
+export const MODEL_VERSION_ELO = "mov-elo-v1";
+
 /** The devigged DraftKings line stored as a reference "model" — the benchmark to beat. */
 export const MODEL_VERSION_MARKET = "market-devig";
 
@@ -80,6 +97,7 @@ export const MODEL_VERSION_HEADLINE = "sim-elo-v2";
  */
 export const MODEL_LABELS: Record<string, string> = {
   [MODEL_VERSION_DIXON]: "Poisson",
+  [MODEL_VERSION_ELO]: "Elo",
   [MODEL_VERSION_RECENT_CAL]: "Calibrated",
   [MODEL_VERSION_RECENT]: "Recent Form",
   [MODEL_VERSION_RECENT_V2]: "Bullpen",
@@ -103,9 +121,14 @@ export const TRACKED_MODELS: Array<{
   hidden?: boolean;
 }> = [
   {
+    version: MODEL_VERSION_ELO,
+    label: "Elo",
+    note: "Rates every team on its results and margins, then asks who's stronger tonight — the winner of a 35-algorithm backtest of the 2021-24 seasons",
+  },
+  {
     version: MODEL_VERSION_DIXON,
     label: "Poisson",
-    note: "Rates each team's scoring, adjusts for tonight's starting pitcher, and simulates the runs — our best model at calling winners",
+    note: "Rates each team's scoring, adjusts for tonight's starting pitcher, and simulates the runs",
   },
   {
     version: MODEL_VERSION_HEADLINE,

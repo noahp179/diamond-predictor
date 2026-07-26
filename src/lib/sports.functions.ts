@@ -172,3 +172,33 @@ export const getNbaTrackRecord = createServerFn({ method: "GET" }).handler(async
 export const getNflTrackRecord = createServerFn({ method: "GET" }).handler(async () =>
   buildTrackRecord("nfl"),
 );
+
+// --------------------------------------------------------------- TD Scorers
+
+export const getNflTdScorers = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayISO();
+    try {
+      const { tdScorersSlate } = await import("./nfl-td.server");
+      const { season, games } = await tdScorersSlate(date);
+      return {
+        date,
+        games,
+        season,
+        seasonLabel: season ? `${season}` : "",
+        note: offseasonNote("nfl", date),
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[nflTdScorers] failed:`, err);
+      return {
+        date,
+        games: [],
+        season: 0,
+        seasonLabel: "",
+        note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
