@@ -10,7 +10,7 @@ import requests
 import pandas as pd
 
 warnings.filterwarnings("ignore")
-SEASONS = [2021, 2022, 2023, 2024]
+SEASONS = [2021, 2022, 2023, 2024, 2025, 2026]
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 os.makedirs(DATA, exist_ok=True)

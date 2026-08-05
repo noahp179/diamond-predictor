@@ -47,7 +47,7 @@ const MODES: { key: Mode; label: string; blurb: string }[] = [
     key: "confidence",
     label: "Model confidence",
     blurb:
-      "Ranked purely by how sure our model is that the pick wins — not by what it pays. A heavy favorite at a bad price outranks a tempting underdog here, and games with no posted line still qualify.",
+      "Ranked purely by how sure our model is that the pick wins — not by what it pays. A heavy favorite at a bad price outranks a tempting underdog here, and games with no posted line still qualify. Backtested over 9,009 games (2023–26): the three most confident picks per day won 62.1% of the time, against 56.4% for all its picks and 52.7% for always taking the home team.",
   },
   {
     key: "blend",

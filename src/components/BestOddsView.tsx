@@ -15,7 +15,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 const TAB_BLURB: Record<Tab, string> = {
   confidence:
-    "Ranked purely by how sure the Elo model is that the pick wins — not by what it pays, and no posted line required.",
+    "Ranked purely by how sure the Elo model is that the pick wins — not by what it pays, and no posted line required. Win rate, not profit: a 62% pick at −180 still loses money.",
   blend: "The market's devigged line blended with the model. Needs a posted line.",
   market: "The sportsbook's own line with its margin stripped out — no model input.",
 };
