@@ -7,13 +7,14 @@ import { Link } from "@tanstack/react-router";
  */
 
 export type SportKey = "mlb" | "nfl" | "nba";
-export type TabKey = "slate" | "recommended" | "bestOdds" | "tdScorers" | "trackRecord";
+export type TabKey = "slate" | "recommended" | "bestOdds" | "props" | "tdScorers" | "trackRecord";
 
 const ROUTES: Record<SportKey, Partial<Record<TabKey, string>>> = {
   mlb: {
     slate: "/",
     recommended: "/model",
     bestOdds: "/best-odds",
+    props: "/props",
     trackRecord: "/history",
   },
   nfl: {
@@ -35,6 +36,7 @@ const LABELS: { key: TabKey; label: string }[] = [
   { key: "slate", label: "Slate" },
   { key: "recommended", label: "Recommended" },
   { key: "bestOdds", label: "Best Odds" },
+  { key: "props", label: "Player Props" },
   { key: "tdScorers", label: "TD Scorers" },
   { key: "trackRecord", label: "Track Record" },
 ];

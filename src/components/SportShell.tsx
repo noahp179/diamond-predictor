@@ -19,8 +19,9 @@ export function SportShell({
   onDateChange,
   children,
   statBar,
+  footerNote,
 }: {
-  sport: Exclude<SportKey, "mlb">;
+  sport: SportKey;
   current: TabKey;
   eyebrow: string;
   title: string;
@@ -29,6 +30,7 @@ export function SportShell({
   onDateChange?: (d: string) => void;
   children: ReactNode;
   statBar?: ReactNode;
+  footerNote?: string;
 }) {
   const label = sport.toUpperCase();
   return (
@@ -63,7 +65,7 @@ export function SportShell({
 
       <footer className="border-t border-border">
         <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Data · ESPN · margin-of-victory Elo · Not affiliated with the {label}
+          {footerNote ?? "Data · ESPN · margin-of-victory Elo"} · Not affiliated with the {label}
         </div>
       </footer>
     </div>

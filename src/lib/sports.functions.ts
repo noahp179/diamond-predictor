@@ -173,6 +173,38 @@ export const getNflTrackRecord = createServerFn({ method: "GET" }).handler(async
   buildTrackRecord("nfl"),
 );
 
+// -------------------------------------------------------------- MLB Props
+
+export const getMlbProps = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayISO();
+    try {
+      const { propsSlate } = await import("./mlb-props.server");
+      const { season, games, markets } = await propsSlate(date);
+      return {
+        date,
+        games,
+        markets,
+        season,
+        seasonLabel: season ? `${season}` : "",
+        note: null as string | null,
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[mlbProps] failed:`, err);
+      return {
+        date,
+        games: [],
+        markets: [],
+        season: 0,
+        seasonLabel: "",
+        note: "MLB Stats API is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
+
 // --------------------------------------------------------------- TD Scorers
 
 export const getNflTdScorers = createServerFn({ method: "GET" })
