@@ -211,7 +211,7 @@ type PitLog = {
 };
 
 const BAT_FIELDS =
-  "people,id,fullName,stats,splits,date,stat,hits,totalBases,homeRuns,rbi,runs," +
+  "people,id,fullName,batSide,code,stats,splits,date,stat,hits,totalBases,homeRuns,rbi,runs," +
   "stolenBases,plateAppearances,atBats,baseOnBalls,strikeOuts";
 const PIT_FIELDS =
   "people,id,fullName,stats,splits,date,stat,gamesStarted,battersFaced,strikeOuts," +
@@ -225,8 +225,8 @@ async function fetchLogs<T>(
   group: "hitting" | "pitching",
   date: string,
   parse: (split: any) => T,
-): Promise<Map<number, { name: string; logs: T[] }>> {
-  const out = new Map<number, { name: string; logs: T[] }>();
+): Promise<Map<number, { name: string; bats?: string; logs: T[] }>> {
+  const out = new Map<number, { name: string; bats?: string; logs: T[] }>();
   const uniq = [...new Set(ids)].filter(Boolean);
   const fields = group === "hitting" ? BAT_FIELDS : PIT_FIELDS;
   const chunks: number[][] = [];
@@ -246,7 +246,11 @@ async function fetchLogs<T>(
         );
         for (const p of d?.people ?? []) {
           const splits = (p?.stats ?? []).flatMap((s: any) => s?.splits ?? []);
-          out.set(n(p.id), { name: p.fullName ?? "", logs: splits.map(parse) });
+          out.set(n(p.id), {
+            name: p.fullName ?? "",
+            bats: p?.batSide?.code,
+            logs: splits.map(parse),
+          });
         }
       } catch (err) {
         console.error(`[mlb-props logs ${group}]`, err);
@@ -559,6 +563,10 @@ export type PropPick = {
   edge: number; // prob - base, i.e. how far above a random starter
   tier: string | null; // backtested tier this pick lands in
   tierHitRate: number | null; // that tier's measured hit rate (held-out 2026)
+  /** Conditions that historically undershot their stated probability. See
+   *  EDGE-HUNT.md — switch hitters ran 66.0% against a stated 72.1% across the
+   *  2025-26 hold-out, and the models carry no handedness feature at all. */
+  cautions?: string[];
   slot?: number; // batting order, when known
   opponent: string;
 };

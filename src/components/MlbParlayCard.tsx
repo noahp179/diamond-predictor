@@ -44,7 +44,15 @@ export function MlbParlayCard({
   isLoading?: boolean;
 }) {
   const [threshold, setThreshold] = useState(0.75);
-  const parlay = useMemo(() => buildParlay(candidates, threshold), [candidates, threshold]);
+  const [dropCautioned, setDropCautioned] = useState(false);
+  const parlay = useMemo(
+    () => buildParlay(candidates, threshold, dropCautioned),
+    [candidates, threshold, dropCautioned],
+  );
+  const cautionedAvailable = useMemo(
+    () => buildParlay(candidates, threshold).cautioned,
+    [candidates, threshold],
+  );
   const active = THRESHOLDS.find((t) => t.value === threshold);
   const adjusted = parlay.combinedProb * CORRELATION_FACTOR;
 
@@ -84,6 +92,19 @@ export function MlbParlayCard({
             </span>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => setDropCautioned((v) => !v)}
+          aria-pressed={dropCautioned}
+          className={`mt-3 border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+            dropCautioned
+              ? "border-primary text-primary"
+              : "border-border text-muted-foreground hover:text-foreground"
+          }`}
+          title="Switch hitters hit 66.0% against a stated 72.1% across the 2025-26 hold-out. The models carry no handedness feature, so this is a known blind spot rather than a hunch."
+        >
+          {dropCautioned ? "▸ " : ""}Drop flagged legs ({cautionedAvailable})
+        </button>
       </div>
 
       {isLoading && <div className="h-40 animate-pulse bg-secondary/30" />}
@@ -122,6 +143,9 @@ export function MlbParlayCard({
                   </div>
                   <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                     {leg.matchup}
+                    {(leg.cautions?.length ?? 0) > 0 && (
+                      <span className="text-clay"> · ⚠ {leg.cautions!.join(", ")}</span>
+                    )}
                     {leg.absorbed.length > 0 && (
                       <>
                         {" · swallows "}
@@ -148,6 +172,13 @@ export function MlbParlayCard({
                 Same-game legs:{" "}
                 {parlay.correlatedGames.map((g) => `${g.matchup} (${g.legs})`).join(", ")} — these
                 can lose together, which is why the adjusted number is below the independent one.
+              </div>
+            )}
+            {parlay.cautioned > 0 && (
+              <div className="mt-1">
+                {parlay.cautioned} flagged {parlay.cautioned === 1 ? "leg" : "legs"} on the slip —
+                switch hitters hit 66.0% against a stated 72.1% across 2025-26, the models having no
+                handedness feature. Two seasons of evidence, not proof.
               </div>
             )}
             <div className="mt-1">

@@ -34,6 +34,8 @@ export type ParlayCandidate = {
   kind: "batter" | "pitcher" | "game";
   tier?: string | null;
   tierHitRate?: number | null;
+  /** Conditions measured to undershoot their stated probability (EDGE-HUNT.md). */
+  cautions?: string[];
 };
 
 export type ParlayLeg = ParlayCandidate & {
@@ -52,6 +54,8 @@ export type Parlay = {
   correlatedGames: { gameId: number; matchup: string; legs: number }[];
   /** Candidates that cleared the bar but were swallowed by a harder leg. */
   droppedForOverlap: number;
+  /** Legs carrying a measured-underperformance caution. */
+  cautioned: number;
 };
 
 /**
@@ -108,8 +112,14 @@ const americanPrice = (p: number) =>
  * another leg we are also confident in. A pitcher at 5+ K 82% / 6+ K 73% /
  * 7+ K 60% contributes 6+ at a 65% bar, and 7+ at a 55% bar.
  */
-export function buildParlay(candidates: ParlayCandidate[], threshold: number): Parlay {
-  const qualified = candidates.filter((c) => c.prob >= threshold);
+export function buildParlay(
+  candidates: ParlayCandidate[],
+  threshold: number,
+  dropCautioned = false,
+): Parlay {
+  const qualified = candidates.filter(
+    (c) => c.prob >= threshold && !(dropCautioned && (c.cautions?.length ?? 0) > 0),
+  );
 
   // Group by subject — implication only ever holds within one player or game.
   const bySubject = new Map<string, ParlayCandidate[]>();
@@ -156,5 +166,6 @@ export function buildParlay(candidates: ParlayCandidate[], threshold: number): P
     fairPrice: legs.length ? americanPrice(combinedProb) : 0,
     correlatedGames: [...byGame.values()].filter((g) => g.legs > 1).sort((a, b) => b.legs - a.legs),
     droppedForOverlap: dropped,
+    cautioned: legs.filter((l) => (l.cautions?.length ?? 0) > 0).length,
   };
 }

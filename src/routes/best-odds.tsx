@@ -147,6 +147,7 @@ function BestOddsPage() {
           kind: p.kind,
           tier: p.tier,
           tierHitRate: p.tierHitRate,
+          cautions: p.cautions,
         }),
       ),
     ),
