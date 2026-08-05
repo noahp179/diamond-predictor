@@ -228,6 +228,109 @@ absolute number, is what a prop model is for.
 
 ---
 
+## The parlay: which legs go on the slip
+
+The Best Odds page builds a daily parlay from these models. Two rules, and
+neither of them is the price:
+
+1. **A leg qualifies on confidence alone.** If the model clears the bar, the leg
+   is on the slip even at −1000. Payout is not a selection input.
+2. **Overlapping legs collapse onto the harder one.** If leg A's outcome
+   guarantees leg B's, B is not a second bet — it is the same bet priced
+   shorter. Confident in 6+ strikeouts? Then 5+ strikeouts comes off.
+
+Rule 2 is logical implication, not a correlation guess
+(`src/lib/mlb-parlay.ts`, checked by `scripts/test-parlay.ts`):
+
+| leg | swallows |
+|---|---|
+| 4+ hits | 3+ hits → 2+ hits → 1+ hits, and 4+ total bases |
+| 5+ total bases | 4+ → 3+ → 2+ total bases, and 1+ hits |
+| **1+ home run** | 4+/3+/2+ total bases, 1+ hits, **1+ RBI, 1+ run** |
+| 7+ strikeouts | 6+ → 5+ strikeouts |
+
+A home run *is* four total bases, a hit, an RBI and a run, so a home-run leg
+swallows that batter's whole line. Merely *correlated* legs — two hitters in the
+same lineup, a starter's outs and his team's moneyline — are **kept**, because
+they can genuinely lose independently; the card reports them instead.
+
+### Does the overlap rule actually pay? (2026 hold-out, 129 slate days)
+
+Identical bar, dedup on vs off (`research/mlb-props/parlay_backtest.py`):
+
+| bar | dedup | legs/day | leg hit rate | parlay predicted | parlay realised |
+|---|---|--:|--:|--:|--:|
+| 0.60 | **on** | 148.8 | 0.653 | 0.000925 | 0.00000 |
+| 0.60 | off | 152.8 | 0.657 | 0.000920 | 0.00000 |
+| 0.65 | **on** | 77.8 | 0.680 | 0.003475 | 0.00000 |
+| 0.65 | off | 80.4 | 0.685 | 0.003290 | 0.00000 |
+| 0.70 | **on** | 23.0 | 0.714 | 0.020583 | **0.00781** |
+| 0.70 | off | 24.6 | 0.725 | 0.018096 | **0.00781** |
+
+The realised hit rate is **identical** with the rule on or off — exactly as it
+must be, since a swallowed leg cannot fail unless the leg that swallowed it
+already did. What changes is the *stated* probability: dedup raises it (0.0181 →
+0.0206 at the 0.70 bar) because it stops multiplying in outcomes that were
+already guaranteed. **Same risk, fewer legs, an honest number.**
+
+### What "every leg above the bar" actually produces
+
+| bar | legs/day | leg hit rate | mean leg p | parlay predicted | parlay realised | days cashed |
+|---|--:|--:|--:|--:|--:|--:|
+| 0.55 | 213.6 | 0.630 | 0.631 | 0.0001 | 0.0000 | 0 / 129 |
+| 0.60 | 148.8 | 0.653 | 0.657 | 0.0009 | 0.0000 | 0 / 129 |
+| 0.65 | 77.8 | 0.680 | 0.688 | 0.0035 | 0.0000 | 0 / 129 |
+| 0.70 | 23.0 | 0.714 | 0.731 | 0.0206 | 0.0078 | 1 / 128 |
+| **0.75** | **5.8** | **0.766** | 0.786 | 0.3309 | **0.2705** | **33 / 122** |
+
+The legs themselves are honest at every bar — a 0.70 bar produces legs that win
+71.4% of the time, near the 73.1% claimed. The **slip** is another matter: below
+a 0.75 bar the parlay never cashed in a full season, because 23 legs at 71% is a
+2% proposition. The card defaults to 0.75 for that reason, and prints each bar's
+backtested behaviour next to the button so the trade-off is visible rather than
+implied.
+
+### Independence is optimistic by about 15%
+
+Multiplying leg probabilities assumes the legs are independent. Same-night legs
+are not. Taking the N most confident legs each day:
+
+| legs | slips | predicted | realised | ratio |
+|---|--:|--:|--:|--:|
+| 2 | 129 | 0.607 | 0.512 | 0.84 |
+| 3 | 129 | 0.458 | 0.388 | 0.85 |
+| 4 | 128 | 0.344 | 0.273 | 0.79 |
+| 5 | 128 | 0.256 | 0.250 | 0.97 |
+| 6 | 128 | 0.190 | 0.188 | 0.99 |
+
+(0.65 bar; the 0.60 and 0.70 bars give the same picture.) Realised rates run
+**~0.85× the independence product**, so the card shows both — "if independent"
+and "correlation-adjusted" — rather than quoting the flattering one.
+
+### What ends up on the slip
+
+Leg mix at a 0.65 bar across the season:
+
+| market | legs | predicted | actually won |
+|---|--:|--:|--:|
+| 1+ hits | 8,462 | 0.683 | 0.677 |
+| 16+ outs | 701 | 0.716 | 0.703 |
+| 5+ strikeouts | 601 | 0.711 | 0.677 |
+| 6+ strikeouts | 202 | 0.707 | 0.698 |
+| 7+ strikeouts | 68 | 0.713 | 0.721 |
+| 1+ run scored | 1 | 0.678 | 1.000 |
+
+Only two market families ever clear a high confidence bar: **1+ hits** and the
+**starter markets**. Everything else on the sixteen-market board tops out too low
+to qualify — 1+ HR peaks near 28%, 2+ total bases near 55%. That is not a flaw in
+the slip; it is the ladder result again, seen from the betting side.
+
+**A last caveat the card repeats:** these are win rates, not profit. A leg at
+−1000 needs to win 90.9% of the time to break even, and nothing on this board
+does.
+
+---
+
 ## Where the signal comes from (ablation)
 
 Mean AUC lost across all markets when one feature group is removed:
@@ -308,3 +411,7 @@ same rows the model trained on — in ~3s for a 15-game slate.
 | `src/lib/mlb-props-model.json` | Shipped weights + tiers + backtest metrics |
 | `src/lib/mlb-props.server.ts` | Live slate pipeline |
 | `src/components/MlbPropsView.tsx` | The Player Props tab |
+| `research/mlb-props/parlay_backtest.py` | Parlay rules replayed on the 2026 hold-out |
+| `src/lib/mlb-parlay.ts` | Leg selection: confidence bar + implication collapse |
+| `scripts/test-parlay.ts` | 23 checks on the leg-selection rules |
+| `src/components/MlbParlayCard.tsx` | The parlay card on Best Odds |
