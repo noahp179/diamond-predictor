@@ -103,13 +103,12 @@ export const getNflRecommended = createServerFn({ method: "GET" })
 
 async function buildBestOdds(sport: Sport, date: string) {
   try {
-    const { rows, marketPicks, blendPicks, season, priced, blendWeight } = await bestOddsSlate(
-      sport,
-      date,
-    );
+    const { rows, confidencePicks, marketPicks, blendPicks, season, priced, blendWeight } =
+      await bestOddsSlate(sport, date);
     return {
       date,
       rows,
+      confidencePicks,
       marketPicks,
       blendPicks,
       priced,
@@ -124,6 +123,7 @@ async function buildBestOdds(sport: Sport, date: string) {
     return {
       date,
       rows: [],
+      confidencePicks: [],
       marketPicks: [],
       blendPicks: [],
       priced: 0,

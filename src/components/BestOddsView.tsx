@@ -5,6 +5,21 @@ import { useState } from "react";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import type { getNbaBestOdds } from "@/lib/sports.functions";
 
+type Tab = "confidence" | "blend" | "market";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "confidence", label: "Model confidence" },
+  { key: "blend", label: "Odds × Model · blended" },
+  { key: "market", label: "Market line only" },
+];
+
+const TAB_BLURB: Record<Tab, string> = {
+  confidence:
+    "Ranked purely by how sure the Elo model is that the pick wins — not by what it pays, and no posted line required.",
+  blend: "The market's devigged line blended with the model. Needs a posted line.",
+  market: "The sportsbook's own line with its margin stripped out — no model input.",
+};
+
 type Result = Awaited<ReturnType<typeof getNbaBestOdds>>;
 type Row = Result["rows"][number];
 type Fn = (opts: { data: { date: string } }) => Promise<Result>;
@@ -27,7 +42,9 @@ export function BestOddsView({
   fetchBestOdds: Fn;
 }) {
   const [date, setDate] = useState(todayISO());
-  const [tab, setTab] = useState<"market" | "blend">("market");
+  // "confidence" leads: the model's surest outcomes, payout ignored. The other
+  // two tabs still need a posted line.
+  const [tab, setTab] = useState<Tab>("confidence");
   const run = useServerFn(fetchBestOdds as unknown as typeof getNbaBestOdds);
   const { data, isLoading, isError } = useQuery({
     queryKey: [sport, "best-odds", date],
@@ -37,7 +54,12 @@ export function BestOddsView({
   });
 
   const label = sport.toUpperCase();
-  const picks = tab === "market" ? (data?.marketPicks ?? []) : (data?.blendPicks ?? []);
+  const picks =
+    (tab === "confidence"
+      ? data?.confidencePicks
+      : tab === "market"
+        ? data?.marketPicks
+        : data?.blendPicks) ?? [];
 
   return (
     <SportShell
@@ -45,7 +67,7 @@ export function BestOddsView({
       current="bestOdds"
       eyebrow={`Diamond Edge · ${label} Best Odds`}
       title="Best Odds"
-      blurb="The safest bets on the board, ranked by confidence in the outcome — either the market's own devigged line, or that line blended with the Elo model. Safest, not +EV: favorites lose money at the book's price."
+      blurb="The safest bets on the board, led by the picks the model is surest about — highest confidence first, not biggest payout. Switch the ranking to bring the market's devigged line back in. Safest, not +EV: favorites lose money at the book's price."
       date={date}
       onDateChange={setDate}
       statBar={
@@ -61,20 +83,19 @@ export function BestOddsView({
       }
     >
       {/* tab switch */}
-      <div className="mb-6 flex flex-wrap gap-2 font-mono text-[11px] uppercase tracking-widest">
-        <button
-          onClick={() => setTab("market")}
-          className={`border px-4 py-2 transition-colors ${tab === "market" ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
-        >
-          Best Odds · market line
-        </button>
-        <button
-          onClick={() => setTab("blend")}
-          className={`border px-4 py-2 transition-colors ${tab === "blend" ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
-        >
-          Odds × Model · blended
-        </button>
+      <div className="mb-2 flex flex-wrap gap-2 font-mono text-[11px] uppercase tracking-widest">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            aria-pressed={tab === t.key}
+            className={`border px-4 py-2 transition-colors ${tab === t.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+      <p className="mb-6 font-mono text-[11px] text-muted-foreground">{TAB_BLURB[tab]}</p>
 
       {isLoading && <div className="h-40 animate-pulse border border-border bg-card" />}
       {isError && (
@@ -85,15 +106,19 @@ export function BestOddsView({
       {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
       {!isLoading && !isError && !data?.note && picks.length === 0 && (
         <div className="border border-border bg-card p-10 text-center">
-          <div className="font-display text-3xl">No priced games</div>
+          <div className="font-display text-3xl">
+            {tab === "confidence" ? "No games to rank" : "No priced games"}
+          </div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">
-            No market lines are posted for this date yet. Try another date.
+            {tab === "confidence"
+              ? "Nothing on the schedule for this date. Try another date."
+              : "No market lines are posted for this date yet. Try another date, or switch to Model confidence — that ranking does not need a line."}
           </p>
         </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
-        {picks.map((r) => (
+        {picks.map((r: Row) => (
           <OddsCard key={r.game.gameId} row={r} tab={tab} />
         ))}
       </div>
@@ -101,14 +126,20 @@ export function BestOddsView({
   );
 }
 
-function OddsCard({ row, tab }: { row: Row; tab: "market" | "blend" }) {
+function OddsCard({ row, tab }: { row: Row; tab: Tab }) {
   const { game, odds, blendHome } = row;
-  if (!odds) return null;
-  // The tab decides which probability ranks/leads the pick.
-  const homeProb = tab === "market" ? odds.devigHome : (blendHome ?? odds.devigHome);
+  // Confidence mode ranks on the model alone, so an unpriced game still gets a
+  // card — the price line just reads "no line".
+  if (!odds && tab !== "confidence") return null;
+  const homeProb =
+    tab === "confidence"
+      ? game.homeWinProb
+      : tab === "market"
+        ? odds!.devigHome
+        : (blendHome ?? odds!.devigHome);
   const pickHome = homeProb >= 0.5;
   const pickSide = pickHome ? game.home : game.away;
-  const pickMl = pickHome ? odds.homeML : odds.awayML;
+  const pickMl = odds ? (pickHome ? odds.homeML : odds.awayML) : null;
   const pickProb = pickHome ? homeProb : 1 - homeProb;
   const settled = game.correct != null;
   const hit = settled && (pickHome ? game.winner === "home" : game.winner === "away");
@@ -130,30 +161,40 @@ function OddsCard({ row, tab }: { row: Row; tab: "market" | "blend" }) {
           </div>
           <div className="mt-1 font-display text-4xl">{pickSide.abbreviation}</div>
           <div className="mt-1 font-mono text-xs text-muted-foreground">
-            {fmtMl(pickMl)} · {odds.provider}
+            {odds && pickMl != null ? `${fmtMl(pickMl)} · ${odds.provider}` : "no line posted"}
           </div>
         </div>
         <div className="text-right">
           <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            {tab === "market" ? "Market confidence" : "Blended confidence"}
+            {tab === "confidence"
+              ? "Model confidence"
+              : tab === "market"
+                ? "Market confidence"
+                : "Blended confidence"}
           </div>
           <div className="mt-1 font-display text-4xl text-primary">{pct(pickProb)}</div>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-px border-t border-border bg-border font-mono text-xs">
         <MiniProb label="Model" value={pickHome ? game.homeWinProb : game.awayWinProb} />
-        <MiniProb label="Market" value={pickHome ? odds.devigHome : 1 - odds.devigHome} />
-        <MiniProb label="Blend" value={pickHome ? (blendHome ?? 0) : 1 - (blendHome ?? 0)} />
+        <MiniProb
+          label="Market"
+          value={odds ? (pickHome ? odds.devigHome : 1 - odds.devigHome) : null}
+        />
+        <MiniProb
+          label="Blend"
+          value={blendHome != null ? (pickHome ? blendHome : 1 - blendHome) : null}
+        />
       </div>
     </article>
   );
 }
 
-function MiniProb({ label, value }: { label: string; value: number }) {
+function MiniProb({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="bg-card px-4 py-3 text-center">
       <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
-      <div className="mt-1 text-foreground">{pct(value)}</div>
+      <div className="mt-1 text-foreground">{value != null ? pct(value) : "—"}</div>
     </div>
   );
 }
