@@ -1,8 +1,9 @@
 /**
  * mlb-props.server.ts — live MLB player-prop projections for a slate.
  *
- * Eleven binary markets (batters: 1+ hits, 2+ hits, 2+ total bases, 1+ HR,
- * 1+ RBI, 1+ run, 1+ SB; starters: 5+/6+/7+ strikeouts, 16+ outs). Each is its
+ * Sixteen binary markets — batters: the hits ladder (1+/2+/3+/4+), the total-
+ * bases ladder (2+/3+/4+/5+; 1+ TB is the same event as 1+ hits), 1+ HR,
+ * 1+ RBI, 1+ run, 1+ SB; starters: 5+/6+/7+ strikeouts, 16+ outs. Each is its
  * own logistic model over season-to-date, trailing-30-day and prior-season
  * rates plus the matchup (opposing starter, park, team context), trained in
  * research/mlb-props and frozen in mlb-props-model.json.
@@ -43,7 +44,12 @@ const LG = {
 const BATTER_PRIORS: Record<string, number> = {
   h1: 0.62,
   h2: 0.23,
+  h3: 0.047,
+  h4: 0.006,
   tb2: 0.36,
+  tb3: 0.21,
+  tb4: 0.145,
+  tb5: 0.07,
   hr1: 0.12,
   rbi1: 0.33,
   r1: 0.35,
@@ -369,53 +375,32 @@ function sumLogs<T extends { date: string }>(
 const BAT_FIELDS_SUM = ["pa", "ab", "h", "tb", "hr", "rbi", "r", "sb", "bb", "k"] as const;
 const PIT_FIELDS_SUM = ["bf", "k", "outs", "h", "bb", "hr", "gs"] as const;
 
-const batHit = (l: BatLog, market: string) =>
-  market === "h1"
-    ? l.h >= 1
-      ? 1
-      : 0
-    : market === "h2"
-      ? l.h >= 2
-        ? 1
-        : 0
-      : market === "tb2"
-        ? l.tb >= 2
-          ? 1
-          : 0
-        : market === "hr1"
-          ? l.hr >= 1
-            ? 1
-            : 0
-          : market === "rbi1"
-            ? l.rbi >= 1
-              ? 1
-              : 0
-            : market === "r1"
-              ? l.r >= 1
-                ? 1
-                : 0
-              : l.sb >= 1
-                ? 1
-                : 0;
+/** Did this game clear the market's line? Keyed by market, so the hits and
+ *  total-bases ladders extend by adding a row. */
+const BAT_HIT: Record<string, (l: BatLog) => number> = {
+  h1: (l) => (l.h >= 1 ? 1 : 0),
+  h2: (l) => (l.h >= 2 ? 1 : 0),
+  h3: (l) => (l.h >= 3 ? 1 : 0),
+  h4: (l) => (l.h >= 4 ? 1 : 0),
+  tb2: (l) => (l.tb >= 2 ? 1 : 0),
+  tb3: (l) => (l.tb >= 3 ? 1 : 0),
+  tb4: (l) => (l.tb >= 4 ? 1 : 0),
+  tb5: (l) => (l.tb >= 5 ? 1 : 0),
+  hr1: (l) => (l.hr >= 1 ? 1 : 0),
+  rbi1: (l) => (l.rbi >= 1 ? 1 : 0),
+  r1: (l) => (l.r >= 1 ? 1 : 0),
+  sb1: (l) => (l.sb >= 1 ? 1 : 0),
+};
+const batHit = (l: BatLog, market: string) => BAT_HIT[market]?.(l) ?? 0;
 
-const pitHit = (l: PitLog, market: string) =>
-  !l.gs
-    ? 0
-    : market === "k5"
-      ? l.k >= 5
-        ? 1
-        : 0
-      : market === "k6"
-        ? l.k >= 6
-          ? 1
-          : 0
-        : market === "k7"
-          ? l.k >= 7
-            ? 1
-            : 0
-          : l.outs >= 16
-            ? 1
-            : 0;
+/** Same for the starter markets — relief appearances never count. */
+const PIT_HIT: Record<string, (l: PitLog) => number> = {
+  k5: (l) => (l.k >= 5 ? 1 : 0),
+  k6: (l) => (l.k >= 6 ? 1 : 0),
+  k7: (l) => (l.k >= 7 ? 1 : 0),
+  outs16: (l) => (l.outs >= 16 ? 1 : 0),
+};
+const pitHit = (l: PitLog, market: string) => (l.gs ? (PIT_HIT[market]?.(l) ?? 0) : 0);
 
 function countHits<T extends { date: string }>(
   logs: T[],

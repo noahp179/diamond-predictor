@@ -57,10 +57,17 @@ K_G = 25.0      # shrinkage weight for per-game (prop hit) rates
 WINDOW_DAYS = 30
 
 # Binary prop markets. name -> (row -> outcome, league per-game base rate prior)
+# NB: "1+ total bases" is the same event as "1+ hits" (every total base comes
+# from a hit), so the ladder starts at 2+ on the total-bases side.
 BATTER_MARKETS = {
     "h1": (lambda r: int(r.h >= 1), 0.62),
     "h2": (lambda r: int(r.h >= 2), 0.23),
+    "h3": (lambda r: int(r.h >= 3), 0.047),
+    "h4": (lambda r: int(r.h >= 4), 0.006),
     "tb2": (lambda r: int(r.tb >= 2), 0.36),
+    "tb3": (lambda r: int(r.tb >= 3), 0.21),
+    "tb4": (lambda r: int(r.tb >= 4), 0.145),
+    "tb5": (lambda r: int(r.tb >= 5), 0.07),
     "hr1": (lambda r: int(r.hr >= 1), 0.12),
     "rbi1": (lambda r: int(r.rbi >= 1), 0.33),
     "r1": (lambda r: int(r.r >= 1), 0.35),
@@ -117,8 +124,8 @@ def day_num(dates):
 # --------------------------------------------------------------------------- #
 # batters
 # --------------------------------------------------------------------------- #
-BAT_KEYS = ["pa", "ab", "h", "tb", "hr", "rbi", "r", "sb", "bb", "k", "g",
-            "g_h1", "g_h2", "g_tb2", "g_hr1", "g_rbi1", "g_r1", "g_sb1"]
+BAT_KEYS = (["pa", "ab", "h", "tb", "hr", "rbi", "r", "sb", "bb", "k", "g"]
+            + [f"g_{m}" for m in BATTER_MARKETS])
 
 BATTER_FEATURES = [
     # season-to-date skill

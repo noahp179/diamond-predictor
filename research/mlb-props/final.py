@@ -32,7 +32,12 @@ TEST = 2026
 LABELS = {
     "h1": ("1+ hits", "batter"),
     "h2": ("2+ hits", "batter"),
+    "h3": ("3+ hits", "batter"),
+    "h4": ("4+ hits", "batter"),
     "tb2": ("2+ total bases", "batter"),
+    "tb3": ("3+ total bases", "batter"),
+    "tb4": ("4+ total bases", "batter"),
+    "tb5": ("5+ total bases", "batter"),
     "hr1": ("1+ home run", "batter"),
     "rbi1": ("1+ RBI", "batter"),
     "r1": ("1+ run scored", "batter"),

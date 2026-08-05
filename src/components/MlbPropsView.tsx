@@ -127,7 +127,7 @@ export function MlbPropsView() {
       current="props"
       eyebrow="Diamond Edge · MLB Player Props"
       title="Player Props"
-      blurb="Eleven prop markets — hits, total bases, home runs, RBI, runs, steals and starter strikeouts — each its own logistic model over season-to-date form, the last 30 days, the opposing starter and the park. Percentages are calibrated probabilities; tiers are cut where the held-out 2026 season actually separates."
+      blurb="Sixteen prop markets — the full hits (1+ to 4+) and total-bases (2+ to 5+) ladders, plus home runs, RBI, runs, steals and starter strikeouts — each its own logistic model over season-to-date form, the last 30 days, the opposing starter and the park. Percentages are calibrated probabilities; tiers are cut where the held-out 2026 season actually separates."
       date={date}
       onDateChange={setDate}
       footerNote="Data · MLB Stats API · logistic prop models (backtested on 2026)"

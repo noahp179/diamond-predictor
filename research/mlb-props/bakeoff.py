@@ -41,6 +41,9 @@ from features import (BATTER_FEATURES, BATTER_MARKETS, PITCHER_FEATURES,
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 QUICK = "--quick" in sys.argv
+# --markets=h3,tb4 restricts the run to those markets (the rest keep their
+# existing rows in bakeoff_results.csv, which this run merges into).
+ONLY = next((a.split("=", 1)[1].split(",") for a in sys.argv if a.startswith("--markets=")), None)
 TRAIN_SEASONS = (2024, 2025)
 TEST_SEASON = 2026
 RNG = 0
@@ -232,12 +235,21 @@ def run_group(df, generic, markets, kind):
 
 def main():
     rows = []
-    b = pd.read_csv(os.path.join(DATA, "batter_features.csv"))
-    rows += run_group(b, BATTER_FEATURES, list(BATTER_MARKETS), "batter")
-    p = pd.read_csv(os.path.join(DATA, "pitcher_features.csv"))
-    rows += run_group(p, PITCHER_FEATURES, list(PITCHER_MARKETS), "pitcher")
+    bm = [m for m in BATTER_MARKETS if ONLY is None or m in ONLY]
+    pm = [m for m in PITCHER_MARKETS if ONLY is None or m in ONLY]
+    if bm:
+        b = pd.read_csv(os.path.join(DATA, "batter_features.csv"))
+        rows += run_group(b, BATTER_FEATURES, bm, "batter")
+    if pm:
+        p = pd.read_csv(os.path.join(DATA, "pitcher_features.csv"))
+        rows += run_group(p, PITCHER_FEATURES, pm, "pitcher")
 
     res = pd.DataFrame(rows)
+    prev_path = os.path.join(HERE, "bakeoff_results.csv")
+    if ONLY is not None and os.path.exists(prev_path):
+        prev = pd.read_csv(prev_path)
+        res = pd.concat([prev[~prev.market.isin(res.market.unique())], res], ignore_index=True)
+        rows = res.to_dict("records")
     res.to_csv(os.path.join(HERE, "bakeoff_results.csv"), index=False)
     json.dump(rows, open(os.path.join(HERE, "bakeoff_results.json"), "w"), indent=1)
     print("\n===== best model per market (by AUC) =====")
