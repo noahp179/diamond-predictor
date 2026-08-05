@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TeamsRouteImport } from './routes/teams'
+import { Route as PropsRouteImport } from './routes/props'
 import { Route as NflRouteImport } from './routes/nfl'
 import { Route as NbaRouteImport } from './routes/nba'
 import { Route as ModelRouteImport } from './routes/model'
@@ -20,8 +21,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as NflIndexRouteImport } from './routes/nfl.index'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
-import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
+import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
 import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
 import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
 import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
@@ -31,6 +32,11 @@ import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/publ
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PropsRoute = PropsRouteImport.update({
+  id: '/props',
+  path: '/props',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NflRoute = NflRouteImport.update({
@@ -83,14 +89,14 @@ const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
   path: '/track-record',
   getParentRoute: () => NflRoute,
 } as any)
-const NflRecommendedRoute = NflRecommendedRouteImport.update({
-  id: '/recommended',
-  path: '/recommended',
-  getParentRoute: () => NflRoute,
-} as any)
 const NflTdScorersRoute = NflTdScorersRouteImport.update({
   id: '/td-scorers',
   path: '/td-scorers',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflRecommendedRoute = NflRecommendedRouteImport.update({
+  id: '/recommended',
+  path: '/recommended',
   getParentRoute: () => NflRoute,
 } as any)
 const NflBestOddsRoute = NflBestOddsRouteImport.update({
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/model': typeof ModelRoute
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
+  '/props': typeof PropsRoute
   '/teams': typeof TeamsRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/best-odds': typeof BestOddsRoute
   '/history': typeof HistoryRoute
   '/model': typeof ModelRoute
+  '/props': typeof PropsRoute
   '/teams': typeof TeamsRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/model': typeof ModelRoute
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
+  '/props': typeof PropsRoute
   '/teams': typeof TeamsRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/model'
     | '/nba'
     | '/nfl'
+    | '/props'
     | '/teams'
     | '/nba/best-odds'
     | '/nba/recommended'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/best-odds'
     | '/history'
     | '/model'
+    | '/props'
     | '/teams'
     | '/nba/best-odds'
     | '/nba/recommended'
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/model'
     | '/nba'
     | '/nfl'
+    | '/props'
     | '/teams'
     | '/nba/best-odds'
     | '/nba/recommended'
@@ -248,6 +260,7 @@ export interface RootRouteChildren {
   ModelRoute: typeof ModelRoute
   NbaRoute: typeof NbaRouteWithChildren
   NflRoute: typeof NflRouteWithChildren
+  PropsRoute: typeof PropsRoute
   TeamsRoute: typeof TeamsRoute
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
 }
@@ -259,6 +272,13 @@ declare module '@tanstack/react-router' {
       path: '/teams'
       fullPath: '/teams'
       preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/props': {
+      id: '/props'
+      path: '/props'
+      fullPath: '/props'
+      preLoaderRoute: typeof PropsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/nfl': {
@@ -331,18 +351,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NflTrackRecordRouteImport
       parentRoute: typeof NflRoute
     }
-    '/nfl/recommended': {
-      id: '/nfl/recommended'
-      path: '/recommended'
-      fullPath: '/nfl/recommended'
-      preLoaderRoute: typeof NflRecommendedRouteImport
-      parentRoute: typeof NflRoute
-    }
     '/nfl/td-scorers': {
       id: '/nfl/td-scorers'
       path: '/td-scorers'
       fullPath: '/nfl/td-scorers'
       preLoaderRoute: typeof NflTdScorersRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/recommended': {
+      id: '/nfl/recommended'
+      path: '/recommended'
+      fullPath: '/nfl/recommended'
+      preLoaderRoute: typeof NflRecommendedRouteImport
       parentRoute: typeof NflRoute
     }
     '/nfl/best-odds': {
@@ -425,6 +445,7 @@ const rootRouteChildren: RootRouteChildren = {
   ModelRoute: ModelRoute,
   NbaRoute: NbaRouteWithChildren,
   NflRoute: NflRouteWithChildren,
+  PropsRoute: PropsRoute,
   TeamsRoute: TeamsRoute,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
 }

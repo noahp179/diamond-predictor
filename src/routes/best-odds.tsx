@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { getBestOddsPicks, type GameWithOdds } from "@/lib/mlb.functions";
+import { getMlbProps } from "@/lib/sports.functions";
+import { MlbParlayCard } from "@/components/MlbParlayCard";
+import type { ParlayCandidate } from "@/lib/mlb-parlay";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import { pickProb, MARKET_BLEND_WEIGHT } from "@/lib/mlb-blend";
 import { SiteNav } from "@/components/SiteNav";
@@ -34,16 +38,60 @@ function formatMoneyline(ml: number): string {
   return ml > 0 ? `+${ml}` : `${ml}`;
 }
 
-/** Our combined (model + market) chance for the entry's pick to win. */
-function pickConfidence(entry: GameWithOdds): number | null {
-  return entry.blendedHomeProb != null ? pickProb(entry.blendedHomeProb) : null;
+/**
+ * How the board is ranked. "Confidence" is the model on its own — the surest
+ * outcomes on the slate, whatever they pay and whether or not a line is even
+ * posted. The other two need the book's number.
+ */
+type Mode = "confidence" | "blend" | "market";
+
+const MODES: { key: Mode; label: string; blurb: string }[] = [
+  {
+    key: "confidence",
+    label: "Model confidence",
+    blurb:
+      "Ranked purely by how sure our model is that the pick wins — not by what it pays. A heavy favorite at a bad price outranks a tempting underdog here, and games with no posted line still qualify. Backtested over 9,009 games (2023–26): the three most confident picks per day won 62.1% of the time, against 56.4% for all its picks and 52.7% for always taking the home team.",
+  },
+  {
+    key: "blend",
+    label: "Model + market",
+    blurb:
+      "Our model blended with the sportsbook's devigged line. Needs a posted line, and leans on the market's read as much as our own.",
+  },
+  {
+    key: "market",
+    label: "Market only",
+    blurb:
+      "The sportsbook's own line with its margin stripped out — no model input at all. The book's favorites, in order.",
+  },
+];
+
+/** The probability this entry is ranked on, under the active mode. */
+function rankProbFor(entry: GameWithOdds, mode: Mode): number | null {
+  if (mode === "confidence") return entry.game.homeWinProb;
+  if (mode === "blend") return entry.blendedHomeProb;
+  return entry.odds ? entry.odds.homeImpliedProb : null;
+}
+
+/** Our chance for the entry's pick (the favored side) to win. */
+function pickConfidence(entry: GameWithOdds, mode: Mode): number | null {
+  const p = rankProbFor(entry, mode);
+  return p != null ? pickProb(p) : null;
 }
 
 function BestOddsPage() {
+  const [mode, setMode] = useState<Mode>("confidence");
   const fetchPicks = useServerFn(getBestOddsPicks);
+  const fetchProps = useServerFn(getMlbProps);
   const today = todayISO();
   const tomorrow = offsetDate(today, 1);
 
+  const propsQuery = useQuery({
+    queryKey: ["mlb", "props", today],
+    queryFn: () => fetchProps({ data: { date: today } }),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
   const todayQuery = useQuery({
     queryKey: ["best-odds-picks", today],
     queryFn: () => fetchPicks({ data: { date: today } }),
@@ -72,13 +120,56 @@ function BestOddsPage() {
     const todayDone = slateComplete(todayGames.map((g) => g.game.status));
     const chosen = todayDone ? tomorrowQuery.data : todayQuery.data;
     allGames = chosen?.games ?? [];
-    picks = chosen?.blendPicks ?? [];
+    picks =
+      (mode === "confidence"
+        ? chosen?.confidencePicks
+        : mode === "market"
+          ? chosen?.marketPicks
+          : chosen?.blendPicks) ?? [];
     chosenDate = todayDone ? tomorrow : today;
     source = chosen?.source;
   }
 
+  // Parlay candidates: every prop the model prices, plus each game's moneyline
+  // pick at the model's own confidence. Price never enters the selection.
+  const parlayCandidates: ParlayCandidate[] = [
+    ...(propsQuery.data?.games ?? []).flatMap((g) =>
+      g.picks.map(
+        (p): ParlayCandidate => ({
+          subjectId: `p${p.playerId}`,
+          subject: p.player,
+          market: p.market,
+          label: p.label,
+          prob: p.prob,
+          gameId: g.gameId,
+          matchup: g.matchup,
+          team: p.team,
+          kind: p.kind,
+          tier: p.tier,
+          tierHitRate: p.tierHitRate,
+          cautions: p.cautions,
+        }),
+      ),
+    ),
+    ...allGames.map((g): ParlayCandidate => {
+      const pickHome = g.game.homeWinProb >= 0.5;
+      return {
+        subjectId: `g${g.game.gameId}`,
+        subject: pickHome ? g.game.home.abbreviation : g.game.away.abbreviation,
+        market: "moneyline",
+        label: "to win",
+        prob: pickProb(g.game.homeWinProb),
+        gameId: g.game.gameId,
+        matchup: `${g.game.away.abbreviation} @ ${g.game.home.abbreviation}`,
+        team: pickHome ? g.game.home.abbreviation : g.game.away.abbreviation,
+        kind: "game",
+      };
+    }),
+  ];
+
   const withOdds = allGames.filter((g) => g.odds != null).length;
-  const topConfidence = picks.length > 0 ? pickConfidence(picks[0]) : null;
+  const topConfidence = picks.length > 0 ? pickConfidence(picks[0], mode) : null;
+  const activeMode = MODES.find((m) => m.key === mode)!;
 
   return (
     <div className="min-h-screen">
@@ -90,8 +181,9 @@ function BestOddsPage() {
             </div>
             <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Safest Bets</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              The teams most likely to win tonight — we combine the betting line with our own model,
-              then show you what each pick pays.
+              The teams most likely to win tonight, led by the picks our model is surest about —
+              highest confidence first, not biggest payout. Switch the ranking below to bring the
+              sportsbook's line back in.
             </p>
           </div>
           <SiteNav current="mlb" />
@@ -123,13 +215,32 @@ function BestOddsPage() {
       <SportTabs sport="mlb" current="bestOdds" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
+        <MlbParlayCard
+          candidates={parlayCandidates}
+          isLoading={isLoading || propsQuery.isLoading}
+        />
+
         <div className="border-b border-border pb-4">
           <h2 className="font-display text-2xl">Tonight's three safest picks</h2>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            We take the sportsbook's line, strip out its built-in margin, and blend it with our own
-            model to get each team's real chance of winning. The three biggest chances are below,
-            along with the payout on a winning bet.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-1">
+            {MODES.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setMode(m.key)}
+                aria-pressed={mode === m.key}
+                className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                  mode === m.key
+                    ? "border-primary text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {mode === m.key ? "▸ " : ""}
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{activeMode.blurb}</p>
         </div>
 
         <div className="mt-6">
@@ -154,13 +265,14 @@ function BestOddsPage() {
                   <div className="font-display text-3xl">Market odds not posted yet</div>
                   <p className="mt-2 font-mono text-sm text-muted-foreground">
                     DraftKings usually posts MLB lines within 24–36 hours of first pitch. Check back
-                    closer to game time.
+                    closer to game time, or switch to Model confidence — that ranking does not need
+                    a line.
                   </p>
                 </div>
               ) : (
                 <div className="grid gap-6">
                   {picks.map((g, i) => (
-                    <BestOddCard key={g.game.gameId} entry={g} rank={i + 1} />
+                    <BestOddCard key={g.game.gameId} entry={g} rank={i + 1} mode={mode} />
                   ))}
                 </div>
               )}
@@ -171,9 +283,10 @@ function BestOddsPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Our model blended with the market ({Math.round(MARKET_BLEND_WEIGHT * 100)}% weight on the
-          line) · Odds from DraftKings via ESPN (free, unofficial) · Not affiliated with MLB or
-          DraftKings
+          {mode === "confidence"
+            ? "Ranked by our model's own confidence — payout ignored"
+            : `Our model blended with the market (${Math.round(MARKET_BLEND_WEIGHT * 100)}% weight on the line)`}{" "}
+          · Odds from DraftKings via ESPN (free, unofficial) · Not affiliated with MLB or DraftKings
         </div>
       </footer>
     </div>
@@ -189,18 +302,20 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BestOddCard({ entry, rank }: { entry: GameWithOdds; rank: number }) {
-  const { game, odds, edge, blendedHomeProb } = entry;
-  if (!odds) return null;
+function BestOddCard({ entry, rank, mode }: { entry: GameWithOdds; rank: number; mode: Mode }) {
+  const { game, odds, edge } = entry;
+  // The pick is the side the ACTIVE ranking favors — the model alone in
+  // confidence mode, the blend or the raw line otherwise. In confidence mode a
+  // game with no posted line still gets a card; the payout row just goes empty.
+  const rankProb = rankProbFor(entry, mode);
+  if (rankProb == null) return null;
 
-  // The pick is the side our combined (model + market) estimate favors.
-  const rankProb = blendedHomeProb ?? 0.5;
   const pickIsHome = rankProb >= 0.5;
   const pickTeam = pickIsHome ? game.home.abbreviation : game.away.abbreviation;
   const confidence = pickProb(rankProb);
-  const marketProb = pickIsHome ? odds.homeImpliedProb : odds.awayImpliedProb;
+  const marketProb = odds ? (pickIsHome ? odds.homeImpliedProb : odds.awayImpliedProb) : null;
   const modelProb = pickIsHome ? game.homeWinProb : 1 - game.homeWinProb;
-  const pickMoneyline = pickIsHome ? odds.homeMoneyLine : odds.awayMoneyLine;
+  const pickMoneyline = odds ? (pickIsHome ? odds.homeMoneyLine : odds.awayMoneyLine) : null;
 
   // Did the pick win? (game.correct tracks the model's side, not the pick's.)
   const pickResult =
@@ -258,8 +373,17 @@ function BestOddCard({ entry, rank }: { entry: GameWithOdds; rank: number }) {
         <div className="mt-2 flex items-baseline gap-2">
           <span className="font-display text-4xl text-primary">{pct(confidence)}</span>
           <span className="font-mono text-xs text-foreground">
-            pays {formatMoneyline(pickMoneyline)} on a win
+            {pickMoneyline != null
+              ? `pays ${formatMoneyline(pickMoneyline)} on a win`
+              : "line not posted yet"}
           </span>
+        </div>
+        <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          {mode === "confidence"
+            ? "our model alone"
+            : mode === "blend"
+              ? "model + market"
+              : "market line"}
         </div>
       </div>
 
@@ -269,8 +393,12 @@ function BestOddCard({ entry, rank }: { entry: GameWithOdds; rank: number }) {
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             The betting line says
           </div>
-          <div className="mt-2 font-display text-3xl text-foreground">{pct(marketProb)}</div>
-          <div className="mt-1 font-mono text-xs text-muted-foreground">{pickTeam} to win</div>
+          <div className="mt-2 font-display text-3xl text-foreground">
+            {marketProb != null ? pct(marketProb) : "—"}
+          </div>
+          <div className="mt-1 font-mono text-xs text-muted-foreground">
+            {marketProb != null ? `${pickTeam} to win` : "no line posted"}
+          </div>
         </div>
         <div className="bg-card px-5 py-4">
           <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">

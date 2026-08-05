@@ -35,3 +35,7 @@ dist-ssr
 *.sw?
 .env
 .backtest-cache/
+
+# Research datasets (regenerate with the fetch scripts)
+research/*/data/
+__pycache__/

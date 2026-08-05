@@ -830,6 +830,7 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
       return {
         date,
         games: [] as GameWithOdds[],
+        confidencePicks: [] as GameWithOdds[],
         marketPicks: [] as GameWithOdds[],
         blendPicks: [] as GameWithOdds[],
         source,
@@ -906,11 +907,18 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
     });
 
     const priced = withOdds.filter((x): x is GameWithOdds & { odds: GameOdds } => x.odds != null);
-    // Tab 1 — safest bets by the market's own line
+    // Tab 1 — highest model confidence, regardless of what it pays. This is the
+    // only ranking that does not need a posted line, so it covers every game on
+    // the slate; a short favorite the book prices at -400 outranks a juicy
+    // underdog here on purpose.
+    const confidencePicks = [...withOdds]
+      .sort((a, b) => pickProb(b.game.homeWinProb) - pickProb(a.game.homeWinProb))
+      .slice(0, 3);
+    // Tab 2 — safest bets by the market's own line
     const marketPicks = [...priced]
       .sort((a, b) => pickProb(b.odds.homeImpliedProb) - pickProb(a.odds.homeImpliedProb))
       .slice(0, 3);
-    // Tab 2 — safest bets once our prediction is blended in
+    // Tab 3 — safest bets once our prediction is blended with that line
     const blendPicks = [...priced]
       .sort((a, b) => pickProb(b.blendedHomeProb!) - pickProb(a.blendedHomeProb!))
       .slice(0, 3);
@@ -918,6 +926,7 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
     return {
       date,
       games: withOdds,
+      confidencePicks,
       marketPicks,
       blendPicks,
       source,

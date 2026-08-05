@@ -580,13 +580,15 @@ export type OddsRow = {
 };
 
 /** Best Odds surface: today's slate priced with live ESPN odds, ranked by
- *  confidence two ways — the market's own devigged line, and the model×market
- *  blend. Same "safest bets" framing as MLB (not a +EV claim). */
+ *  confidence three ways — the model on its own, the market's devigged line,
+ *  and the model×market blend. Same "safest bets" framing as MLB (not a +EV
+ *  claim). */
 export async function bestOddsSlate(
   sport: Sport,
   date: string,
 ): Promise<{
   rows: OddsRow[];
+  confidencePicks: OddsRow[];
   marketPicks: OddsRow[];
   blendPicks: OddsRow[];
   season: number;
@@ -603,6 +605,11 @@ export async function bestOddsSlate(
   const priced = rows.filter(
     (r): r is OddsRow & { odds: GameOdds; blendHome: number } => r.odds != null,
   );
+  // Highest model confidence, whatever it pays — the only ranking that works
+  // without a posted line, so it covers the whole slate.
+  const confidencePicks = [...rows]
+    .sort((a, b) => pickConfidence(b.game.homeWinProb) - pickConfidence(a.game.homeWinProb))
+    .slice(0, 5);
   const marketPicks = [...priced]
     .sort((a, b) => pickConfidence(b.odds.devigHome) - pickConfidence(a.odds.devigHome))
     .slice(0, 5);
@@ -611,6 +618,7 @@ export async function bestOddsSlate(
     .slice(0, 5);
   return {
     rows,
+    confidencePicks,
     marketPicks,
     blendPicks,
     season,
