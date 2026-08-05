@@ -180,20 +180,50 @@ Retrain every season, and the whole phenomenon disappears.
 
 ---
 
+## Follow-up: the handedness feature was built, tested, and rejected
+
+The obvious conclusion from the switch-hitter finding was "add handedness as a
+feature." That was built properly — each batter's season-to-date rate against
+the hand tonight's starter throws with (`vs_hand_h_pa`, `vs_hand_tb_pa`,
+`vs_hand_hr_pa`, sample size), the matchup flags (platoon edge, same-handed,
+switch, bats-left, starter-throws-left) and, for pitchers, the opposing lineup's
+left-handed share — and A/B tested head to head on the 2026 hold-out
+(`research/mlb-props/platoon_ab.py`).
+
+**It does not help.**
+
+| | batters (12 markets) | starters (4 markets) |
+|---|--:|--:|
+| mean ΔAUC | **−0.0004** | **−0.0005** |
+| mean Δlog loss | −0.00007 | −0.00024 |
+| markets improved | 2 of 12 | 1 of 4 |
+
+Nor does it repair the thing that motivated it: the switch-hitter gap on 1+ hits
+moves from −0.028 to −0.025, while everyone else drifts from −0.011 to −0.020.
+
+The sanity check explains why. On this data the platoon advantage barely exists
+for the markets we price: batters holding the handedness edge got a hit in
+**60.3%** of games, same-handed batters in **61.5%** — backwards from the
+textbook, and both within noise of each other. The classical platoon split lives
+in slugging and walk rates, not in "did he get one hit", and 1+ hits is where our
+confident legs actually are.
+
+The columns are still built by `features.py` (as `PLATOON_FEATURES`) so the
+experiment reproduces, but they are deliberately **not** in the shipped model.
+The switch-hitter caution on the parlay card therefore stays what it is — an
+empirical flag on a bias we can measure but cannot yet explain or model away.
+
 ## What to actually do
 
-1. **Add handedness to the prop models.** Not a flag — a feature. The models
-   currently have no idea whether a batter is left-, right- or switch-handed, or
-   who is throwing. Switch hitters are the visible symptom; the platoon split is
-   real baseball information sitting unused. This is the highest-value item here.
-2. **Flag switch-hitter legs in the parlay** as an interim measure, and consider
-   excluding them: 66.0% realised against 72.1% stated across two seasons.
-3. **Retrain annually.** The staleness result quantifies the cost of not doing
+1. **Keep the switch-hitter flag** as the interim measure it is: 66.0% realised
+   against 72.1% stated across two seasons, with the caveat that the two seasons
+   disagree in magnitude by a factor of six.
+2. **Retrain annually.** The staleness result quantifies the cost of not doing
    it.
-4. **If you want the wind signal, buy a forecast feed.** The effect is the most
+3. **If you want the wind signal, buy a forecast feed.** The effect is the most
    reproducible one found (−0.025 / −0.032) and MLB's own weather field is empty
    until first pitch.
-5. **Do not build a per-leg risk score from these features.** Thirteen
+4. **Do not build a per-leg risk score from these features.** Thirteen
    algorithms and 804 mined rules all failed to beat the published probability
    out of sample.
 

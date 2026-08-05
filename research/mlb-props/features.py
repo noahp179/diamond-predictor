@@ -52,6 +52,7 @@ LG = {
     "p_k_bf": 0.223, "p_h_bf": 0.216, "p_bb_bf": 0.085, "p_hr_bf": 0.032,
 }
 K_PA = 250.0    # shrinkage weight for batter per-PA rates
+K_SPLIT = 120.0 # shrinkage for platoon splits (thinner samples than the overall rate)
 K_BF = 300.0    # shrinkage weight for pitcher per-BF rates
 K_G = 25.0      # shrinkage weight for per-game (prop hit) rates
 WINDOW_DAYS = 30
@@ -127,6 +128,18 @@ def day_num(dates):
 BAT_KEYS = (["pa", "ab", "h", "tb", "hr", "rbi", "r", "sb", "bb", "k", "g"]
             + [f"g_{m}" for m in BATTER_MARKETS])
 
+# Handedness / platoon. Built and A/B-tested (platoon_ab.py, EDGE-HUNT.md) after
+# the switch-hitter finding suggested the models had a handedness blind spot.
+# They do NOT help — mean AUC -0.0004 across the twelve batter markets on the
+# 2026 hold-out, and the switch-hitter gap barely moves (-0.028 -> -0.025). The
+# columns are still built so the experiment reproduces; they are deliberately
+# not in the shipped feature list.
+PLATOON_FEATURES = [
+    "vs_hand_h_pa", "vs_hand_tb_pa", "vs_hand_hr_pa", "vs_hand_pa",
+    "platoon_edge", "same_hand", "bats_switch", "bats_left", "sp_throws_left",
+]
+PITCHER_PLATOON_FEATURES = ["opp_lhb_share", "throws_left", "opp_platoon_edge"]
+
 BATTER_FEATURES = [
     # season-to-date skill
     "h_pa", "tb_pa", "hr_pa", "rbi_pa", "r_pa", "bb_pa", "k_pa", "sb_pa", "iso",
@@ -146,7 +159,18 @@ BATTER_FEATURES = [
 OWN = ["own_rate", "own_w_rate"]
 
 
+def load_hands():
+    """player_id -> bats / throws (from fetch_context.py)."""
+    fp = os.path.join(DATA, "player_hands.csv")
+    if not os.path.exists(fp):
+        raise SystemExit("run fetch_context.py first — player_hands.csv is missing")
+    h = pd.read_csv(fp)
+    return (h.set_index("player_id").bats.to_dict(),
+            h.set_index("player_id").throws.to_dict())
+
+
 def build_batters():
+    bats_of, throws_of = load_hands()
     bg = pd.read_csv(os.path.join(DATA, "batter_games.csv"))
     pg = pd.read_csv(os.path.join(DATA, "pitcher_games.csv"))
     bg = bg.copy()
@@ -171,6 +195,8 @@ def build_batters():
 
     B = defaultdict(lambda: dict.fromkeys(BAT_KEYS, 0.0))
     W = defaultdict(lambda: Window(BAT_KEYS))
+    # (batter, hand faced) -> pa/h/tb/hr, season-to-date
+    S = defaultdict(lambda: dict(pa=0.0, h=0.0, tb=0.0, hr=0.0))
 
     rows = []
     for gpk, gdf in bg.groupby("gamePk", sort=False):
@@ -195,12 +221,30 @@ def build_batters():
             if b["g"] < 1 or t["g"] < 1 or o["g"] < 1:
                 continue
 
+            # --- platoon block ---
+            bhand = bats_of.get(r.batter_id)
+            phand = throws_of.get(r.opp_sp) if r.opp_sp == r.opp_sp else None
+            eff = bhand
+            if bhand == "S" and phand in ("L", "R"):
+                eff = "R" if phand == "L" else "L"      # switch hitters take the good side
+            sp_split = S[(r.batter_id, phand)] if phand in ("L", "R") else None
+            spa = sp_split["pa"] if sp_split else 0.0
+
             pa, g = b["pa"], b["g"]
             wp, wg = w.tot["pa"], max(w.g, 0)
             pyr = py_map.get((season, int(r.batter_id)))
             spk = sp is not None and sp["bf"] >= 1
 
             feat = {
+                "vs_hand_h_pa": shrunk(sp_split["h"], spa, LG["h_pa"], K_SPLIT) if sp_split else LG["h_pa"],
+                "vs_hand_tb_pa": shrunk(sp_split["tb"], spa, LG["tb_pa"], K_SPLIT) if sp_split else LG["tb_pa"],
+                "vs_hand_hr_pa": shrunk(sp_split["hr"], spa, LG["hr_pa"], K_SPLIT) if sp_split else LG["hr_pa"],
+                "vs_hand_pa": min(spa, 400),
+                "platoon_edge": 1.0 if (phand in ("L", "R") and eff in ("L", "R") and eff != phand) else 0.0,
+                "same_hand": 1.0 if (phand in ("L", "R") and bhand == phand) else 0.0,
+                "bats_switch": 1.0 if bhand == "S" else 0.0,
+                "bats_left": 1.0 if bhand == "L" else 0.0,
+                "sp_throws_left": 1.0 if phand == "L" else 0.0,
                 "h_pa": shrunk(b["h"], pa, LG["h_pa"], K_PA),
                 "tb_pa": shrunk(b["tb"], pa, LG["tb_pa"], K_PA),
                 "hr_pa": shrunk(b["hr"], pa, LG["hr_pa"], K_PA),
@@ -244,6 +288,10 @@ def build_batters():
 
         # ---- now fold this game into the cumulative state ----
         for r in gdf.itertuples():
+            ph = throws_of.get(r.opp_sp) if r.opp_sp == r.opp_sp else None
+            if ph in ("L", "R"):
+                sp_ = S[(r.batter_id, ph)]
+                sp_["pa"] += r.pa; sp_["h"] += r.h; sp_["tb"] += r.tb; sp_["hr"] += r.hr
             b, w = B[r.batter_id], W[r.batter_id]
             rec = {
                 "pa": r.pa, "ab": r.ab, "h": r.h, "tb": r.tb, "hr": r.hr,
@@ -297,8 +345,14 @@ PITCHER_FEATURES = [
 
 
 def build_pitchers():
+    bats_of, throws_of = load_hands()
     pg = pd.read_csv(os.path.join(DATA, "pitcher_games.csv"))
     bg = pd.read_csv(os.path.join(DATA, "batter_games.csv"))
+    # share of tonight's opposing lineup that bats left (switch hitters count a
+    # half, since they take whichever side is favourable)
+    lu = bg[(bg.slot >= 1) & (bg.slot <= 9)].copy()
+    lu["lhb"] = lu.batter_id.map(bats_of).map({"L": 1.0, "S": 0.5}).fillna(0.0)
+    LHB = lu.groupby(["gamePk", "team_id"]).lhb.mean().to_dict()
     pg["day"] = day_num(pg.date)
     bg["day"] = day_num(bg.date)
     pg = pg.sort_values(["day", "gamePk"]).reset_index(drop=True)
@@ -332,10 +386,16 @@ def build_pitchers():
             mine = TB[(season, r.team_id)]
             if p["gs"] < 1 or opp["g"] < 1 or mine["g"] < 1:
                 continue
+            lhb_share = LHB.get((gpk, r.opp_team), 0.35)
+            throws = throws_of.get(r.pitcher_id)
             bf, gs = p["bf"], p["gs"]
             wbf, wgs = w.tot["bf"], max(w.g, 0)
             pyr = py_map.get((season, int(r.pitcher_id)))
             feat = {
+                "opp_lhb_share": lhb_share,
+                "throws_left": 1.0 if throws == "L" else 0.0,
+                # how much of the lineup holds the platoon edge against this arm
+                "opp_platoon_edge": lhb_share if throws == "R" else (1.0 - lhb_share),
                 "k_bf": shrunk(p["k"], bf, LG["p_k_bf"], K_BF),
                 "h_bf": shrunk(p["h"], bf, LG["p_h_bf"], K_BF),
                 "bb_bf": shrunk(p["bb"], bf, LG["p_bb_bf"], K_BF),
