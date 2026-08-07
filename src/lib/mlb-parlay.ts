@@ -20,6 +20,26 @@
  * independence assumption instead of pretending it away.
  */
 
+/** Markets never offered, whatever the model says about them. */
+export const EXCLUDED_MARKETS = new Set(["outs16"]);
+
+/** A leg must clear this on its own before it can join any slip. */
+export const LEG_FLOOR = 0.55;
+
+/**
+ * Measured on the 2026 hold-out (research/mlb-props/parlay_sizes.py): how the
+ * realised hit rate compared with the independence product, once one-leg-per-
+ * player was enforced. At 5 and 10 legs the plain product is slightly
+ * conservative; the 15-leg figure rests on a single winning slip in 128 days,
+ * so it is noise and is deliberately not used to flatter the number.
+ */
+export const SIZE_EVIDENCE: Record<number, { predicted: number; realised: number; slips: number }> =
+  {
+    5: { predicted: 0.2997, realised: 0.3101, slips: 129 },
+    10: { predicted: 0.0633, realised: 0.0703, slips: 128 },
+    15: { predicted: 0.0119, realised: 0.0078, slips: 128 },
+  };
+
 /** One candidate leg: a prop pick, or a game the model likes outright. */
 export type ParlayCandidate = {
   /** Stable id for the subject the leg is about — a player, or a team+game. */
@@ -118,7 +138,10 @@ export function buildParlay(
   dropCautioned = false,
 ): Parlay {
   const qualified = candidates.filter(
-    (c) => c.prob >= threshold && !(dropCautioned && (c.cautions?.length ?? 0) > 0),
+    (c) =>
+      c.prob >= threshold &&
+      !EXCLUDED_MARKETS.has(c.market) &&
+      !(dropCautioned && (c.cautions?.length ?? 0) > 0),
   );
 
   // Group by subject — implication only ever holds within one player or game.
@@ -151,6 +174,22 @@ export function buildParlay(
   // Hardest legs last reads better on a card: lead with what we are surest of.
   legs.sort((a, b) => b.prob - a.prob);
 
+  // UNIQUENESS. Implication collapse is not enough — two legs for one player can
+  // be logically independent (1+ hits and 1+ steal) and still be one bet in
+  // spirit. A player appears at most once, at their strongest market.
+  const seen = new Set<string>();
+  const unique: ParlayLeg[] = [];
+  for (const l of legs) {
+    if (seen.has(l.subjectId)) {
+      dropped += 1;
+      continue;
+    }
+    seen.add(l.subjectId);
+    unique.push(l);
+  }
+  legs.length = 0;
+  legs.push(...unique);
+
   const combinedProb = legs.reduce((acc, l) => acc * l.prob, 1);
   const byGame = new Map<number, { gameId: number; matchup: string; legs: number }>();
   for (const l of legs) {
@@ -166,6 +205,42 @@ export function buildParlay(
     fairPrice: legs.length ? americanPrice(combinedProb) : 0,
     correlatedGames: [...byGame.values()].filter((g) => g.legs > 1).sort((a, b) => b.legs - a.legs),
     droppedForOverlap: dropped,
+    cautioned: legs.filter((l) => (l.cautions?.length ?? 0) > 0).length,
+  };
+}
+
+/**
+ * A slip of exactly `size` legs — the construction the backtest actually
+ * validated. Every player contributes at most one leg, at their most likely
+ * market, and the `size` most likely of those make the slip.
+ *
+ * Two constructions were tested on the 2026 hold-out. Taking each player's
+ * SAFEST rung beat taking their longest one on every count: at five legs it hit
+ * 31.0% against 20.2%, and at ten 7.0% against 1.6%. Longer rungs pay more per
+ * leg and lose far more often than the extra price is worth, so the card builds
+ * the safest slip and reports its fair price rather than chasing the payout.
+ */
+export function buildSizedParlay(
+  candidates: ParlayCandidate[],
+  size: number,
+  dropCautioned = false,
+): Parlay {
+  const full = buildParlay(candidates, LEG_FLOOR, dropCautioned);
+  const legs = full.legs.slice(0, size);
+  const combinedProb = legs.reduce((acc, l) => acc * l.prob, 1);
+  const byGame = new Map<number, { gameId: number; matchup: string; legs: number }>();
+  for (const l of legs) {
+    const g = byGame.get(l.gameId) ?? { gameId: l.gameId, matchup: l.matchup, legs: 0 };
+    g.legs += 1;
+    byGame.set(l.gameId, g);
+  }
+  return {
+    ...full,
+    legs,
+    threshold: LEG_FLOOR,
+    combinedProb,
+    fairPrice: legs.length ? americanPrice(combinedProb) : 0,
+    correlatedGames: [...byGame.values()].filter((g) => g.legs > 1).sort((a, b) => b.legs - a.legs),
     cautioned: legs.filter((l) => (l.cautions?.length ?? 0) > 0).length,
   };
 }

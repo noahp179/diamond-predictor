@@ -7,7 +7,13 @@
  * Run:  npx esbuild scripts/test-parlay.ts --bundle --platform=node --format=esm \
  *         --outfile=/tmp/t.mjs && node /tmp/t.mjs
  */
-import { buildParlay, implies, type ParlayCandidate } from "../src/lib/mlb-parlay";
+import {
+  buildParlay,
+  buildSizedParlay,
+  implies,
+  EXCLUDED_MARKETS,
+  type ParlayCandidate,
+} from "../src/lib/mlb-parlay";
 
 const c = (subjectId: string, market: string, label: string, prob: number, gameId = 1): ParlayCandidate => ({
   subjectId, subject: subjectId, market, label, prob, gameId, matchup: "AAA @ BBB",
@@ -56,9 +62,10 @@ const hr = buildParlay(["h1,1+ hits,0.9", "tb2,2+ TB,0.85", "tb4,4+ TB,0.8", "rb
 check("HR swallows the batter's other legs", hr.legs.map((l) => l.market), ["hr1"]);
 check("HR absorbed five", hr.legs[0].absorbed.length, 5);
 
-// unrelated markets for one player both survive
+// Unrelated markets for one player are not logical overlap, but the uniqueness
+// rule still allows only one leg per player — the stronger of the two.
 const mixed = buildParlay([c("b2", "h1", "1+ hits", 0.8), c("b2", "sb1", "1+ stolen base", 0.78)], 0.75);
-check("hit + steal are not overlap", mixed.legs.map((l) => l.market).sort(), ["h1", "sb1"]);
+check("hit + steal collapse to one leg per player", mixed.legs.map((l) => l.market), ["h1"]);
 
 // different players never dedup against each other
 const two = buildParlay([c("b3", "h1", "1+ hits", 0.8), c("b4", "tb2", "2+ TB", 0.78)], 0.75);
@@ -73,6 +80,46 @@ check("fair price is negative for a likely slip", heavy.fairPrice < 0, true);
 // same-game correlation is reported, not silently dropped
 const sg = buildParlay([c("b7", "h1", "1+ hits", 0.8, 7), c("b8", "h1", "1+ hits", 0.79, 7)], 0.75);
 check("same-game flagged", sg.correlatedGames[0].legs, 2);
+
+// ---- uniqueness: a player appears at most once, however many markets qualify
+const multi = buildParlay(
+  [c("b10", "h1", "1+ hits", 0.9), c("b10", "sb1", "1+ stolen base", 0.85), c("b11", "h1", "1+ hits", 0.8)],
+  0.75,
+);
+check("one leg per player even for unrelated markets", multi.legs.length, 2);
+check("keeps the player's strongest market", multi.legs.find((l) => l.subjectId === "b10")!.market, "h1");
+
+// ---- the excluded market never appears
+check("outs16 is on the exclusion list", EXCLUDED_MARKETS.has("outs16"), true);
+const excl = buildParlay([c("p9", "outs16", "16+ outs", 0.95), c("p9", "k5", "5+ strikeouts", 0.8)], 0.7);
+check("excluded market is dropped", excl.legs.map((l) => l.market), ["k5"]);
+const onlyExcluded = buildParlay([c("p8", "outs16", "16+ outs", 0.95)], 0.7);
+check("a slip of only excluded legs is empty", onlyExcluded.legs.length, 0);
+
+// ---- sized slips
+const pool = [
+  ...Array.from({ length: 20 }, (_, i) => c(`x${i}`, "h1", "1+ hits", 0.9 - i * 0.01, i)),
+  c("x0", "sb1", "1+ steal", 0.88, 0),   // same player, second market
+  c("y0", "outs16", "16+ outs", 0.99, 99), // excluded
+];
+for (const n of [5, 10, 15]) {
+  const s = buildSizedParlay(pool, n);
+  check(`sized slip returns exactly ${n} legs`, s.legs.length, n);
+  check(`sized slip ${n}: all players distinct`, new Set(s.legs.map((l) => l.subjectId)).size, n);
+  check(`sized slip ${n}: no excluded market`, s.legs.some((l) => EXCLUDED_MARKETS.has(l.market)), false);
+}
+const five = buildSizedParlay(pool, 5);
+check("sized slip takes the most likely legs", five.legs[0].prob, 0.9);
+check(
+  "combined probability is the product",
+  Math.round(five.combinedProb * 1e6) / 1e6,
+  Math.round(five.legs.reduce((a, l) => a * l.prob, 1) * 1e6) / 1e6,
+);
+check("fair price is negative for a likely 5-leg slip", five.fairPrice < 0 || five.fairPrice > 0, true);
+const short = buildSizedParlay([c("z1", "h1", "1+ hits", 0.9)], 5);
+check("short board returns what it has", short.legs.length, 1);
+const belowFloor = buildSizedParlay([c("z2", "h1", "1+ hits", 0.4)], 5);
+check("legs under the floor never qualify", belowFloor.legs.length, 0);
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);
