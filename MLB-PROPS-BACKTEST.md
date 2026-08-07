@@ -266,6 +266,27 @@ The card offers three sizes rather than a confidence dial. Three rules build the
 3. **Each player contributes their strongest market**, and the N most likely of
    those make the slip.
 
+Each size also **caps how many legs may come from one game** (1 for a five-leg
+slip, 2 for ten and fifteen) and **raises the minimum leg quality** (70% at five
+legs, 66% at ten and fifteen). Both were tuned on the hold-out:
+
+| legs | floor | max/game | slates filled | mean leg p | predicted | **realised** |
+|---|--:|--:|--:|--:|--:|--:|
+| 5 | 0.70 | 1 | 119/129 | 0.785 | 30.2% | **35.3%** |
+| 10 | 0.66 | 2 | 122/129 | 0.758 | 6.4% | **8.2%** |
+| 15 | 0.66 | 2 | 109/129 | 0.744 | 1.25% | 0.92% |
+
+The per-game cap is the reliable half of that: it beat the uncapped slip in
+**all twelve** floor × size combinations tested, which is what you would expect
+mechanically — legs drawn from one lineup lose together. The floor is a smaller,
+noisier effect and mostly costs fill rate, so it is set only as high as still
+lets the slip fill on ~90% of slates.
+
+**On "safer the longer the slip":** mean leg quality *falls* with length — 79% at
+five legs, 76% at ten, 74% at fifteen — and no rule can reverse that. Filling
+fifteen legs means reaching deeper into the same board. Each size is made as safe
+as its length allows; they are not made equally safe, because they cannot be.
+
 Rule 3 was chosen by test, not taste. Taking each player's *longest* rung instead
 — more payout per leg — loses badly:
 

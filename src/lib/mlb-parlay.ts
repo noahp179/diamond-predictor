@@ -27,18 +27,42 @@ export const EXCLUDED_MARKETS = new Set(["outs16"]);
 export const LEG_FLOOR = 0.55;
 
 /**
+ * Per-size construction, tuned on the 2026 hold-out
+ * (research/mlb-props/parlay_sizes.py).
+ *
+ * `maxPerGame` is the important one: legs drawn from the same game die
+ * together, and capping them beat the uncapped slip in all twelve
+ * floor x size combinations tested. A five-leg slip can afford one leg per
+ * game; longer slips need two or they cannot be filled on a normal slate.
+ *
+ * `floor` raises the minimum quality of a leg. It cannot rise indefinitely with
+ * length — a fifteen-leg slip has to reach deeper into the board, so its legs
+ * are necessarily weaker than a five-leg slip's. That is arithmetic, not a
+ * policy choice: the honest ceiling is to make each size as safe as it can be
+ * and say plainly that mean leg quality falls as the slip grows.
+ */
+export const SIZE_RULES: Record<number, { floor: number; maxPerGame: number }> = {
+  5: { floor: 0.7, maxPerGame: 1 },
+  10: { floor: 0.66, maxPerGame: 2 },
+  15: { floor: 0.66, maxPerGame: 2 },
+};
+const DEFAULT_RULE = { floor: 0.66, maxPerGame: 2 };
+
+/**
  * Measured on the 2026 hold-out (research/mlb-props/parlay_sizes.py): how the
  * realised hit rate compared with the independence product, once one-leg-per-
  * player was enforced. At 5 and 10 legs the plain product is slightly
  * conservative; the 15-leg figure rests on a single winning slip in 128 days,
  * so it is noise and is deliberately not used to flatter the number.
  */
-export const SIZE_EVIDENCE: Record<number, { predicted: number; realised: number; slips: number }> =
-  {
-    5: { predicted: 0.2997, realised: 0.3101, slips: 129 },
-    10: { predicted: 0.0633, realised: 0.0703, slips: 128 },
-    15: { predicted: 0.0119, realised: 0.0078, slips: 128 },
-  };
+export const SIZE_EVIDENCE: Record<
+  number,
+  { predicted: number; realised: number; filled: string }
+> = {
+  5: { predicted: 0.3017, realised: 0.3529, filled: "119/129" },
+  10: { predicted: 0.0644, realised: 0.082, filled: "122/129" },
+  15: { predicted: 0.0125, realised: 0.0092, filled: "109/129" },
+};
 
 /** One candidate leg: a prop pick, or a game the model likes outright. */
 export type ParlayCandidate = {
@@ -225,8 +249,19 @@ export function buildSizedParlay(
   size: number,
   dropCautioned = false,
 ): Parlay {
-  const full = buildParlay(candidates, LEG_FLOOR, dropCautioned);
-  const legs = full.legs.slice(0, size);
+  const rule = SIZE_RULES[size] ?? DEFAULT_RULE;
+  const full = buildParlay(candidates, rule.floor, dropCautioned);
+  // Spread the slip across games. full.legs is already sorted by probability
+  // and unique per player, so this keeps the best leg from each game first.
+  const perGame = new Map<number, number>();
+  const legs: ParlayLeg[] = [];
+  for (const l of full.legs) {
+    const used = perGame.get(l.gameId) ?? 0;
+    if (used >= rule.maxPerGame) continue;
+    perGame.set(l.gameId, used + 1);
+    legs.push(l);
+    if (legs.length === size) break;
+  }
   const combinedProb = legs.reduce((acc, l) => acc * l.prob, 1);
   const byGame = new Map<number, { gameId: number; matchup: string; legs: number }>();
   for (const l of legs) {

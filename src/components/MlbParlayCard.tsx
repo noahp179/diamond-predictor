@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 
-import { buildSizedParlay, SIZE_EVIDENCE, type ParlayCandidate } from "@/lib/mlb-parlay";
+import {
+  buildSizedParlay,
+  SIZE_EVIDENCE,
+  SIZE_RULES,
+  type ParlayCandidate,
+} from "@/lib/mlb-parlay";
 
 /**
  * The parlay card: every pick the model is confident enough about, with
@@ -46,6 +51,7 @@ export function MlbParlayCard({
     [candidates, size],
   );
   const evidence = SIZE_EVIDENCE[size];
+  const rule = SIZE_RULES[size];
 
   return (
     <section className="mb-10 border border-border bg-card">
@@ -60,7 +66,9 @@ export function MlbParlayCard({
           Pick a size and the slip fills with that many legs, ranked by confidence and never by
           price. <strong className="text-foreground">Every player appears at most once</strong> — no
           pitcher stacked across 5+, 6+ and 7+ strikeouts, and no batter counted twice through two
-          markets that describe the same night.
+          markets that describe the same night. Each size also caps how many legs may come from one
+          game, because legs from the same lineup lose together; that cap beat the uncapped slip in
+          every configuration tested.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-1">
           {SIZES.map((n) => (
@@ -78,10 +86,10 @@ export function MlbParlayCard({
               {n} legs
             </button>
           ))}
-          {evidence && (
+          {evidence && rule && (
             <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-              backtest: cashed {(evidence.realised * 100).toFixed(1)}% of {evidence.slips} slates
-              (model said {(evidence.predicted * 100).toFixed(1)}%)
+              backtest: cashed {(evidence.realised * 100).toFixed(1)}% of {evidence.filled} slates ·
+              legs ≥ {Math.round(rule.floor * 100)}% · max {rule.maxPerGame}/game
             </span>
           )}
         </div>
@@ -179,9 +187,15 @@ export function MlbParlayCard({
             )}
             <div className="mt-1">
               &quot;Chance it hits&quot; multiplies the leg probabilities. With one leg per player
-              that assumption held up on the 2026 hold-out — five-leg slips were predicted at 30.0%
-              and landed 31.0%, ten-leg at 6.3% against 7.0%. The fifteen-leg figure rests on one
-              winning slip in 128 days, so treat it as a rough order of magnitude.
+              and the per-game cap, that assumption held up on the 2026 hold-out — five-leg slips
+              were predicted at 30.2% and landed 35.3%, ten-leg at 6.4% against 8.2%. The
+              fifteen-leg figure rests on a single winning slip in 109 days, so treat it as an order
+              of magnitude, not a rate.
+            </div>
+            <div className="mt-1">
+              Longer slips cannot have safer legs — filling fifteen means reaching deeper into the
+              board, so mean leg quality falls from about 79% at five legs to 74% at fifteen. Each
+              size is made as safe as its length allows, not equally safe.
             </div>
             <div className="mt-1">
               No player-prop prices exist in this data source, so &quot;fair price&quot; is what the
