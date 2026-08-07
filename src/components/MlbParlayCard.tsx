@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 
-import { buildParlay, type ParlayCandidate } from "@/lib/mlb-parlay";
+import {
+  buildSizedParlay,
+  SIZE_EVIDENCE,
+  SIZE_RULES,
+  type ParlayCandidate,
+} from "@/lib/mlb-parlay";
 
 /**
  * The parlay card: every pick the model is confident enough about, with
@@ -14,16 +19,8 @@ import { buildParlay, type ParlayCandidate } from "@/lib/mlb-parlay";
  * product across 2-6 leg slips, so that factor is shown alongside, not hidden.
  */
 
-const CORRELATION_FACTOR = 0.85;
-
-/** Backtested behaviour of the slip at each bar (2026, 129 slate days). */
-const THRESHOLDS: { value: number; legsPerDay: string; note: string }[] = [
-  { value: 0.55, legsPerDay: "~214", note: "never cashed in 129 days" },
-  { value: 0.6, legsPerDay: "~149", note: "never cashed in 129 days" },
-  { value: 0.65, legsPerDay: "~78", note: "never cashed in 129 days" },
-  { value: 0.7, legsPerDay: "~23", note: "cashed 1 of 128 days" },
-  { value: 0.75, legsPerDay: "~6", note: "cashed 33 of 122 days (27%)" },
-];
+/** The slip sizes offered, with what each actually did on the hold-out season. */
+const SIZES = [5, 10, 15];
 
 /** Long slips produce absurd numbers honestly — 1e-17% and +9e20 are real
  *  consequences of "everything above the bar", so show them rather than round
@@ -43,18 +40,18 @@ export function MlbParlayCard({
   candidates: ParlayCandidate[];
   isLoading?: boolean;
 }) {
-  const [threshold, setThreshold] = useState(0.75);
+  const [size, setSize] = useState(5);
   const [dropCautioned, setDropCautioned] = useState(false);
   const parlay = useMemo(
-    () => buildParlay(candidates, threshold, dropCautioned),
-    [candidates, threshold, dropCautioned],
+    () => buildSizedParlay(candidates, size, dropCautioned),
+    [candidates, size, dropCautioned],
   );
   const cautionedAvailable = useMemo(
-    () => buildParlay(candidates, threshold).cautioned,
-    [candidates, threshold],
+    () => buildSizedParlay(candidates, size).cautioned,
+    [candidates, size],
   );
-  const active = THRESHOLDS.find((t) => t.value === threshold);
-  const adjusted = parlay.combinedProb * CORRELATION_FACTOR;
+  const evidence = SIZE_EVIDENCE[size];
+  const rule = SIZE_RULES[size];
 
   return (
     <section className="mb-10 border border-border bg-card">
@@ -62,33 +59,37 @@ export function MlbParlayCard({
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="font-display text-2xl">Today's parlay</h2>
           <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            {parlay.legs.length} legs · confidence ≥ {Math.round(threshold * 100)}%
+            {parlay.legs.length} legs · one per player · fair {fmtPrice(parlay.fairPrice)}
           </div>
         </div>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Every pick the model rates at or above the bar goes on the slip, whatever it pays. Legs
-          that guarantee each other are collapsed onto the harder one — if we like 6+ strikeouts, 5+
-          strikeouts is the same bet at a shorter price, not a second leg.
+          Pick a size and the slip fills with that many legs, ranked by confidence and never by
+          price. <strong className="text-foreground">Every player appears at most once</strong> — no
+          pitcher stacked across 5+, 6+ and 7+ strikeouts, and no batter counted twice through two
+          markets that describe the same night. Each size also caps how many legs may come from one
+          game, because legs from the same lineup lose together; that cap beat the uncapped slip in
+          every configuration tested.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-1">
-          {THRESHOLDS.map((t) => (
+          {SIZES.map((n) => (
             <button
-              key={t.value}
+              key={n}
               type="button"
-              onClick={() => setThreshold(t.value)}
-              aria-pressed={threshold === t.value}
+              onClick={() => setSize(n)}
+              aria-pressed={size === n}
               className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                threshold === t.value
+                size === n
                   ? "border-primary text-primary"
                   : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
-              {Math.round(t.value * 100)}%
+              {n} legs
             </button>
           ))}
-          {active && (
+          {evidence && rule && (
             <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-              backtest: {active.legsPerDay} legs/day · {active.note}
+              backtest: cashed {(evidence.realised * 100).toFixed(1)}% of {evidence.filled} slates ·
+              legs ≥ {Math.round(rule.floor * 100)}% · max {rule.maxPerGame}/game
             </span>
           )}
         </div>
@@ -109,11 +110,14 @@ export function MlbParlayCard({
 
       {isLoading && <div className="h-40 animate-pulse bg-secondary/30" />}
 
-      {!isLoading && parlay.legs.length === 0 && (
+      {!isLoading && parlay.legs.length < size && (
         <div className="px-5 py-10 text-center">
-          <div className="font-display text-2xl">No legs clear {Math.round(threshold * 100)}%</div>
+          <div className="font-display text-2xl">
+            Only {parlay.legs.length} of {size} legs available
+          </div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">
-            Nothing on today's board is confident enough. Drop the bar, or wait for lineups to post.
+            One leg per player means a short slate caps the slip. Try a smaller size, or wait for
+            the rest of today's lineups to post.
           </p>
         </div>
       )}
@@ -122,8 +126,8 @@ export function MlbParlayCard({
         <>
           <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-4">
             <Cell label="Legs" value={`${parlay.legs.length}`} />
-            <Cell label="If independent" value={pct(parlay.combinedProb)} />
-            <Cell label="Correlation-adjusted" value={pct(adjusted)} />
+            <Cell label="Chance it hits" value={pct(parlay.combinedProb)} />
+            <Cell label="Backtested at this size" value={evidence ? pct(evidence.realised) : "—"} />
             <Cell label="Fair price" value={fmtPrice(parlay.fairPrice)} />
           </div>
 
@@ -182,9 +186,21 @@ export function MlbParlayCard({
               </div>
             )}
             <div className="mt-1">
-              Backtested on 2026: legs above a 70% bar won 71.4% of the time, and realised parlay
-              rates ran ~0.85× the independence product. Confidence is not profit — a leg at −1000
-              is still a losing bet if it wins less than 91% of the time.
+              &quot;Chance it hits&quot; multiplies the leg probabilities. With one leg per player
+              and the per-game cap, that assumption held up on the 2026 hold-out — five-leg slips
+              were predicted at 30.2% and landed 35.3%, ten-leg at 6.4% against 8.2%. The
+              fifteen-leg figure rests on a single winning slip in 109 days, so treat it as an order
+              of magnitude, not a rate.
+            </div>
+            <div className="mt-1">
+              Longer slips cannot have safer legs — filling fifteen means reaching deeper into the
+              board, so mean leg quality falls from about 79% at five legs to 74% at fifteen. Each
+              size is made as safe as its length allows, not equally safe.
+            </div>
+            <div className="mt-1">
+              No player-prop prices exist in this data source, so &quot;fair price&quot; is what the
+              model&apos;s own probability implies, not a quote. Compare it with your book: if they
+              pay less than this, the bet is bad however good the pick is.
             </div>
           </div>
         </>

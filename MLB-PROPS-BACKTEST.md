@@ -254,6 +254,76 @@ swallows that batter's whole line. Merely *correlated* legs — two hitters in t
 same lineup, a starter's outs and his team's moneyline — are **kept**, because
 they can genuinely lose independently; the card reports them instead.
 
+### Fixed-size slips: 5, 10 and 15 legs
+
+The card offers three sizes rather than a confidence dial. Three rules build them
+(`research/mlb-props/parlay_sizes.py`):
+
+1. **One leg per player, always.** Stronger than the implication rule — two legs
+   describing the same player's night are one bet, whether or not they logically
+   overlap. A pitcher can never appear at 5+, 6+ and 7+ strikeouts.
+2. **16+ outs is never offered.** The model still prices it; the app filters it.
+3. **Each player contributes their strongest market**, and the N most likely of
+   those make the slip.
+
+Each size also **caps how many legs may come from one game** (1 for a five-leg
+slip, 2 for ten and fifteen) and **raises the minimum leg quality** (70% at five
+legs, 66% at ten and fifteen). Both were tuned on the hold-out:
+
+| legs | floor | max/game | slates filled | mean leg p | predicted | **realised** |
+|---|--:|--:|--:|--:|--:|--:|
+| 5 | 0.70 | 1 | 119/129 | 0.785 | 30.2% | **35.3%** |
+| 10 | 0.66 | 2 | 122/129 | 0.758 | 6.4% | **8.2%** |
+| 15 | 0.66 | 2 | 109/129 | 0.744 | 1.25% | 0.92% |
+
+The per-game cap is the reliable half of that: it beat the uncapped slip in
+**all twelve** floor × size combinations tested, which is what you would expect
+mechanically — legs drawn from one lineup lose together. The floor is a smaller,
+noisier effect and mostly costs fill rate, so it is set only as high as still
+lets the slip fill on ~90% of slates.
+
+**On "safer the longer the slip":** mean leg quality *falls* with length — 79% at
+five legs, 76% at ten, 74% at fifteen — and no rule can reverse that. Filling
+fifteen legs means reaching deeper into the same board. Each size is made as safe
+as its length allows; they are not made equally safe, because they cannot be.
+
+Rule 3 was chosen by test, not taste. Taking each player's *longest* rung instead
+— more payout per leg — loses badly:
+
+| Construction | legs | slips | mean leg p | predicted | **realised** | fair price |
+|---|--:|--:|--:|--:|--:|--:|
+| **safest rung** | 5 | 129 | 0.783 | 30.0% | **31.0%** | +234 |
+| **safest rung** | 10 | 128 | 0.756 | 6.3% | **7.0%** | +1,481 |
+| **safest rung** | 15 | 128 | 0.741 | 1.19% | **0.78%** | +8,327 |
+| longest rung | 5 | 129 | 0.734 | 21.4% | 20.2% | +368 |
+| longest rung | 10 | 128 | 0.722 | 3.9% | 1.6% | +2,454 |
+| longest rung | 15 | 128 | 0.714 | 0.66% | **0.0%** | +15,011 |
+
+The longest-rung slip never cashed once in 128 fifteen-leg attempts, and at ten
+legs it hit less than a quarter as often as the safe construction for less than
+twice the price. Chasing length is a bad trade at every size tested.
+
+**And enforcing one leg per player fixed the probability maths.** The earlier
+threshold-based slips realised ~0.85× the independence product because they
+stacked several legs on the same player and the same game. With uniqueness
+enforced, the plain product is accurate — slightly conservative, even:
+
+| legs | predicted | realised | ratio |
+|---|--:|--:|--:|
+| 5 | 30.0% | 31.0% | **1.03** |
+| 10 | 6.3% | 7.0% | **1.11** |
+| 15 | 1.19% | 0.78% | 0.66 |
+
+The 15-leg ratio rests on a single winning slip in 128 days, so it is noise
+rather than evidence of decay; the card says so instead of quoting it as a
+correction.
+
+**On "best odds":** there are no player-prop prices anywhere in this data source
+— MLB StatsAPI has none and ESPN carries only game lines — so the slip cannot be
+built against real quotes. The fair price shown is what the model's own
+probability implies. It is the number to compare a book against, not a claim
+about one.
+
 ### Does the overlap rule actually pay? (2026 hold-out, 129 slate days)
 
 Identical bar, dedup on vs off (`research/mlb-props/parlay_backtest.py`):

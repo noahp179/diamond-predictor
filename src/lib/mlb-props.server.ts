@@ -1,9 +1,10 @@
 /**
  * mlb-props.server.ts — live MLB player-prop projections for a slate.
  *
- * Sixteen binary markets — batters: the hits ladder (1+/2+/3+/4+), the total-
+ * Fifteen offered markets — batters: the hits ladder (1+/2+/3+/4+), the total-
  * bases ladder (2+/3+/4+/5+; 1+ TB is the same event as 1+ hits), 1+ HR,
- * 1+ RBI, 1+ run, 1+ SB; starters: 5+/6+/7+ strikeouts, 16+ outs. Each is its
+ * 1+ RBI, 1+ run, 1+ SB; starters: 5+/6+/7+ strikeouts. (The model also prices
+ * 16+ outs; it is filtered out here and never shown.) Each is its
  * own logistic model over season-to-date, trailing-30-day and prior-season
  * rates plus the matchup (opposing starter, park, team context), trained in
  * research/mlb-props and frozen in mlb-props-model.json.
@@ -588,20 +589,29 @@ export type PropsSlate = {
   markets: { key: string; label: string; kind: string; base: number; auc: number }[];
 };
 
-const BATTER_MARKETS = Object.entries(model.markets).filter(([, m]) => m.kind === "batter");
-const PITCHER_MARKETS = Object.entries(model.markets).filter(([, m]) => m.kind === "pitcher");
+/** Markets the app never offers, however the model prices them. Kept in the
+ *  model file so the research stays reproducible, filtered out here. */
+const HIDDEN_MARKETS = new Set(["outs16"]);
+const BATTER_MARKETS = Object.entries(model.markets).filter(
+  ([k, m]) => m.kind === "batter" && !HIDDEN_MARKETS.has(k),
+);
+const PITCHER_MARKETS = Object.entries(model.markets).filter(
+  ([k, m]) => m.kind === "pitcher" && !HIDDEN_MARKETS.has(k),
+);
 /** Batter picks kept per market per game (the ones a card can show). */
 const PER_MARKET = 3;
 
 export async function propsSlate(date: string): Promise<PropsSlate> {
   const season = Number(date.slice(0, 4));
-  const markets = Object.entries(model.markets).map(([key, m]) => ({
-    key,
-    label: m.label,
-    kind: m.kind,
-    base: m.base,
-    auc: m.metrics.auc,
-  }));
+  const markets = Object.entries(model.markets)
+    .filter(([key]) => !HIDDEN_MARKETS.has(key))
+    .map(([key, m]) => ({
+      key,
+      label: m.label,
+      kind: m.kind,
+      base: m.base,
+      auc: m.metrics.auc,
+    }));
 
   const slate = await fetchSlate(date);
   if (slate.length === 0) return { season, games: [], markets };
