@@ -3,6 +3,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { getRecommendedPicks } from "@/lib/mlb.functions";
+import { getMlbProps } from "@/lib/sports.functions";
+import { MlbParlayCard } from "@/components/MlbParlayCard";
+import type { ParlayCandidate } from "@/lib/mlb-parlay";
+import { pickProb } from "@/lib/mlb-blend";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import type { PredictedGame } from "@/lib/mlb-core";
 import { SiteNav } from "@/components/SiteNav";
@@ -11,11 +15,11 @@ import { SportTabs } from "@/components/SportTabs";
 export const Route = createFileRoute("/model")({
   head: () => ({
     meta: [
-      { title: "Best Game — Diamond Edge" },
+      { title: "Recommended — Diamond Edge" },
       {
         name: "description",
         content:
-          "The best game on the slate — our model's single most confident prediction — plus the runners-up.",
+          "What we'd actually bet tonight: a 5, 10 or 15-leg slip built from model confidence alone, plus the single game the model is surest about.",
       },
     ],
   }),
@@ -63,6 +67,53 @@ function ModelPage() {
     scored = chosen?.picks ?? [];
   }
 
+  // Props for whichever slate is on screen. Declared after chosenDate so the
+  // slip rolls over with the games rather than lagging a day behind them.
+  const fetchProps = useServerFn(getMlbProps);
+  const propsQuery = useQuery({
+    queryKey: ["mlb", "props", chosenDate],
+    queryFn: () => fetchProps({ data: { date: chosenDate } }),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
+  // Parlay candidates: every prop the model prices, plus each game's moneyline
+  // pick at the model's own confidence. Price never enters the selection.
+  const parlayCandidates: ParlayCandidate[] = [
+    ...(propsQuery.data?.games ?? []).flatMap((g) =>
+      g.picks.map(
+        (p): ParlayCandidate => ({
+          subjectId: `p${p.playerId}`,
+          subject: p.player,
+          market: p.market,
+          label: p.label,
+          prob: p.prob,
+          gameId: g.gameId,
+          matchup: g.matchup,
+          team: p.team,
+          kind: p.kind,
+          tier: p.tier,
+          tierHitRate: p.tierHitRate,
+          cautions: p.cautions,
+        }),
+      ),
+    ),
+    ...dedupedGames.map((g): ParlayCandidate => {
+      const pickHome = g.homeWinProb >= 0.5;
+      return {
+        subjectId: `g${g.gameId}`,
+        subject: pickHome ? g.home.abbreviation : g.away.abbreviation,
+        market: "moneyline",
+        label: "to win",
+        prob: pickProb(g.homeWinProb),
+        gameId: g.gameId,
+        matchup: `${g.away.abbreviation} @ ${g.home.abbreviation}`,
+        team: pickHome ? g.home.abbreviation : g.away.abbreviation,
+        kind: "game",
+      };
+    }),
+  ];
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-border">
@@ -71,10 +122,11 @@ function ModelPage() {
             <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
               Diamond Edge · Recommended
             </div>
-            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Best Game</h1>
+            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Tonight's Slip</h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              The one game tonight our model feels surest about, plus the next two. The bigger the
-              win chance, the more of a lock we think the pick is.
+              What we'd actually put on: a 5, 10 or 15-leg parlay built from model confidence alone,
+              one leg per player, with the measured chance it cashes. Below it, the single game the
+              model feels surest about.
             </p>
           </div>
           <SiteNav current="mlb" />
@@ -84,6 +136,19 @@ function ModelPage() {
       <SportTabs sport="mlb" current="recommended" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
+        <MlbParlayCard
+          candidates={parlayCandidates}
+          isLoading={isLoading || propsQuery.isLoading}
+        />
+
+        <div className="mb-6 border-b border-border pb-4">
+          <h2 className="font-display text-2xl">Best game</h2>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            The one game tonight our model feels surest about, plus the next two. The bigger the win
+            chance, the more of a lock we think the pick is.
+          </p>
+        </div>
+
         {isLoading && <p className="text-center py-10">Loading…</p>}
         {isError && (
           <div className="border border-destructive/40 bg-destructive/10 p-6 font-mono text-sm text-destructive-foreground">

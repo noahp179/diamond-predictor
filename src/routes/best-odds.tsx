@@ -1,12 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { getBestOddsPicks, type GameWithOdds } from "@/lib/mlb.functions";
-import { getMlbProps } from "@/lib/sports.functions";
-import { MlbParlayCard } from "@/components/MlbParlayCard";
-import type { ParlayCandidate } from "@/lib/mlb-parlay";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import { pickProb, MARKET_BLEND_WEIGHT } from "@/lib/mlb-blend";
 import { SiteNav } from "@/components/SiteNav";
@@ -82,16 +79,9 @@ function pickConfidence(entry: GameWithOdds, mode: Mode): number | null {
 function BestOddsPage() {
   const [mode, setMode] = useState<Mode>("confidence");
   const fetchPicks = useServerFn(getBestOddsPicks);
-  const fetchProps = useServerFn(getMlbProps);
   const today = todayISO();
   const tomorrow = offsetDate(today, 1);
 
-  const propsQuery = useQuery({
-    queryKey: ["mlb", "props", today],
-    queryFn: () => fetchProps({ data: { date: today } }),
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
-  });
   const todayQuery = useQuery({
     queryKey: ["best-odds-picks", today],
     queryFn: () => fetchPicks({ data: { date: today } }),
@@ -129,43 +119,6 @@ function BestOddsPage() {
     chosenDate = todayDone ? tomorrow : today;
     source = chosen?.source;
   }
-
-  // Parlay candidates: every prop the model prices, plus each game's moneyline
-  // pick at the model's own confidence. Price never enters the selection.
-  const parlayCandidates: ParlayCandidate[] = [
-    ...(propsQuery.data?.games ?? []).flatMap((g) =>
-      g.picks.map(
-        (p): ParlayCandidate => ({
-          subjectId: `p${p.playerId}`,
-          subject: p.player,
-          market: p.market,
-          label: p.label,
-          prob: p.prob,
-          gameId: g.gameId,
-          matchup: g.matchup,
-          team: p.team,
-          kind: p.kind,
-          tier: p.tier,
-          tierHitRate: p.tierHitRate,
-          cautions: p.cautions,
-        }),
-      ),
-    ),
-    ...allGames.map((g): ParlayCandidate => {
-      const pickHome = g.game.homeWinProb >= 0.5;
-      return {
-        subjectId: `g${g.game.gameId}`,
-        subject: pickHome ? g.game.home.abbreviation : g.game.away.abbreviation,
-        market: "moneyline",
-        label: "to win",
-        prob: pickProb(g.game.homeWinProb),
-        gameId: g.game.gameId,
-        matchup: `${g.game.away.abbreviation} @ ${g.game.home.abbreviation}`,
-        team: pickHome ? g.game.home.abbreviation : g.game.away.abbreviation,
-        kind: "game",
-      };
-    }),
-  ];
 
   const withOdds = allGames.filter((g) => g.odds != null).length;
   const topConfidence = picks.length > 0 ? pickConfidence(picks[0], mode) : null;
@@ -215,10 +168,16 @@ function BestOddsPage() {
       <SportTabs sport="mlb" current="bestOdds" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
-        <MlbParlayCard
-          candidates={parlayCandidates}
-          isLoading={isLoading || propsQuery.isLoading}
-        />
+        <div className="mb-8 border border-border bg-card px-5 py-4">
+          <p className="text-sm text-muted-foreground">
+            Looking for the parlay? It moved to{" "}
+            <Link to="/model" className="text-primary underline underline-offset-4">
+              Recommended
+            </Link>{" "}
+            — 5, 10 and 15-leg slips built from model confidence, with the backtested chance each
+            one cashes.
+          </p>
+        </div>
 
         <div className="border-b border-border pb-4">
           <h2 className="font-display text-2xl">Tonight's three safest picks</h2>
