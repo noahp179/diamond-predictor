@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
+import { boardPicks } from "@/lib/mlb-props-board";
 import { getMlbProps } from "@/lib/sports.functions";
 
 type Result = Awaited<ReturnType<typeof getMlbProps>>;
@@ -27,9 +28,6 @@ const TIER_CLS: Record<string, string> = {
   Solid: "text-foreground border-border",
   Lean: "text-muted-foreground border-border",
 };
-
-/** How many picks a game card shows when no single market is selected. */
-const PER_GAME = 5;
 
 function PickRow({ pick, showMarket }: { pick: Pick; showMarket: boolean }) {
   const cls = TIER_CLS[pick.tier ?? "Lean"] ?? TIER_CLS.Lean;
@@ -67,9 +65,7 @@ function PickRow({ pick, showMarket }: { pick: Pick; showMarket: boolean }) {
 }
 
 function GameCard({ game, market }: { game: Game; market: string }) {
-  const picks = (
-    market === "all" ? game.picks : game.picks.filter((p) => p.market === market)
-  ).slice(0, market === "all" ? PER_GAME : 6);
+  const picks = game.picks;
   if (picks.length === 0) return null;
   return (
     <div className="border border-border bg-card p-5">
@@ -104,21 +100,21 @@ export function MlbPropsView() {
   });
 
   const markets = data?.markets ?? [];
-  const games = useMemo(() => {
-    const all = data?.games ?? [];
-    if (!strongOnly) return all;
-    return all
-      .map((g) => ({ ...g, picks: g.picks.filter((p) => p.tier === "Strong") }))
-      .filter((g) => g.picks.length > 0);
-  }, [data, strongOnly]);
-
-  const shown = games.flatMap((g) =>
-    market === "all" ? g.picks.slice(0, PER_GAME) : g.picks.filter((p) => p.market === market),
+  // Each game carries exactly the picks its card will render, so the counters
+  // above the board and the rows below it can never disagree.
+  const games = useMemo(
+    () =>
+      (data?.games ?? [])
+        .map((g) => ({ ...g, picks: boardPicks(g.picks, market, strongOnly) }))
+        .filter((g) => g.picks.length > 0),
+    [data, market, strongOnly],
   );
+
+  const shown = games.flatMap((g) => g.picks);
   const best = shown.reduce<Pick | null>((b, p) => (b == null || p.edge > b.edge ? p : b), null);
-  const strongCount = (data?.games ?? [])
-    .flatMap((g) => g.picks)
-    .filter((p) => p.tier === "Strong").length;
+  // Count Strong picks the way the board counts everything else — one per
+  // player — so the toggle promises the number of rows it will actually leave.
+  const strongCount = (data?.games ?? []).flatMap((g) => boardPicks(g.picks, market, true)).length;
   const active = markets.find((m) => m.key === market);
 
   return (
@@ -127,7 +123,7 @@ export function MlbPropsView() {
       current="props"
       eyebrow="Diamond Edge · MLB Player Props"
       title="Player Props"
-      blurb="Sixteen prop markets — the full hits (1+ to 4+) and total-bases (2+ to 5+) ladders, plus home runs, RBI, runs, steals and starter strikeouts — each its own logistic model over season-to-date form, the last 30 days, the opposing starter and the park. Percentages are calibrated probabilities; tiers are cut where the held-out 2026 season actually separates."
+      blurb="Sixteen prop markets — the full hits (1+ to 4+) and total-bases (2+ to 5+) ladders, plus home runs, RBI, runs, steals and starter strikeouts — each its own logistic model over season-to-date form, the last 30 days, the opposing starter and the park. Top picks shows one row per player, at the rung with the biggest edge, so a starter never appears three times over at 5+, 6+ and 7+ strikeouts; pick a market to see every player at that exact number. Percentages are calibrated probabilities; tiers are cut where the held-out 2026 season actually separates."
       date={date}
       onDateChange={setDate}
       footerNote="Data · MLB Stats API · logistic prop models (backtested on 2026)"
@@ -177,7 +173,7 @@ export function MlbPropsView() {
             <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
               {active
                 ? `${active.label} · base rate ${pct(active.base)} · backtest AUC ${active.auc.toFixed(3)}`
-                : "Ranked by edge over an average starter in that market"}
+                : "One row per player, at their biggest edge over an average starter"}
             </div>
             <button
               type="button"
