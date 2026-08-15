@@ -19,12 +19,14 @@
 import { readFileSync } from "node:fs";
 
 import {
+  divisionsOf,
   LEAGUES,
   LEGACY_REDIRECTS,
   SPORTS,
+  TOURS,
   viewHref,
   viewsFor,
-  type LeagueSlug,
+  type DivisionSlug,
 } from "../src/lib/nav";
 
 let fails = 0;
@@ -63,19 +65,50 @@ for (const s of SPORTS) {
   check(`${s.label}: landing route ${s.href} exists`, known(s.href));
 }
 
-// ---- every view of every sport resolves
+// ---- every view of every sport, in every division, resolves
 for (const s of SPORTS) {
-  const leagues: (LeagueSlug | undefined)[] = s.leagued ? LEAGUES.map((l) => l.slug) : [undefined];
-  for (const league of leagues) {
-    const views = viewsFor(s.key, league);
+  const divs = divisionsOf(s.key);
+  // Divisions come from nav.ts rather than being hardcoded here: a sport whose
+  // divisions were wired to the wrong list would otherwise still pass, because
+  // /tennis/$tour happily matches a soccer slug.
+  check(
+    `${s.label}: leagued flag matches whether it has divisions`,
+    s.leagued === divs.length > 0,
+    `leagued=${s.leagued} but ${divs.length} divisions`,
+  );
+  const slugs: (DivisionSlug | undefined)[] = divs.length ? divs.map((d) => d.slug) : [undefined];
+  for (const div of slugs) {
+    const views = viewsFor(s.key, div);
     const bad = views.filter((v) => !known(v.href));
     check(
-      `${s.label}${league ? ` / ${league}` : ""}: all ${views.length} views resolve`,
+      `${s.label}${div ? ` / ${div}` : ""}: all ${views.length} views resolve`,
       bad.length === 0,
       bad.map((v) => `${v.key} -> ${v.href}`).join(", "),
     );
+    // And the division must actually appear in the path, not silently vanish.
+    if (div) {
+      check(
+        `${s.label} / ${div}: the division is in the URL`,
+        views.every((v) => v.href.includes(`/${div}`)),
+        views.map((v) => v.href).join(", "),
+      );
+    }
   }
 }
+
+// ---- divisions are drawn from the right list per sport
+check(
+  "soccer divisions are the leagues",
+  divisionsOf("soccer").map((d) => d.slug).join(",") === LEAGUES.map((l) => l.slug).join(","),
+);
+check(
+  "tennis divisions are the tours",
+  divisionsOf("tennis").map((d) => d.slug).join(",") === TOURS.map((t) => t.slug).join(","),
+);
+check(
+  "no sport borrows another's divisions",
+  divisionsOf("tennis").every((d) => !LEAGUES.some((l) => l.slug === d.slug)),
+);
 
 // ---- the hub and Teams sit outside the sport grammar but must still exist
 check("hub route / exists", known("/"));
@@ -94,6 +127,11 @@ check(
   viewHref("soccer", "props", "seriea"),
 );
 check(
+  "tennis puts the tour in the path too",
+  viewHref("tennis", "model", "wta") === "/tennis/wta/model",
+  viewHref("tennis", "model", "wta"),
+);
+check(
   "an unleagued sport does not",
   viewHref("mlb", "props") === "/mlb/props",
   viewHref("mlb", "props"),
@@ -106,10 +144,15 @@ check(
   "soccer defaults to a league rather than producing a broken href",
   viewHref("soccer", "props") === `/soccer/${LEAGUES[0].slug}/props`,
 );
+check(
+  "tennis defaults to a tour rather than producing a broken href",
+  viewHref("tennis", "model") === `/tennis/${TOURS[0].slug}/model`,
+);
 
 // ---- no duplicate hrefs within one sport (a copy-paste in the view table)
 for (const s of SPORTS) {
-  const hrefs = viewsFor(s.key, s.leagued ? LEAGUES[0].slug : undefined).map((v) => v.href);
+  const d0 = divisionsOf(s.key)[0]?.slug;
+  const hrefs = viewsFor(s.key, d0).map((v) => v.href);
   check(
     `${s.label}: view hrefs are distinct`,
     new Set(hrefs).size === hrefs.length,

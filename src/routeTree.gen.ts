@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TennisRouteImport } from './routes/tennis'
 import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as SoccerRouteImport } from './routes/soccer'
 import { Route as PropsRouteImport } from './routes/props'
@@ -20,10 +21,12 @@ import { Route as HistoryRouteImport } from './routes/history'
 import { Route as BestOddsRouteImport } from './routes/best-odds'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TennisIndexRouteImport } from './routes/tennis.index'
 import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
 import { Route as NflIndexRouteImport } from './routes/nfl.index'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
 import { Route as MlbIndexRouteImport } from './routes/mlb.index'
+import { Route as TennisTourRouteImport } from './routes/tennis.$tour'
 import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
@@ -36,11 +39,18 @@ import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
 import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
 import { Route as MlbPropsRouteImport } from './routes/mlb.props'
 import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
+import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
 import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
+import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model'
 import { Route as SoccerLeaguePropsRouteImport } from './routes/soccer.$league.props'
 import { Route as SoccerLeagueModelRouteImport } from './routes/soccer.$league.model'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 
+const TennisRoute = TennisRouteImport.update({
+  id: '/tennis',
+  path: '/tennis',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
@@ -96,6 +106,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TennisIndexRoute = TennisIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TennisRoute,
+} as any)
 const SoccerIndexRoute = SoccerIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -115,6 +130,11 @@ const MlbIndexRoute = MlbIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => MlbRoute,
+} as any)
+const TennisTourRoute = TennisTourRouteImport.update({
+  id: '/$tour',
+  path: '/$tour',
+  getParentRoute: () => TennisRoute,
 } as any)
 const SoccerLeagueRoute = SoccerLeagueRouteImport.update({
   id: '/$league',
@@ -176,10 +196,20 @@ const MlbBestOddsRoute = MlbBestOddsRouteImport.update({
   path: '/best-odds',
   getParentRoute: () => MlbRoute,
 } as any)
+const TennisTourIndexRoute = TennisTourIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TennisTourRoute,
+} as any)
 const SoccerLeagueIndexRoute = SoccerLeagueIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => SoccerLeagueRoute,
+} as any)
+const TennisTourModelRoute = TennisTourModelRouteImport.update({
+  id: '/model',
+  path: '/model',
+  getParentRoute: () => TennisTourRoute,
 } as any)
 const SoccerLeaguePropsRoute = SoccerLeaguePropsRouteImport.update({
   id: '/props',
@@ -210,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/props': typeof PropsRoute
   '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
+  '/tennis': typeof TennisRouteWithChildren
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
@@ -222,13 +253,17 @@ export interface FileRoutesByFullPath {
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
+  '/tennis/$tour': typeof TennisTourRouteWithChildren
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
   '/soccer/': typeof SoccerIndexRoute
+  '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/tennis/$tour/model': typeof TennisTourModelRoute
   '/soccer/$league/': typeof SoccerLeagueIndexRoute
+  '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRoutesByTo {
@@ -254,9 +289,12 @@ export interface FileRoutesByTo {
   '/nba': typeof NbaIndexRoute
   '/nfl': typeof NflIndexRoute
   '/soccer': typeof SoccerIndexRoute
+  '/tennis': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/tennis/$tour/model': typeof TennisTourModelRoute
   '/soccer/$league': typeof SoccerLeagueIndexRoute
+  '/tennis/$tour': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRoutesById {
@@ -272,6 +310,7 @@ export interface FileRoutesById {
   '/props': typeof PropsRoute
   '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
+  '/tennis': typeof TennisRouteWithChildren
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
@@ -284,13 +323,17 @@ export interface FileRoutesById {
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
+  '/tennis/$tour': typeof TennisTourRouteWithChildren
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
   '/soccer/': typeof SoccerIndexRoute
+  '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/tennis/$tour/model': typeof TennisTourModelRoute
   '/soccer/$league/': typeof SoccerLeagueIndexRoute
+  '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRouteTypes {
@@ -307,6 +350,7 @@ export interface FileRouteTypes {
     | '/props'
     | '/soccer'
     | '/teams'
+    | '/tennis'
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
@@ -319,13 +363,17 @@ export interface FileRouteTypes {
     | '/nfl/td-scorers'
     | '/nfl/track-record'
     | '/soccer/$league'
+    | '/tennis/$tour'
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
     | '/soccer/'
+    | '/tennis/'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/tennis/$tour/model'
     | '/soccer/$league/'
+    | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -351,9 +399,12 @@ export interface FileRouteTypes {
     | '/nba'
     | '/nfl'
     | '/soccer'
+    | '/tennis'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/tennis/$tour/model'
     | '/soccer/$league'
+    | '/tennis/$tour'
     | '/api/public/hooks/run-pipeline'
   id:
     | '__root__'
@@ -368,6 +419,7 @@ export interface FileRouteTypes {
     | '/props'
     | '/soccer'
     | '/teams'
+    | '/tennis'
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
@@ -380,13 +432,17 @@ export interface FileRouteTypes {
     | '/nfl/td-scorers'
     | '/nfl/track-record'
     | '/soccer/$league'
+    | '/tennis/$tour'
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
     | '/soccer/'
+    | '/tennis/'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/tennis/$tour/model'
     | '/soccer/$league/'
+    | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
   fileRoutesById: FileRoutesById
 }
@@ -402,11 +458,19 @@ export interface RootRouteChildren {
   PropsRoute: typeof PropsRoute
   SoccerRoute: typeof SoccerRouteWithChildren
   TeamsRoute: typeof TeamsRoute
+  TennisRoute: typeof TennisRouteWithChildren
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tennis': {
+      id: '/tennis'
+      path: '/tennis'
+      fullPath: '/tennis'
+      preLoaderRoute: typeof TennisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/teams': {
       id: '/teams'
       path: '/teams'
@@ -484,6 +548,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tennis/': {
+      id: '/tennis/'
+      path: '/'
+      fullPath: '/tennis/'
+      preLoaderRoute: typeof TennisIndexRouteImport
+      parentRoute: typeof TennisRoute
+    }
     '/soccer/': {
       id: '/soccer/'
       path: '/'
@@ -511,6 +582,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/mlb/'
       preLoaderRoute: typeof MlbIndexRouteImport
       parentRoute: typeof MlbRoute
+    }
+    '/tennis/$tour': {
+      id: '/tennis/$tour'
+      path: '/$tour'
+      fullPath: '/tennis/$tour'
+      preLoaderRoute: typeof TennisTourRouteImport
+      parentRoute: typeof TennisRoute
     }
     '/soccer/$league': {
       id: '/soccer/$league'
@@ -596,12 +674,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MlbBestOddsRouteImport
       parentRoute: typeof MlbRoute
     }
+    '/tennis/$tour/': {
+      id: '/tennis/$tour/'
+      path: '/'
+      fullPath: '/tennis/$tour/'
+      preLoaderRoute: typeof TennisTourIndexRouteImport
+      parentRoute: typeof TennisTourRoute
+    }
     '/soccer/$league/': {
       id: '/soccer/$league/'
       path: '/'
       fullPath: '/soccer/$league/'
       preLoaderRoute: typeof SoccerLeagueIndexRouteImport
       parentRoute: typeof SoccerLeagueRoute
+    }
+    '/tennis/$tour/model': {
+      id: '/tennis/$tour/model'
+      path: '/model'
+      fullPath: '/tennis/$tour/model'
+      preLoaderRoute: typeof TennisTourModelRouteImport
+      parentRoute: typeof TennisTourRoute
     }
     '/soccer/$league/props': {
       id: '/soccer/$league/props'
@@ -708,6 +800,33 @@ const SoccerRouteChildren: SoccerRouteChildren = {
 const SoccerRouteWithChildren =
   SoccerRoute._addFileChildren(SoccerRouteChildren)
 
+interface TennisTourRouteChildren {
+  TennisTourModelRoute: typeof TennisTourModelRoute
+  TennisTourIndexRoute: typeof TennisTourIndexRoute
+}
+
+const TennisTourRouteChildren: TennisTourRouteChildren = {
+  TennisTourModelRoute: TennisTourModelRoute,
+  TennisTourIndexRoute: TennisTourIndexRoute,
+}
+
+const TennisTourRouteWithChildren = TennisTourRoute._addFileChildren(
+  TennisTourRouteChildren,
+)
+
+interface TennisRouteChildren {
+  TennisTourRoute: typeof TennisTourRouteWithChildren
+  TennisIndexRoute: typeof TennisIndexRoute
+}
+
+const TennisRouteChildren: TennisRouteChildren = {
+  TennisTourRoute: TennisTourRouteWithChildren,
+  TennisIndexRoute: TennisIndexRoute,
+}
+
+const TennisRouteWithChildren =
+  TennisRoute._addFileChildren(TennisRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
@@ -720,6 +839,7 @@ const rootRouteChildren: RootRouteChildren = {
   PropsRoute: PropsRoute,
   SoccerRoute: SoccerRouteWithChildren,
   TeamsRoute: TeamsRoute,
+  TennisRoute: TennisRouteWithChildren,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
 }
 export const routeTree = rootRouteImport
