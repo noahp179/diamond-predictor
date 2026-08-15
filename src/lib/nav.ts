@@ -25,8 +25,27 @@
  */
 
 import { LEAGUES, type LeagueSlug } from "./soccer-leagues";
+import { TOURS, type TourSlug } from "./tennis-tours";
 
-export type SportKey = "mlb" | "nfl" | "nba" | "soccer";
+export type SportKey = "mlb" | "nfl" | "nba" | "soccer" | "tennis";
+
+/**
+ * A "division" is the extra level some sports carry: soccer's five leagues,
+ * tennis's two tours. It is not cosmetic — each division is a separate model
+ * with a separate fit and a separate backtest, so it belongs in the path.
+ */
+export type DivisionSlug = LeagueSlug | TourSlug;
+export type Division = { slug: DivisionSlug; short: string; name: string };
+
+const DIVISIONS: Partial<Record<SportKey, Division[]>> = {
+  soccer: LEAGUES.map((l) => ({ slug: l.slug, short: l.short, name: l.name })),
+  tennis: TOURS.map((t) => ({ slug: t.slug, short: t.name, name: t.long })),
+};
+
+/** The divisions of a sport, or [] for the ones that have none. */
+export function divisionsOf(sport: SportKey): Division[] {
+  return DIVISIONS[sport] ?? [];
+}
 
 export type ViewKey =
   | "slate"
@@ -46,7 +65,7 @@ export type SportNav = {
   blurb: string;
   /** Landing route for the sport. */
   href: string;
-  /** True when the sport is split into competitions (soccer only, so far). */
+  /** True when the sport is split into competitions or tours. */
   leagued: boolean;
 };
 
@@ -79,6 +98,13 @@ export const SPORTS: SportNav[] = [
     href: "/soccer",
     leagued: true,
   },
+  {
+    key: "tennis",
+    label: "Tennis",
+    blurb: "ATP and WTA singles, from a rating replay of the last two years of tour.",
+    href: "/tennis",
+    leagued: true,
+  },
 ];
 
 const SPORT_BY_KEY = new Map(SPORTS.map((s) => [s.key, s]));
@@ -103,6 +129,7 @@ const VIEWS: Record<SportKey, ViewKey[]> = {
   nfl: ["slate", "recommended", "bestOdds", "tdScorers", "trackRecord"],
   nba: ["slate", "recommended", "bestOdds", "trackRecord"],
   soccer: ["slate", "props", "model"],
+  tennis: ["slate", "model"],
 };
 
 /** Path segment for a view; the slate is the section index, so it has none. */
@@ -116,31 +143,35 @@ const SEGMENT: Record<ViewKey, string> = {
   model: "model",
 };
 
-/** Soccer's slate tab is called Matches — "slate" is a North American word. */
-const SOCCER_LABELS: Partial<Record<ViewKey, string>> = { slate: "Matches" };
+/** "Slate" is a North American word; both of these sports call it something else. */
+const SLATE_LABEL: Partial<Record<SportKey, string>> = {
+  soccer: "Matches",
+  tennis: "Draw",
+};
 
 /**
  * The route for one view. A leagued sport needs its competition, because
  * `/soccer/props` is not a page — the model is per league, so the league is
  * part of the address rather than a filter on top of it.
  */
-export function viewHref(sport: SportKey, view: ViewKey, league?: LeagueSlug): string {
-  const base = sport === "soccer" ? `/soccer/${league ?? LEAGUES[0].slug}` : `/${sport}`;
+export function viewHref(sport: SportKey, view: ViewKey, division?: DivisionSlug): string {
+  const divs = divisionsOf(sport);
+  const base = divs.length ? `/${sport}/${division ?? divs[0].slug}` : `/${sport}`;
   const seg = SEGMENT[view];
   return seg ? `${base}/${seg}` : base;
 }
 
 /** Every view in a sport, in tab order, with hrefs already resolved. */
-export function viewsFor(sport: SportKey, league?: LeagueSlug): NavItem[] {
+export function viewsFor(sport: SportKey, division?: DivisionSlug): NavItem[] {
   return VIEWS[sport].map((key) => ({
     key,
-    label: (sport === "soccer" ? SOCCER_LABELS[key] : undefined) ?? LABELS[key],
-    href: viewHref(sport, key, league),
+    label: (key === "slate" ? SLATE_LABEL[sport] : undefined) ?? LABELS[key],
+    href: viewHref(sport, key, division),
   }));
 }
 
-export { LEAGUES };
-export type { LeagueSlug };
+export { LEAGUES, TOURS };
+export type { LeagueSlug, TourSlug };
 
 /**
  * Paths kept alive from when MLB was the whole site. Each one redirects to its

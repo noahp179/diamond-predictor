@@ -1,7 +1,15 @@
 import type { ReactNode } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 
-import { LEAGUES, SPORTS, viewsFor, type LeagueSlug, type SportKey, type ViewKey } from "@/lib/nav";
+import {
+  divisionsOf,
+  SPORTS,
+  viewHref,
+  viewsFor,
+  type DivisionSlug,
+  type SportKey,
+  type ViewKey,
+} from "@/lib/nav";
 
 /**
  * nav.ts builds hrefs by joining segments, so TypeScript sees `string` where the
@@ -47,7 +55,8 @@ export function AppShell({
   /** Omit on pages that sit outside a sport (the hub, Teams). */
   sport?: SportKey;
   view?: ViewKey;
-  league?: LeagueSlug;
+  /** Soccer's league or tennis's tour, on the sports that have one. */
+  league?: DivisionSlug;
   eyebrow: string;
   title: string;
   blurb?: string;
@@ -85,7 +94,9 @@ export function AppShell({
         {statBar}
       </header>
 
-      {sport === "soccer" && league && <LeagueBar league={league} view={view} />}
+      {sport && league && divisionsOf(sport).length > 0 && (
+        <DivisionBar sport={sport} division={league} view={view} />
+      )}
 
       {views.length > 0 && (
         <nav className="border-b border-border bg-secondary/20">
@@ -156,38 +167,46 @@ function TopBar({ sport }: { sport?: SportKey }) {
 }
 
 /**
- * The league band. Staying on the same view while switching competition is the
- * common move — comparing Serie A's props with the Bundesliga's — so each link
- * preserves the current view rather than dumping you back on fixtures.
+ * The division band — soccer's leagues, tennis's tours.
+ *
+ * Staying on the same view while switching division is the common move
+ * (comparing Serie A's props with the Bundesliga's, or the ATP's model page
+ * with the WTA's), so each link preserves the current view rather than dumping
+ * you back on the draw. viewHref does that resolution, which is why this bar
+ * cannot construct paths itself.
  */
-function LeagueBar({ league, view }: { league: LeagueSlug; view?: ViewKey }) {
-  const seg = view && view !== "slate" ? `/${viewSegment(view)}` : "";
+function DivisionBar({
+  sport,
+  division,
+  view,
+}: {
+  sport: SportKey;
+  division: DivisionSlug;
+  view?: ViewKey;
+}) {
   return (
     <div className="border-b border-border bg-secondary/40">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-6 py-2.5">
-        {LEAGUES.map((l) => (
+        {divisionsOf(sport).map((d) => (
           <Link
-            key={l.slug}
-            to={to(`/soccer/${l.slug}${seg}`)}
+            key={d.slug}
+            to={to(viewHref(sport, view ?? "slate", d.slug))}
+            title={d.name}
             className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-              l.slug === league
+              d.slug === division
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {l.short}
+            {d.short}
           </Link>
         ))}
         <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          each league its own model
+          {sport === "tennis" ? "each tour its own model" : "each league its own model"}
         </span>
       </div>
     </div>
   );
-}
-
-function viewSegment(view: ViewKey) {
-  return view === "props" ? "props" : view === "model" ? "model" : "";
 }
 
 export function StatBar({ children }: { children: ReactNode }) {
