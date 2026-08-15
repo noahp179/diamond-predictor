@@ -4,10 +4,10 @@
 players and **24,589 WTA** over 1,266. Each tour fitted, calibrated and scored
 on its own data.
 
-| | Matches | Players | Hard | Clay | Grass | Unlabelled |
-|---|---|---|---|---|---|---|
-| ATP | 19,438 | 897 | 57.1% | 30.3% | 12.1% | 0.5% |
-| WTA | 24,589 | 1,266 | 49.6% | 31.4% | 10.9% | 8.0% |
+|     | Matches | Players | Hard  | Clay  | Grass | Unlabelled |
+| --- | ------- | ------- | ----- | ----- | ----- | ---------- |
+| ATP | 19,438  | 897     | 57.1% | 30.3% | 12.1% | 0.5%       |
+| WTA | 24,589  | 1,266   | 49.6% | 31.4% | 10.9% | 8.0%       |
 
 ---
 
@@ -29,7 +29,7 @@ only a best-of-five can reach a third set win.
 
 ### The leak, and how it is closed
 
-The raw feed names a *winner* and a *loser*. Any row keyed on those columns
+The raw feed names a _winner_ and a _loser_. Any row keyed on those columns
 already knows the answer. Every match is re-cast with a deterministic
 orientation — the smaller player id is always "A" — and every feature is written
 as an A-minus-B difference. A model fed antisymmetric features cannot learn "A
@@ -55,32 +55,32 @@ advantage to exploit.
 
 ### ATP — 11,956 held-out matches
 
-| # | Algorithm | Log loss | Accuracy | AUC | ECE |
-|---|---|---|---|---|---|
-| 1 | ML_kNN | 0.6324 | 63.4% | 0.6909 | 0.0073 |
-| 2 | ML_random_forest | 0.6325 | 63.4% | 0.6918 | 0.0149 |
-| 3 | ML_extra_trees | 0.6328 | 63.2% | 0.6907 | 0.0111 |
-| 4 | ENS_diverse5 | 0.6373 | 62.8% | 0.6885 | 0.0261 |
-| 5 | ML_logistic_L1 | 0.6389 | 63.6% | 0.6905 | 0.0382 |
-| 7 | elo_fast (K=40) | 0.6406 | 61.9% | 0.6777 | 0.0233 |
-| 10 | elo (K=24) | 0.6417 | 61.9% | 0.6751 | 0.0231 |
-| 18 | **elo_surface** | **0.6525** | 60.4% | 0.6535 | 0.0242 |
-| 28 | base rate | 0.6930 | 51.0% | 0.4962 | 0.0023 |
-| 31 | **head_to_head** | **0.6992** | 52.5% | 0.5406 | 0.0355 |
+| #   | Algorithm        | Log loss   | Accuracy | AUC    | ECE    |
+| --- | ---------------- | ---------- | -------- | ------ | ------ |
+| 1   | ML_kNN           | 0.6324     | 63.4%    | 0.6909 | 0.0073 |
+| 2   | ML_random_forest | 0.6325     | 63.4%    | 0.6918 | 0.0149 |
+| 3   | ML_extra_trees   | 0.6328     | 63.2%    | 0.6907 | 0.0111 |
+| 4   | ENS_diverse5     | 0.6373     | 62.8%    | 0.6885 | 0.0261 |
+| 5   | ML_logistic_L1   | 0.6389     | 63.6%    | 0.6905 | 0.0382 |
+| 7   | elo_fast (K=40)  | 0.6406     | 61.9%    | 0.6777 | 0.0233 |
+| 10  | elo (K=24)       | 0.6417     | 61.9%    | 0.6751 | 0.0231 |
+| 18  | **elo_surface**  | **0.6525** | 60.4%    | 0.6535 | 0.0242 |
+| 28  | base rate        | 0.6930     | 51.0%    | 0.4962 | 0.0023 |
+| 31  | **head_to_head** | **0.6992** | 52.5%    | 0.5406 | 0.0355 |
 
 ### WTA — 16,105 held-out matches
 
-| # | Algorithm | Log loss | Accuracy | AUC | ECE |
-|---|---|---|---|---|---|
-| 1 | ML_random_forest | 0.6240 | 64.9% | 0.7067 | 0.0137 |
-| 2 | ML_extra_trees | 0.6241 | 65.0% | 0.7069 | 0.0153 |
-| 3 | ML_kNN | 0.6251 | 64.9% | 0.7056 | 0.0199 |
-| 4 | ML_logistic_L1 | 0.6270 | 64.6% | 0.7053 | 0.0305 |
-| 8 | elo_fast (K=40) | 0.6370 | 62.8% | 0.6844 | 0.0180 |
-| 11 | elo (K=24) | 0.6396 | 62.5% | 0.6802 | 0.0217 |
-| 18 | **elo_surface** | **0.6573** | 59.7% | 0.6443 | 0.0241 |
-| 28 | base rate | 0.6931 | 49.6% | 0.5057 | 0.0229 |
-| 30 | **head_to_head** | **0.6963** | 51.7% | 0.5394 | 0.0461 |
+| #   | Algorithm        | Log loss   | Accuracy | AUC    | ECE    |
+| --- | ---------------- | ---------- | -------- | ------ | ------ |
+| 1   | ML_random_forest | 0.6240     | 64.9%    | 0.7067 | 0.0137 |
+| 2   | ML_extra_trees   | 0.6241     | 65.0%    | 0.7069 | 0.0153 |
+| 3   | ML_kNN           | 0.6251     | 64.9%    | 0.7056 | 0.0199 |
+| 4   | ML_logistic_L1   | 0.6270     | 64.6%    | 0.7053 | 0.0305 |
+| 8   | elo_fast (K=40)  | 0.6370     | 62.8%    | 0.6844 | 0.0180 |
+| 11  | elo (K=24)       | 0.6396     | 62.5%    | 0.6802 | 0.0217 |
+| 18  | **elo_surface**  | **0.6573** | 59.7%    | 0.6443 | 0.0241 |
+| 28  | base rate        | 0.6931     | 49.6%    | 0.5057 | 0.0229 |
+| 30  | **head_to_head** | **0.6963** | 51.7%    | 0.5394 | 0.0461 |
 
 ---
 
@@ -93,20 +93,20 @@ independently** — which is what makes them findings rather than noise.
 
 A pre-registered ablation removed whole feature groups one at a time. The
 matchup group — head-to-head record and common opponents — was the only group
-whose *removal* improved the model, and it improved it on every metric:
+whose _removal_ improved the model, and it improved it on every metric:
 
-| | Log loss | Accuracy | AUC |
-|---|---|---|---|
-| ATP with H2H | 0.6390 | 63.6% | 0.6905 |
-| ATP without | **0.6349** | **63.7%** | **0.6951** |
-| WTA with H2H | 0.6271 | 64.6% | 0.7052 |
-| WTA without | **0.6248** | **65.0%** | **0.7078** |
+|              | Log loss   | Accuracy  | AUC        |
+| ------------ | ---------- | --------- | ---------- |
+| ATP with H2H | 0.6390     | 63.6%     | 0.6905     |
+| ATP without  | **0.6349** | **63.7%** | **0.6951** |
+| WTA with H2H | 0.6271     | 64.6%     | 0.7052     |
+| WTA without  | **0.6248** | **65.0%** | **0.7078** |
 
 Standalone it is worse than useless: 0.6992 on the ATP against 0.6930 for
 always predicting the base rate. So is a current winning streak, at 0.6991.
 
 The reason is not mysterious. Most pairs have met once or twice, so a
-"record" is a coin flip dressed as evidence — and whatever *is* real in a
+"record" is a coin flip dressed as evidence — and whatever _is_ real in a
 matchup is already priced into both players' ratings, so including it double-
 counts one noisy observation.
 
@@ -118,22 +118,22 @@ cards**, because people want to see it, and it is **kept out of the model**.
 Keeping separate hard, clay and grass ratings is the standard tennis-modelling
 move. It lost on both tours:
 
-| | Global Elo | Surface Elo | Blend |
-|---|---|---|---|
-| ATP | 0.6417 | 0.6525 (**+0.0108 worse**) | 0.6416 (−0.0001) |
-| WTA | 0.6396 | 0.6573 (**+0.0176 worse**) | 0.6417 (+0.0021 worse) |
+|     | Global Elo | Surface Elo                | Blend                  |
+| --- | ---------- | -------------------------- | ---------------------- |
+| ATP | 0.6417     | 0.6525 (**+0.0108 worse**) | 0.6416 (−0.0001)       |
+| WTA | 0.6396     | 0.6573 (**+0.0176 worse**) | 0.6417 (+0.0021 worse) |
 
 Splitting a career three ways thins each player's history faster than court
 specialisation pays for it. Even the 50/50 blend is a wash on the ATP and a
 small loss on the WTA.
 
 **But surface is not useless — it is useless as a rating split.** The ablation
-shows the surface features earn their place *inside* a model that also sees
+shows the surface features earn their place _inside_ a model that also sees
 global form: +0.0017 log loss on the ATP, +0.0007 on the WTA. That is the only
 role it keeps.
 
 This matters for a second reason. The surface labels are a hand-built table —
-ESPN publishes no surface field — so they were built to be *tested* rather than
+ESPN publishes no surface field — so they were built to be _tested_ rather than
 trusted. The test says they carry real signal in the feature role and cannot
 support the rating role. That is a more useful answer than either "surface
 works" or "surface doesn't".
@@ -143,17 +143,17 @@ works" or "surface doesn't".
 Positive means removing the group made things worse, i.e. the group earns its
 place.
 
-| Group | ATP | WTA |
-|---|---|---|
-| elo_family | +0.0023 | +0.0037 |
-| other_ratings (Glicko, Bradley-Terry) | +0.0010 | +0.0017 |
-| surface | +0.0017 | +0.0007 |
-| form | +0.0014 | −0.0003 |
-| experience | +0.0003 | +0.0017 |
-| seeding | +0.0005 | −0.0000 |
-| physical (fatigue, rest) | +0.0003 | +0.0000 |
-| context (best-of, draw size, round) | +0.0002 | +0.0000 |
-| **matchup (H2H, common opponents)** | **−0.0040** | **−0.0023** |
+| Group                                 | ATP         | WTA         |
+| ------------------------------------- | ----------- | ----------- |
+| elo_family                            | +0.0023     | +0.0037     |
+| other_ratings (Glicko, Bradley-Terry) | +0.0010     | +0.0017     |
+| surface                               | +0.0017     | +0.0007     |
+| form                                  | +0.0014     | −0.0003     |
+| experience                            | +0.0003     | +0.0017     |
+| seeding                               | +0.0005     | −0.0000     |
+| physical (fatigue, rest)              | +0.0003     | +0.0000     |
+| context (best-of, draw size, round)   | +0.0002     | +0.0000     |
+| **matchup (H2H, common opponents)**   | **−0.0040** | **−0.0023** |
 
 ---
 
@@ -169,19 +169,19 @@ the same arrangement as the MLB and soccer prop models. Dropping head-to-head
 more than paid for the family downgrade, so the shipped model lands near the top
 of a table it did not win:
 
-| Tour | Log loss | Accuracy | AUC | ECE | Test matches | Bake-off rank |
-|---|---|---|---|---|---|---|
-| ATP | 0.6351 | 63.7% | 0.6951 | 0.0322 | 11,956 | 4 / 33 (+0.0026) |
-| WTA | 0.6249 | 65.0% | 0.7078 | 0.0217 | 16,105 | 3 / 33 (+0.0009) |
+| Tour | Log loss | Accuracy | AUC    | ECE    | Test matches | Bake-off rank    |
+| ---- | -------- | -------- | ------ | ------ | ------------ | ---------------- |
+| ATP  | 0.6351   | 63.7%    | 0.6951 | 0.0322 | 11,956       | 4 / 33 (+0.0026) |
+| WTA  | 0.6249   | 65.0%    | 0.7078 | 0.0217 | 16,105       | 3 / 33 (+0.0009) |
 
 ### Refitting matters more than the algorithm choice
 
 Two measurements are reported, because the gap between them is itself a finding:
 
-| | Refitted each season | Frozen in 2022 | Refitting is worth |
-|---|---|---|---|
-| ATP | 0.6351 | 0.6405 | 0.0054 |
-| WTA | 0.6249 | 0.6328 | 0.0079 |
+|     | Refitted each season | Frozen in 2022 | Refitting is worth |
+| --- | -------------------- | -------------- | ------------------ |
+| ATP | 0.6351               | 0.6405         | 0.0054             |
+| WTA | 0.6249               | 0.6328         | 0.0079             |
 
 Keeping the model current is worth about twice what picking the best algorithm
 family was. Shipped coefficients are fitted on every season, so the live model
@@ -209,7 +209,7 @@ eight seconds cold per tour and is cached; every request after is instant.
 - **No serve statistics at all.** `statistics` is empty on every competitor, so
   aces, double faults and first-serve percentage cannot be modelled. Any prop
   market here would have to be derived from scorelines instead.
-- **No rankings.** Only the *seed in this draw*, which is missing for unseeded
+- **No rankings.** Only the _seed in this draw_, which is missing for unseeded
   players; 40 stands in for "unseeded". A real ranking feed would likely help.
 - **Surface is a hand-built table**, not a data field. Coverage is 99.5% ATP and
   92.0% WTA; what could not be placed with confidence is labelled "unknown" and
@@ -221,6 +221,33 @@ eight seconds cold per tour and is cached; every request after is instant.
 - **~64% accuracy is the realistic ceiling here.** Tennis at this level is
   genuinely close to a coin flip in a large fraction of matches; the useful
   output is the calibrated probability, not the pick.
+
+---
+
+## Live tracking
+
+The numbers above are a backtest. A backtest can be re-run until it looks good —
+even done honestly, the person running it chooses when to stop, and every choice
+is informed by data that has already happened.
+
+So every prediction is now also written to a ledger **before** the event and
+scored afterwards, at `/tennis/<tour>/track-record`. `UNIQUE (model_version, event_id)`
+means a row is inserted once and never overwritten: a later run cannot quietly
+upgrade an earlier call.
+
+The Track Record page shows the backtest and the live ledger **side by side and
+never merged**. They answer different questions. It also reports how many calls
+have settled and says outright when that is too few to read anything into —
+below 100 settled calls, a hit rate cannot separate a good model from a lucky
+fortnight.
+
+The ledger starts empty and fills at the rate the sport plays. A tracking page
+that quietly showed the backtest while it waited would be worse than no tracking
+page at all.
+
+Written daily by `/api/public/hooks/track-predictions`; schema in
+`supabase/migrations/20260815120000_event_predictions.sql`; scoring checked by
+`scripts/test-tracking.ts`.
 
 ## Reproducing
 

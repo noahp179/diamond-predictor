@@ -21,7 +21,14 @@ export const Route = createFileRoute("/tennis/")({
 });
 
 type Model = {
-  backtest: { logloss: number; acc: number; auc: number; n: number; bakeoffRank: number | null; bakeoffOf: number | null };
+  backtest: {
+    logloss: number;
+    acc: number;
+    auc: number;
+    n: number;
+    bakeoffRank: number | null;
+    bakeoffOf: number | null;
+  };
   priors: { matches: number; players: number; surfaces: Record<string, number> };
 };
 const MODELS = matchModels as unknown as Record<string, Model>;
@@ -77,24 +84,26 @@ function TennisIndex() {
           <p>
             <strong className="text-foreground">Head-to-head makes the model worse.</strong> The
             most quoted number in tennis is actively harmful: removing it improved log loss,
-            accuracy and AUC on both tours. Most pairs have met once or twice, so the &quot;record&quot;
-            is a coin flip dressed as evidence, and whatever is real in it is already in both
-            players&apos; ratings. On its own it predicts worse than always guessing the base rate.
-            It is shown on match cards because people want to see it, and it is kept out of the
-            prediction.
+            accuracy and AUC on both tours. Most pairs have met once or twice, so the
+            &quot;record&quot; is a coin flip dressed as evidence, and whatever is real in it is
+            already in both players&apos; ratings. On its own it predicts worse than always guessing
+            the base rate. It is shown on match cards because people want to see it, and it is kept
+            out of the prediction.
           </p>
           <p>
-            <strong className="text-foreground">Surface-specific Elo is worse than global Elo.</strong>{" "}
+            <strong className="text-foreground">
+              Surface-specific Elo is worse than global Elo.
+            </strong>{" "}
             Splitting ratings into hard, clay and grass thins each player&apos;s history faster than
             court specialisation pays for it — on both tours. Surface still earns a place as one
             feature among twenty, alongside global form, which is the only role it keeps.
           </p>
         </div>
         <p className="mt-4 font-mono text-[11px] text-muted-foreground">
-          Log loss punishes confident wrongness, which is the failure mode that matters for a
-          rating system meeting a player it has not seen. Always guessing 50% scores 0.693; the base
-          rate scores the same, because with the draw oriented by player id there is no home
-          advantage to exploit.
+          Log loss punishes confident wrongness, which is the failure mode that matters for a rating
+          system meeting a player it has not seen. Always guessing 50% scores 0.693; the base rate
+          scores the same, because with the draw oriented by player id there is no home advantage to
+          exploit.
         </p>
       </section>
     </AppShell>

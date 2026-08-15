@@ -316,6 +316,33 @@ scorer and fails above 1e-9. Current maximum divergence: **3.3e-16**.
   is about 1,000 matches, which separates good families from bad ones and does
   _not_ reliably separate the top eight from each other.
 
+---
+
+## Live tracking
+
+The numbers above are a backtest. A backtest can be re-run until it looks good —
+even done honestly, the person running it chooses when to stop, and every choice
+is informed by data that has already happened.
+
+So every prediction is now also written to a ledger **before** the event and
+scored afterwards, at `/soccer/<league>/track-record`. `UNIQUE (model_version, event_id)`
+means a row is inserted once and never overwritten: a later run cannot quietly
+upgrade an earlier call.
+
+The Track Record page shows the backtest and the live ledger **side by side and
+never merged**. They answer different questions. It also reports how many calls
+have settled and says outright when that is too few to read anything into —
+below 100 settled calls, a hit rate cannot separate a good model from a lucky
+fortnight.
+
+The ledger starts empty and fills at the rate the sport plays. A tracking page
+that quietly showed the backtest while it waited would be worse than no tracking
+page at all.
+
+Written daily by `/api/public/hooks/track-predictions`; schema in
+`supabase/migrations/20260815120000_event_predictions.sql`; scoring checked by
+`scripts/test-tracking.ts`.
+
 ## Reproducing
 
 ```
