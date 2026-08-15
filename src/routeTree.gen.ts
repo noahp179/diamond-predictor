@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TeamsRouteImport } from './routes/teams'
+import { Route as SoccerRouteImport } from './routes/soccer'
 import { Route as PropsRouteImport } from './routes/props'
 import { Route as NflRouteImport } from './routes/nfl'
 import { Route as NbaRouteImport } from './routes/nba'
@@ -18,8 +19,10 @@ import { Route as HistoryRouteImport } from './routes/history'
 import { Route as BestOddsRouteImport } from './routes/best-odds'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
 import { Route as NflIndexRouteImport } from './routes/nfl.index'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
+import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
 import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
@@ -27,11 +30,19 @@ import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
 import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
 import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
 import { Route as NbaBestOddsRouteImport } from './routes/nba.best-odds'
+import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
+import { Route as SoccerLeaguePropsRouteImport } from './routes/soccer.$league.props'
+import { Route as SoccerLeagueModelRouteImport } from './routes/soccer.$league.model'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SoccerRoute = SoccerRouteImport.update({
+  id: '/soccer',
+  path: '/soccer',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PropsRoute = PropsRouteImport.update({
@@ -74,6 +85,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SoccerIndexRoute = SoccerIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SoccerRoute,
+} as any)
 const NflIndexRoute = NflIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -83,6 +99,11 @@ const NbaIndexRoute = NbaIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => NbaRoute,
+} as any)
+const SoccerLeagueRoute = SoccerLeagueRouteImport.update({
+  id: '/$league',
+  path: '/$league',
+  getParentRoute: () => SoccerRoute,
 } as any)
 const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
   id: '/track-record',
@@ -119,6 +140,21 @@ const NbaBestOddsRoute = NbaBestOddsRouteImport.update({
   path: '/best-odds',
   getParentRoute: () => NbaRoute,
 } as any)
+const SoccerLeagueIndexRoute = SoccerLeagueIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SoccerLeagueRoute,
+} as any)
+const SoccerLeaguePropsRoute = SoccerLeaguePropsRouteImport.update({
+  id: '/props',
+  path: '/props',
+  getParentRoute: () => SoccerLeagueRoute,
+} as any)
+const SoccerLeagueModelRoute = SoccerLeagueModelRouteImport.update({
+  id: '/model',
+  path: '/model',
+  getParentRoute: () => SoccerLeagueRoute,
+} as any)
 const ApiPublicHooksRunPipelineRoute =
   ApiPublicHooksRunPipelineRouteImport.update({
     id: '/api/public/hooks/run-pipeline',
@@ -135,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
   '/props': typeof PropsRoute
+  '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
@@ -143,8 +180,13 @@ export interface FileRoutesByFullPath {
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
+  '/soccer/': typeof SoccerIndexRoute
+  '/soccer/$league/model': typeof SoccerLeagueModelRoute
+  '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/': typeof SoccerLeagueIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRoutesByTo {
@@ -164,6 +206,10 @@ export interface FileRoutesByTo {
   '/nfl/track-record': typeof NflTrackRecordRoute
   '/nba': typeof NbaIndexRoute
   '/nfl': typeof NflIndexRoute
+  '/soccer': typeof SoccerIndexRoute
+  '/soccer/$league/model': typeof SoccerLeagueModelRoute
+  '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league': typeof SoccerLeagueIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRoutesById {
@@ -176,6 +222,7 @@ export interface FileRoutesById {
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
   '/props': typeof PropsRoute
+  '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
@@ -184,8 +231,13 @@ export interface FileRoutesById {
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
+  '/soccer/': typeof SoccerIndexRoute
+  '/soccer/$league/model': typeof SoccerLeagueModelRoute
+  '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/': typeof SoccerLeagueIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
 }
 export interface FileRouteTypes {
@@ -199,6 +251,7 @@ export interface FileRouteTypes {
     | '/nba'
     | '/nfl'
     | '/props'
+    | '/soccer'
     | '/teams'
     | '/nba/best-odds'
     | '/nba/recommended'
@@ -207,8 +260,13 @@ export interface FileRouteTypes {
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/soccer/$league'
     | '/nba/'
     | '/nfl/'
+    | '/soccer/'
+    | '/soccer/$league/model'
+    | '/soccer/$league/props'
+    | '/soccer/$league/'
     | '/api/public/hooks/run-pipeline'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -228,6 +286,10 @@ export interface FileRouteTypes {
     | '/nfl/track-record'
     | '/nba'
     | '/nfl'
+    | '/soccer'
+    | '/soccer/$league/model'
+    | '/soccer/$league/props'
+    | '/soccer/$league'
     | '/api/public/hooks/run-pipeline'
   id:
     | '__root__'
@@ -239,6 +301,7 @@ export interface FileRouteTypes {
     | '/nba'
     | '/nfl'
     | '/props'
+    | '/soccer'
     | '/teams'
     | '/nba/best-odds'
     | '/nba/recommended'
@@ -247,8 +310,13 @@ export interface FileRouteTypes {
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/soccer/$league'
     | '/nba/'
     | '/nfl/'
+    | '/soccer/'
+    | '/soccer/$league/model'
+    | '/soccer/$league/props'
+    | '/soccer/$league/'
     | '/api/public/hooks/run-pipeline'
   fileRoutesById: FileRoutesById
 }
@@ -261,6 +329,7 @@ export interface RootRouteChildren {
   NbaRoute: typeof NbaRouteWithChildren
   NflRoute: typeof NflRouteWithChildren
   PropsRoute: typeof PropsRoute
+  SoccerRoute: typeof SoccerRouteWithChildren
   TeamsRoute: typeof TeamsRoute
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
 }
@@ -272,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/teams'
       fullPath: '/teams'
       preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/soccer': {
+      id: '/soccer'
+      path: '/soccer'
+      fullPath: '/soccer'
+      preLoaderRoute: typeof SoccerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/props': {
@@ -330,6 +406,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/soccer/': {
+      id: '/soccer/'
+      path: '/'
+      fullPath: '/soccer/'
+      preLoaderRoute: typeof SoccerIndexRouteImport
+      parentRoute: typeof SoccerRoute
+    }
     '/nfl/': {
       id: '/nfl/'
       path: '/'
@@ -343,6 +426,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/nba/'
       preLoaderRoute: typeof NbaIndexRouteImport
       parentRoute: typeof NbaRoute
+    }
+    '/soccer/$league': {
+      id: '/soccer/$league'
+      path: '/$league'
+      fullPath: '/soccer/$league'
+      preLoaderRoute: typeof SoccerLeagueRouteImport
+      parentRoute: typeof SoccerRoute
     }
     '/nfl/track-record': {
       id: '/nfl/track-record'
@@ -393,6 +483,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NbaBestOddsRouteImport
       parentRoute: typeof NbaRoute
     }
+    '/soccer/$league/': {
+      id: '/soccer/$league/'
+      path: '/'
+      fullPath: '/soccer/$league/'
+      preLoaderRoute: typeof SoccerLeagueIndexRouteImport
+      parentRoute: typeof SoccerLeagueRoute
+    }
+    '/soccer/$league/props': {
+      id: '/soccer/$league/props'
+      path: '/props'
+      fullPath: '/soccer/$league/props'
+      preLoaderRoute: typeof SoccerLeaguePropsRouteImport
+      parentRoute: typeof SoccerLeagueRoute
+    }
+    '/soccer/$league/model': {
+      id: '/soccer/$league/model'
+      path: '/model'
+      fullPath: '/soccer/$league/model'
+      preLoaderRoute: typeof SoccerLeagueModelRouteImport
+      parentRoute: typeof SoccerLeagueRoute
+    }
     '/api/public/hooks/run-pipeline': {
       id: '/api/public/hooks/run-pipeline'
       path: '/api/public/hooks/run-pipeline'
@@ -437,6 +548,35 @@ const NflRouteChildren: NflRouteChildren = {
 
 const NflRouteWithChildren = NflRoute._addFileChildren(NflRouteChildren)
 
+interface SoccerLeagueRouteChildren {
+  SoccerLeagueModelRoute: typeof SoccerLeagueModelRoute
+  SoccerLeaguePropsRoute: typeof SoccerLeaguePropsRoute
+  SoccerLeagueIndexRoute: typeof SoccerLeagueIndexRoute
+}
+
+const SoccerLeagueRouteChildren: SoccerLeagueRouteChildren = {
+  SoccerLeagueModelRoute: SoccerLeagueModelRoute,
+  SoccerLeaguePropsRoute: SoccerLeaguePropsRoute,
+  SoccerLeagueIndexRoute: SoccerLeagueIndexRoute,
+}
+
+const SoccerLeagueRouteWithChildren = SoccerLeagueRoute._addFileChildren(
+  SoccerLeagueRouteChildren,
+)
+
+interface SoccerRouteChildren {
+  SoccerLeagueRoute: typeof SoccerLeagueRouteWithChildren
+  SoccerIndexRoute: typeof SoccerIndexRoute
+}
+
+const SoccerRouteChildren: SoccerRouteChildren = {
+  SoccerLeagueRoute: SoccerLeagueRouteWithChildren,
+  SoccerIndexRoute: SoccerIndexRoute,
+}
+
+const SoccerRouteWithChildren =
+  SoccerRoute._addFileChildren(SoccerRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
@@ -446,6 +586,7 @@ const rootRouteChildren: RootRouteChildren = {
   NbaRoute: NbaRouteWithChildren,
   NflRoute: NflRouteWithChildren,
   PropsRoute: PropsRoute,
+  SoccerRoute: SoccerRouteWithChildren,
   TeamsRoute: TeamsRoute,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
 }

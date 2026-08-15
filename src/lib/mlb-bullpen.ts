@@ -139,8 +139,17 @@ function summarizeReliever(
   const fatigueSet = new Set(
     Array.from({ length: FATIGUE_DAYS }, (_, k) => addDaysISO(gameDate, -(k + 1))),
   );
-  let bf = 0, gs = 0, gp = 0, sv = 0, hld = 0, gf = 0;
-  let wBf = 0, wK = 0, wBB = 0, wHR = 0, wHit = 0; // recency-weighted accumulators
+  let bf = 0,
+    gs = 0,
+    gp = 0,
+    sv = 0,
+    hld = 0,
+    gf = 0;
+  let wBf = 0,
+    wK = 0,
+    wBB = 0,
+    wHR = 0,
+    wHit = 0; // recency-weighted accumulators
   let recentApps = 0;
   for (const a of log) {
     if (!a.date) continue;
@@ -174,8 +183,15 @@ function summarizeReliever(
 }
 
 /** BF-weighted pool of relievers → a reliever-league baseline line (no DIPS). (#4) */
-function relieverLeague(all: Reliever[], lg: BattingRates): { so: number; bb: number; hr: number; hit: number } {
-  let bf = 0, k = 0, b = 0, h = 0, hit = 0;
+function relieverLeague(
+  all: Reliever[],
+  lg: BattingRates,
+): { so: number; bb: number; hr: number; hit: number } {
+  let bf = 0,
+    k = 0,
+    b = 0,
+    h = 0,
+    hit = 0;
   for (const r of all) {
     bf += r.effBf;
     k += r.effBf * r.rK;
@@ -194,7 +210,12 @@ function blendTier(
   lg: BattingRates,
 ): PitchingLine {
   const lgHits = lg.b1 + lg.b2 + lg.b3;
-  let W = 0, effBf = 0, k = 0, b = 0, hr = 0, hit = 0;
+  let W = 0,
+    effBf = 0,
+    k = 0,
+    b = 0,
+    hr = 0,
+    hit = 0;
   for (const r of arms) {
     W += r.weight;
     effBf += r.effBf;

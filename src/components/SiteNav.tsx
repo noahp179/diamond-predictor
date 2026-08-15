@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
  * SportTabs bar, not here.
  */
 
-type NavKey = "mlb" | "nfl" | "nba" | "teams";
+type NavKey = "mlb" | "nfl" | "nba" | "soccer" | "teams";
 
 const base = "border px-4 py-2 font-mono text-xs uppercase tracking-widest transition-colors";
 const idle = "border-border bg-secondary text-foreground hover:border-primary";
@@ -23,6 +23,9 @@ export function SiteNav({ current }: { current?: NavKey }) {
       </Link>
       <Link to="/nba" className={`${base} ${current === "nba" ? active : idle}`}>
         NBA
+      </Link>
+      <Link to="/soccer" className={`${base} ${current === "soccer" ? active : idle}`}>
+        Soccer
       </Link>
       <span className="mx-1 hidden h-5 w-px bg-border sm:inline-block" aria-hidden />
       <Link to="/teams" className={`${base} ${current === "teams" ? active : idle}`}>
