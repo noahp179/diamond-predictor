@@ -68,9 +68,7 @@ function TennisModelPage() {
   });
 
   const b = data?.backtest;
-  const weights = [...(data?.weights ?? [])].sort(
-    (x, y) => Math.abs(y.coef) - Math.abs(x.coef),
-  );
+  const weights = [...(data?.weights ?? [])].sort((x, y) => Math.abs(y.coef) - Math.abs(x.coef));
   const maxAbs = weights.length ? Math.abs(weights[0].coef) : 1;
 
   return (
@@ -145,15 +143,15 @@ function TennisModelPage() {
           <div className="bg-card px-5 py-5 text-sm text-muted-foreground">
             <div className="font-display text-xl text-foreground">Head-to-head</div>
             <p className="mt-2">
-              Removing the head-to-head record and common-opponent features made the model better
-              on both tours, on every metric — log loss, accuracy and AUC. On its own, head-to-head
+              Removing the head-to-head record and common-opponent features made the model better on
+              both tours, on every metric — log loss, accuracy and AUC. On its own, head-to-head
               predicts <em>worse than always guessing the base rate</em>.
             </p>
             <p className="mt-2">
               Most pairs have met once or twice, so a &quot;record&quot; is a coin flip dressed as
-              evidence; and whatever is genuinely there is already in both players&apos; ratings.
-              It is displayed on match cards because people want to see it, and it is not fed to
-              the model.
+              evidence; and whatever is genuinely there is already in both players&apos; ratings. It
+              is displayed on match cards because people want to see it, and it is not fed to the
+              model.
             </p>
           </div>
           <div className="bg-card px-5 py-5 text-sm text-muted-foreground">

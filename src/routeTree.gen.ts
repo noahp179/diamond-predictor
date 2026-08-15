@@ -41,9 +41,12 @@ import { Route as MlbPropsRouteImport } from './routes/mlb.props'
 import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
 import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
 import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
+import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
 import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model'
+import { Route as SoccerLeagueTrackRecordRouteImport } from './routes/soccer.$league.track-record'
 import { Route as SoccerLeaguePropsRouteImport } from './routes/soccer.$league.props'
 import { Route as SoccerLeagueModelRouteImport } from './routes/soccer.$league.model'
+import { Route as ApiPublicHooksTrackPredictionsRouteImport } from './routes/api/public/hooks/track-predictions'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 
 const TennisRoute = TennisRouteImport.update({
@@ -206,10 +209,20 @@ const SoccerLeagueIndexRoute = SoccerLeagueIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SoccerLeagueRoute,
 } as any)
+const TennisTourTrackRecordRoute = TennisTourTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => TennisTourRoute,
+} as any)
 const TennisTourModelRoute = TennisTourModelRouteImport.update({
   id: '/model',
   path: '/model',
   getParentRoute: () => TennisTourRoute,
+} as any)
+const SoccerLeagueTrackRecordRoute = SoccerLeagueTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => SoccerLeagueRoute,
 } as any)
 const SoccerLeaguePropsRoute = SoccerLeaguePropsRouteImport.update({
   id: '/props',
@@ -221,6 +234,12 @@ const SoccerLeagueModelRoute = SoccerLeagueModelRouteImport.update({
   path: '/model',
   getParentRoute: () => SoccerLeagueRoute,
 } as any)
+const ApiPublicHooksTrackPredictionsRoute =
+  ApiPublicHooksTrackPredictionsRouteImport.update({
+    id: '/api/public/hooks/track-predictions',
+    path: '/api/public/hooks/track-predictions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksRunPipelineRoute =
   ApiPublicHooksRunPipelineRouteImport.update({
     id: '/api/public/hooks/run-pipeline',
@@ -261,10 +280,13 @@ export interface FileRoutesByFullPath {
   '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/track-record': typeof SoccerLeagueTrackRecordRoute
   '/tennis/$tour/model': typeof TennisTourModelRoute
+  '/tennis/$tour/track-record': typeof TennisTourTrackRecordRoute
   '/soccer/$league/': typeof SoccerLeagueIndexRoute
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
+  '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -292,10 +314,13 @@ export interface FileRoutesByTo {
   '/tennis': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/track-record': typeof SoccerLeagueTrackRecordRoute
   '/tennis/$tour/model': typeof TennisTourModelRoute
+  '/tennis/$tour/track-record': typeof TennisTourTrackRecordRoute
   '/soccer/$league': typeof SoccerLeagueIndexRoute
   '/tennis/$tour': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
+  '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -331,10 +356,13 @@ export interface FileRoutesById {
   '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/track-record': typeof SoccerLeagueTrackRecordRoute
   '/tennis/$tour/model': typeof TennisTourModelRoute
+  '/tennis/$tour/track-record': typeof TennisTourTrackRecordRoute
   '/soccer/$league/': typeof SoccerLeagueIndexRoute
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
+  '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -371,10 +399,13 @@ export interface FileRouteTypes {
     | '/tennis/'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/soccer/$league/track-record'
     | '/tennis/$tour/model'
+    | '/tennis/$tour/track-record'
     | '/soccer/$league/'
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
+    | '/api/public/hooks/track-predictions'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -402,10 +433,13 @@ export interface FileRouteTypes {
     | '/tennis'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/soccer/$league/track-record'
     | '/tennis/$tour/model'
+    | '/tennis/$tour/track-record'
     | '/soccer/$league'
     | '/tennis/$tour'
     | '/api/public/hooks/run-pipeline'
+    | '/api/public/hooks/track-predictions'
   id:
     | '__root__'
     | '/'
@@ -440,10 +474,13 @@ export interface FileRouteTypes {
     | '/tennis/'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/soccer/$league/track-record'
     | '/tennis/$tour/model'
+    | '/tennis/$tour/track-record'
     | '/soccer/$league/'
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
+    | '/api/public/hooks/track-predictions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -460,6 +497,7 @@ export interface RootRouteChildren {
   TeamsRoute: typeof TeamsRoute
   TennisRoute: typeof TennisRouteWithChildren
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
+  ApiPublicHooksTrackPredictionsRoute: typeof ApiPublicHooksTrackPredictionsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -688,12 +726,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SoccerLeagueIndexRouteImport
       parentRoute: typeof SoccerLeagueRoute
     }
+    '/tennis/$tour/track-record': {
+      id: '/tennis/$tour/track-record'
+      path: '/track-record'
+      fullPath: '/tennis/$tour/track-record'
+      preLoaderRoute: typeof TennisTourTrackRecordRouteImport
+      parentRoute: typeof TennisTourRoute
+    }
     '/tennis/$tour/model': {
       id: '/tennis/$tour/model'
       path: '/model'
       fullPath: '/tennis/$tour/model'
       preLoaderRoute: typeof TennisTourModelRouteImport
       parentRoute: typeof TennisTourRoute
+    }
+    '/soccer/$league/track-record': {
+      id: '/soccer/$league/track-record'
+      path: '/track-record'
+      fullPath: '/soccer/$league/track-record'
+      preLoaderRoute: typeof SoccerLeagueTrackRecordRouteImport
+      parentRoute: typeof SoccerLeagueRoute
     }
     '/soccer/$league/props': {
       id: '/soccer/$league/props'
@@ -708,6 +760,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/soccer/$league/model'
       preLoaderRoute: typeof SoccerLeagueModelRouteImport
       parentRoute: typeof SoccerLeagueRoute
+    }
+    '/api/public/hooks/track-predictions': {
+      id: '/api/public/hooks/track-predictions'
+      path: '/api/public/hooks/track-predictions'
+      fullPath: '/api/public/hooks/track-predictions'
+      preLoaderRoute: typeof ApiPublicHooksTrackPredictionsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/run-pipeline': {
       id: '/api/public/hooks/run-pipeline'
@@ -774,12 +833,14 @@ const NflRouteWithChildren = NflRoute._addFileChildren(NflRouteChildren)
 interface SoccerLeagueRouteChildren {
   SoccerLeagueModelRoute: typeof SoccerLeagueModelRoute
   SoccerLeaguePropsRoute: typeof SoccerLeaguePropsRoute
+  SoccerLeagueTrackRecordRoute: typeof SoccerLeagueTrackRecordRoute
   SoccerLeagueIndexRoute: typeof SoccerLeagueIndexRoute
 }
 
 const SoccerLeagueRouteChildren: SoccerLeagueRouteChildren = {
   SoccerLeagueModelRoute: SoccerLeagueModelRoute,
   SoccerLeaguePropsRoute: SoccerLeaguePropsRoute,
+  SoccerLeagueTrackRecordRoute: SoccerLeagueTrackRecordRoute,
   SoccerLeagueIndexRoute: SoccerLeagueIndexRoute,
 }
 
@@ -802,11 +863,13 @@ const SoccerRouteWithChildren =
 
 interface TennisTourRouteChildren {
   TennisTourModelRoute: typeof TennisTourModelRoute
+  TennisTourTrackRecordRoute: typeof TennisTourTrackRecordRoute
   TennisTourIndexRoute: typeof TennisTourIndexRoute
 }
 
 const TennisTourRouteChildren: TennisTourRouteChildren = {
   TennisTourModelRoute: TennisTourModelRoute,
+  TennisTourTrackRecordRoute: TennisTourTrackRecordRoute,
   TennisTourIndexRoute: TennisTourIndexRoute,
 }
 
@@ -841,6 +904,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamsRoute: TeamsRoute,
   TennisRoute: TennisRouteWithChildren,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
+  ApiPublicHooksTrackPredictionsRoute: ApiPublicHooksTrackPredictionsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

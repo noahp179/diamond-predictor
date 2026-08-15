@@ -70,10 +70,7 @@ function TennisDrawPage() {
         <StatBar>
           <Stat label="Matches" value={`${matches.length}`} />
           <Stat label="Priced" value={`${priced.length}`} />
-          <Stat
-            label="Settled today"
-            value={settled.length ? `${right}/${settled.length}` : "—"}
-          />
+          <Stat label="Settled today" value={settled.length ? `${right}/${settled.length}` : "—"} />
           <Stat
             label="Held-out accuracy"
             value={data ? `${(data.backtest.acc * 100).toFixed(1)}%` : "—"}
@@ -201,7 +198,10 @@ function MatchCard({ match: m }: { match: Match }) {
               <>
                 {" · head-to-head "}
                 {m.h2h.a}–{m.h2h.b}
-                <span className="text-muted-foreground/70"> (shown, not used — it made the model worse)</span>
+                <span className="text-muted-foreground/70">
+                  {" "}
+                  (shown, not used — it made the model worse)
+                </span>
               </>
             )}
             {m.scoreline && <> · {m.scoreline}</>}

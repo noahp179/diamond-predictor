@@ -451,8 +451,7 @@ function featuresFor(
   m: Raw,
 ): Record<string, number> {
   const wr = (p: PlayerState) => (p.w + K_FORM * 0.5) / (p.n + K_FORM);
-  const swr = (p: PlayerState) =>
-    (p.wSurf[surf] + K_FORM * 0.5) / (p.nSurf[surf] + K_FORM);
+  const swr = (p: PlayerState) => (p.wSurf[surf] + K_FORM * 0.5) / (p.nSurf[surf] + K_FORM);
   const form = (p: PlayerState) => {
     const d = p.last.slice(-10);
     return d.length ? d.reduce((s, v) => s + v, 0) / d.length : 0.5;
@@ -558,7 +557,10 @@ export async function tennisSlate(slug: TourSlug, date: string): Promise<TennisS
 
   const tournaments = [
     ...new Map(
-      today.map((m) => [m.tournamentId, { id: m.tournamentId, name: m.tournament, surface: m.surface }]),
+      today.map((m) => [
+        m.tournamentId,
+        { id: m.tournamentId, name: m.tournament, surface: m.surface },
+      ]),
     ).values(),
   ];
 
