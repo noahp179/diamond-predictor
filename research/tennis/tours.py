@@ -236,6 +236,56 @@ SURFACE_PATTERNS: list[tuple[str, str]] = [
     ("bucharest", CLAY),
     ("hamburg european open", CLAY),
     ("swedish open", CLAY),
+    # --- further events confirmed after the first pass; ones I could not place
+    # with confidence are deliberately left off and stay UNKNOWN
+    ("citi open", HARD),                   # Washington
+    ("mifel open", HARD),                  # Los Cabos
+    ("sydney tennis classic", HARD),
+    ("st petersburg open", HARD),          # indoor
+    ("mercedes cup", GRASS),               # Stuttgart, grass since 2015
+    ("dove men+care", CLAY),               # Chile
+    ("abierto gnp seguros", HARD),         # Monterrey
+    ("abierto tampico", HARD),
+    ("open bls de limoges", HARD),         # indoor
+    ("rouen métropole", HARD),             # indoor
+    ("angers loire", HARD),                # indoor
+    ("montreux", CLAY),
+    ("puerto vallarta", HARD),
+    ("guadalajara 125", HARD),
+    ("queretaro open", HARD),
+    ("san luis potosi", HARD),
+    ("aguascalientes", HARD),
+    ("banorte tennis open", HARD),
+    ("cancun tennis open", HARD),
+    ("dow tennis classic", HARD),          # Midland, indoor
+    ("austin 125", HARD),
+    ("atx", HARD),
+    ("chicago women", HARD),
+    ("golden gate open", HARD),
+    ("thoreau tennis open", HARD),
+    ("odlum brown vanopen", HARD),         # Vancouver
+    ("charleston 125", CLAY),
+    ("jinan open", HARD),
+    ("changsha open", HARD),
+    ("huzhou open", HARD),
+    ("jingshan", HARD),
+    ("hong kong 125", HARD),
+    ("samsun open", HARD),
+    ("megasaray", CLAY),                   # Antalya clay swing
+    ("unicredit iasi", CLAY),
+    ("citta di grado", CLAY),
+    ("internazionali di calabria", CLAY),
+    ("delta motors tolentino", CLAY),
+    ("roveretopen", CLAY),
+    ("open delle puglie", CLAY),
+    ("atv bancomat", CLAY),
+    ("creand-andorrà", CLAY),
+    ("oeiras jamor", CLAY),
+    ("engie open", CLAY),
+    ("río ladies open", CLAY),
+    ("l&t mumbai", HARD),
+    ("kia open", HARD),
+    ("livesport prague", CLAY),
 ]
 # Longest first so a short pattern cannot shadow a longer, more specific one.
 SURFACE_PATTERNS.sort(key=lambda kv: -len(kv[0]))
