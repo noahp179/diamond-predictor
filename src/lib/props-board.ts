@@ -9,10 +9,17 @@
  *
  * So the "Top picks" view shows each player once, at the rung with the largest
  * edge over that market's base rate — the number the board already ranks by and
- * prints on every row. Per-market tabs are deliberately exempt: asking for "2+
- * shots" should list every player at 2+, which is a different question.
+ * prints on every row. Per-market tabs are deliberately exempt: asking for "6+
+ * strikeouts" or "2+ shots" should list every player at that exact number, which
+ * is a different question.
  *
- * Sport-agnostic on purpose. MLB player ids are numbers and ESPN's are strings,
+ * The same rule the parlay follows, differing only in which rung represents a
+ * player. The parlay optimises for surviving to the last leg, so it takes the
+ * SAFEST rung; a board ranks by edge and prints that edge on every row, so it
+ * takes the BIGGEST-EDGE rung. Each surface picks the rung its own number is
+ * about.
+ *
+ * Sport-agnostic on purpose: MLB player ids are numbers and ESPN's are strings,
  * so the key type is left open.
  */
 

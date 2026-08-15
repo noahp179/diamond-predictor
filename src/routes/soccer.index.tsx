@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { SiteNav } from "@/components/SiteNav";
+import { AppShell } from "@/components/AppShell";
 import { LEAGUES } from "@/lib/soccer-leagues";
 import matchModels from "@/lib/soccer-match-model.json";
 
@@ -47,75 +47,55 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
 function SoccerIndex() {
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-6 px-6 py-10">
-          <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-              Diamond Edge · Soccer
-            </div>
-            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">Five Leagues</h1>
-            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-              Europe's big five, each with its own match model and its own set of player-prop
-              models. Nothing is shared between them: draw rates run from 23.9% in England to 27.4%
-              in Italy, so a calibration borrowed across borders would be wrong at both ends. Every
-              number below is from seasons the model never trained on.
-            </p>
-          </div>
-          <SiteNav current="soccer" />
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="grid gap-4 md:grid-cols-2">
-          {LEAGUES.map((l) => {
-            const m = MODELS[l.slug];
-            return (
-              <Link
-                key={l.slug}
-                to="/soccer/$league"
-                params={{ league: l.slug }}
-                className="border border-border bg-card p-5 transition-colors hover:border-primary"
-              >
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="font-display text-3xl">{l.name}</div>
-                  <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                    {l.country}
-                  </div>
+    <AppShell
+      sport="soccer"
+      eyebrow="Diamond Edge · Soccer"
+      title="Five Leagues"
+      blurb="Europe's big five, each with its own match model and its own set of player-prop models. Nothing is shared between them: draw rates run from 23.9% in England to 27.4% in Italy, so a calibration borrowed across borders would be wrong at both ends. Every number below is from seasons the model never trained on."
+      footerNote="Data · ESPN soccer API · Not affiliated with any league"
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        {LEAGUES.map((l) => {
+          const m = MODELS[l.slug];
+          return (
+            <Link
+              key={l.slug}
+              to="/soccer/$league"
+              params={{ league: l.slug }}
+              className="border border-border bg-card p-5 transition-colors hover:border-primary"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="font-display text-3xl">{l.name}</div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                  {l.country}
                 </div>
-                {m && (
-                  <>
-                    <div className="mt-4 grid grid-cols-3 gap-px bg-border">
-                      <Cell label="RPS" value={m.backtest.rps.toFixed(4)} />
-                      <Cell label="Called right" value={pct(m.backtest.acc)} />
-                      <Cell label="Test matches" value={m.backtest.n.toLocaleString()} />
-                    </div>
-                    <div className="mt-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                      home {pct(m.priors.home)} · draw {pct(m.priors.draw)} · away{" "}
-                      {pct(m.priors.away)} · {m.priors.goals.toFixed(2)} goals/match
-                    </div>
-                  </>
-                )}
-              </Link>
-            );
-          })}
-        </div>
+              </div>
+              {m && (
+                <>
+                  <div className="mt-4 grid grid-cols-3 gap-px bg-border">
+                    <Cell label="RPS" value={m.backtest.rps.toFixed(4)} />
+                    <Cell label="Called right" value={pct(m.backtest.acc)} />
+                    <Cell label="Test matches" value={m.backtest.n.toLocaleString()} />
+                  </div>
+                  <div className="mt-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                    home {pct(m.priors.home)} · draw {pct(m.priors.draw)} · away{" "}
+                    {pct(m.priors.away)} · {m.priors.goals.toFixed(2)} goals/match
+                  </div>
+                </>
+              )}
+            </Link>
+          );
+        })}
+      </div>
 
-        <div className="mt-8 border border-border bg-card p-5 font-mono text-[11px] text-muted-foreground">
-          RPS is the ranked probability score — the three-way equivalent of Brier, and the right
-          metric for a market whose outcomes are ordered home &gt; draw &gt; away. Lower is better;
-          always predicting the league's base rates scores about 0.465. Accuracy is shown because it
-          is familiar, not because it is the better measure: a model can gain accuracy while getting
-          worse at pricing, which is what RPS catches and accuracy does not.
-        </div>
-      </main>
-
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Data · ESPN soccer API · Not affiliated with any league
-        </div>
-      </footer>
-    </div>
+      <div className="mt-8 border border-border bg-card p-5 font-mono text-[11px] text-muted-foreground">
+        RPS is the ranked probability score — the three-way equivalent of Brier, and the right
+        metric for a market whose outcomes are ordered home &gt; draw &gt; away. Lower is better;
+        always predicting the league's base rates scores about 0.465. Accuracy is shown because it
+        is familiar, not because it is the better measure: a model can gain accuracy while getting
+        worse at pricing, which is what RPS catches and accuracy does not.
+      </div>
+    </AppShell>
   );
 }
 

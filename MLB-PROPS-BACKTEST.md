@@ -230,7 +230,7 @@ absolute number, is what a prop model is for.
 
 ## The parlay: which legs go on the slip
 
-The Best Odds page builds a daily parlay from these models. Two rules, and
+The Recommended page (`/mlb/recommended`) builds a daily parlay from these models. Two rules, and
 neither of them is the price:
 
 1. **A leg qualifies on confidence alone.** If the model clears the bar, the leg
@@ -431,7 +431,7 @@ every strikeout market it is the starter's K/BF and how many batters he faces.
 
 ## What shipped
 
-The **Player Props** tab on MLB (`/props`, `src/components/MlbPropsView.tsx`):
+The **Player Props** tab on MLB (`/mlb/props`, `src/components/MlbPropsView.tsx`):
 
 - Every game on the slate with its top picks across the sixteen markets, ranked
   by edge over an average starter, with a per-market filter (both full ladders
@@ -484,4 +484,4 @@ same rows the model trained on — in ~3s for a 15-game slate.
 | `research/mlb-props/parlay_backtest.py` | Parlay rules replayed on the 2026 hold-out |
 | `src/lib/mlb-parlay.ts` | Leg selection: confidence bar + implication collapse |
 | `scripts/test-parlay.ts` | 23 checks on the leg-selection rules |
-| `src/components/MlbParlayCard.tsx` | The parlay card on Best Odds |
+| `src/components/MlbParlayCard.tsx` | The parlay card on Recommended |

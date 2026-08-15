@@ -1,156 +1,149 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { getDailyGames, getMetrics } from "@/lib/mlb.functions";
-import { GameCard } from "@/components/GameCard";
-import { SiteNav } from "@/components/SiteNav";
-import { SportTabs } from "@/components/SportTabs";
+import { AppShell } from "@/components/AppShell";
+import { SPORTS, viewsFor, type SportKey } from "@/lib/nav";
+import { LEAGUES } from "@/lib/soccer-leagues";
+import matchModels from "@/lib/soccer-match-model.json";
+
+/**
+ * The hub.
+ *
+ * `/` used to be the MLB slate, from when MLB was the whole site. With four
+ * sports and twenty-eight pages, having one of them silently occupy the root
+ * made the other three feel bolted on, and gave no page that could answer "what
+ * is here?". The MLB slate now lives at /mlb like every other sport's does, and
+ * the root is a map.
+ *
+ * Deliberately static: no data fetching. A hub that waits on four sports' APIs
+ * before it can render anything is a worse front door than one that appears
+ * instantly and links onward. Live numbers belong on the pages that own them.
+ */
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Diamond Edge — MLB Win Probabilities" },
+      { title: "Diamond Edge — Model-backed picks across four sports" },
       {
         name: "description",
         content:
-          "Daily MLB matchups with transparent win-probability predictions powered by live MLB Stats data.",
+          "Win probabilities, player props and parlays for MLB, NFL, NBA and Europe's big five soccer leagues — every model backtested on seasons it never trained on.",
       },
-      { property: "og:title", content: "Diamond Edge — MLB Win Probabilities" },
+      { property: "og:title", content: "Diamond Edge" },
       {
         property: "og:description",
-        content: "Daily MLB matchups with transparent win-probability predictions.",
+        content:
+          "Model-backed picks across MLB, NFL, NBA and five soccer leagues, with the backtests published.",
       },
     ],
   }),
-  component: Index,
+  component: Hub,
 });
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+type MatchModel = { backtest: { rps: number; acc: number; n: number } };
+const SOCCER = matchModels as Record<string, MatchModel>;
 
-function Index() {
-  const [date, setDate] = useState(todayISO());
-  const fetchGames = useServerFn(getDailyGames);
-  const fetchMetrics = useServerFn(getMetrics);
-  const { data, isLoading, isError, isFetching } = useQuery({
-    queryKey: ["games", date],
-    queryFn: () => fetchGames({ data: { date } }),
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
-  });
-  const { data: metrics } = useQuery({
-    queryKey: ["metrics"],
-    queryFn: () => fetchMetrics(),
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
-  });
-
-  const games = data?.games ?? [];
-  const settledToday = games.filter((g) => g.correct != null);
-  const correctToday = settledToday.filter((g) => g.correct).length;
-
+export function Hub() {
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-6 px-6 py-10">
-          <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-              Diamond Edge · MLB Forecast
-            </div>
-            <h1 className="mt-2 font-display text-6xl leading-none md:text-7xl">MLB Slate</h1>
-            <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-              Live matchups from the MLB Stats API. Win probabilities blend season form, home-field,
-              and starting-pitcher ERA into a transparent baseline model.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-3">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="border border-border bg-secondary px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary"
-            />
-            <SiteNav current="mlb" />
-          </div>
-        </div>
-        <div className="border-t border-border bg-secondary/30">
-          <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-border font-mono text-xs uppercase tracking-widest text-muted-foreground md:grid-cols-4">
-            <Stat label="Games" value={`${games.length}`} />
-            <Stat
-              label="Historical accuracy"
-              value={metrics?.accuracy != null ? `${(metrics.accuracy * 100).toFixed(1)}%` : "—"}
-            />
-            <Stat
-              label="Today settled"
-              value={settledToday.length ? `${correctToday}/${settledToday.length}` : "—"}
-            />
-            <Stat
-              label="Source"
-              value={
-                isFetching
-                  ? "Updating…"
-                  : data?.source === "db"
-                    ? "Stored"
-                    : data?.source === "live"
-                      ? "Live"
-                      : "—"
-              }
-            />
-          </div>
-        </div>
-      </header>
+    <AppShell
+      eyebrow="Diamond Edge"
+      title="Every model, in one place"
+      blurb="Win probabilities, player props and parlays across four sports and five soccer leagues. Every model here was scored on seasons it never trained on, and every page shows that number — including where the model loses."
+      footerNote="Data · MLB Stats API · ESPN · Not affiliated with any league"
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        {SPORTS.map((s) => (
+          <SportCard key={s.key} sport={s.key} label={s.label} blurb={s.blurb} />
+        ))}
+      </div>
 
-      <SportTabs sport="mlb" current="slate" />
-
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        {isLoading && <SkeletonGrid />}
-        {isError && (
-          <div className="border border-destructive/40 bg-destructive/10 p-6 font-mono text-sm text-destructive-foreground">
-            Failed to load games. The MLB Stats API may be unreachable. Try refreshing.
-          </div>
-        )}
-        {!isLoading && !isError && games.length === 0 && (
-          <div className="border border-border bg-card p-10 text-center">
-            <div className="font-display text-3xl">No games scheduled</div>
-            <p className="mt-2 font-mono text-sm text-muted-foreground">
-              Pick another date — off-days happen, especially in the All-Star break.
-            </p>
-          </div>
-        )}
-        <div className="grid gap-4 md:grid-cols-2">
-          {games.map((g) => (
-            <GameCard key={g.gameId} game={g} />
-          ))}
+      <section className="mt-10">
+        <h2 className="font-display text-2xl">Soccer, league by league</h2>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          Five separate models, because the leagues are not the same problem. Draws run from 23.9%
+          in England to 27.4% in Italy — one calibration across all of them would be wrong at both
+          ends. RPS is the three-way scoring rule; lower is better, and predicting the base rates
+          scores about 0.465.
+        </p>
+        <div className="mt-4 grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+          {LEAGUES.map((l) => {
+            const m = SOCCER[l.slug];
+            return (
+              <Link
+                key={l.slug}
+                to="/soccer/$league"
+                params={{ league: l.slug }}
+                className="group bg-card px-5 py-4 transition-colors hover:bg-secondary/40"
+              >
+                <div className="font-display text-xl group-hover:text-primary">{l.name}</div>
+                <div className="mt-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                  {l.country}
+                  {m
+                    ? ` · RPS ${m.backtest.rps.toFixed(4)} · ${m.backtest.n.toLocaleString()} tested`
+                    : ""}
+                </div>
+              </Link>
+            );
+          })}
         </div>
-      </main>
+      </section>
 
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Data · MLB Stats API (statsapi.mlb.com) · Not affiliated with MLB
+      <section className="mt-10 border border-border bg-card p-6">
+        <h2 className="font-display text-2xl">How to read anything here</h2>
+        <div className="mt-3 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
+          <p>
+            <strong className="text-foreground">Percentages are calibrated probabilities</strong>,
+            not confidence scores. A market shown at 70% hit close to 70% of the time on the
+            held-out season — that is what calibration means and what the backtests check.
+          </p>
+          <p>
+            <strong className="text-foreground">No prop prices exist in these data sources.</strong>{" "}
+            Where a &quot;fair price&quot; is shown it is what the model&apos;s own probability
+            implies, not a quote. Compare it with your book; if they pay less, the bet is bad
+            however good the pick is.
+          </p>
+          <p>
+            <strong className="text-foreground">Weak markets are shown, not hidden.</strong> Soccer
+            cards sit at 0.61 AUC — barely better than a player&apos;s own rate, because bookings
+            depend on the referee. They are on the page so they can be avoided on purpose.
+          </p>
+          <p>
+            <strong className="text-foreground">One row per player.</strong> Every rung of a ladder
+            is priced separately, so boards and parlays collapse them: a pitcher never appears at
+            5+, 6+ and 7+ strikeouts at once, and a forward never at 1+, 2+ and 3+ shots.
+          </p>
         </div>
-      </footer>
-    </div>
+      </section>
+    </AppShell>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function SportCard({ sport, label, blurb }: { sport: SportKey; label: string; blurb: string }) {
+  const views = viewsFor(sport);
   return (
-    <div className="px-6 py-4">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className="mt-1 font-display text-2xl text-foreground">{value}</div>
-    </div>
-  );
-}
-
-function SkeletonGrid() {
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-56 animate-pulse border border-border bg-card" />
-      ))}
+    <div className="border border-border bg-card p-5 transition-colors hover:border-primary/60">
+      <div className="flex items-baseline justify-between gap-3">
+        <Link
+          to={sport === "soccer" ? "/soccer" : `/${sport}`}
+          className="font-display text-3xl hover:text-primary"
+        >
+          {label}
+        </Link>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          {views.length} pages
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-muted-foreground">{blurb}</p>
+      <div className="mt-4 flex flex-wrap gap-1">
+        {views.map((v) => (
+          <Link
+            key={v.key}
+            to={v.href}
+            className="border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+          >
+            {v.label}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

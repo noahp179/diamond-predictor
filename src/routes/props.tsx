@@ -1,17 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { MlbPropsView } from "@/components/MlbPropsView";
-
+/**
+ * Legacy path from when MLB was the whole site. Redirects to /mlb/props so the
+ * links people saved and shared keep working; see LEGACY_REDIRECTS in
+ * src/lib/nav.ts, which scripts/test-nav.ts checks against the route tree.
+ */
 export const Route = createFileRoute("/props")({
-  head: () => ({
-    meta: [
-      { title: "MLB Player Props — Diamond Edge" },
-      {
-        name: "description",
-        content:
-          "Daily MLB player-prop projections — hits, total bases, home runs, RBI, runs, steals and starter strikeouts, from backtested logistic models.",
-      },
-    ],
-  }),
-  component: () => <MlbPropsView />,
+  beforeLoad: () => {
+    throw redirect({ to: "/mlb/props", replace: true });
+  },
 });
