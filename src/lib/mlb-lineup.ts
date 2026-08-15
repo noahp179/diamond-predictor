@@ -63,12 +63,25 @@ async function fetchHitterRates(
     const splits: any[] = (await res.json())?.stats?.[0]?.splits ?? [];
     if (splits.length === 0) return null;
     const st: any = {};
-    for (const k of ["plateAppearances", "hits", "doubles", "triples", "homeRuns", "baseOnBalls", "hitByPitch", "strikeOuts"])
+    for (const k of [
+      "plateAppearances",
+      "hits",
+      "doubles",
+      "triples",
+      "homeRuns",
+      "baseOnBalls",
+      "hitByPitch",
+      "strikeOuts",
+    ])
       st[k] = splits.reduce((a, s) => a + (s.stat?.[k] ?? 0), 0);
     const pa = st.plateAppearances ?? 0;
     if (pa < HIT_MIN_PA) return null;
-    const reg = (count: number, lgRate: number) => (count + lgRate * HIT_PRIOR_PA) / (pa + HIT_PRIOR_PA);
-    const h = st.hits ?? 0, d2 = st.doubles ?? 0, d3 = st.triples ?? 0, hr = st.homeRuns ?? 0;
+    const reg = (count: number, lgRate: number) =>
+      (count + lgRate * HIT_PRIOR_PA) / (pa + HIT_PRIOR_PA);
+    const h = st.hits ?? 0,
+      d2 = st.doubles ?? 0,
+      d3 = st.triples ?? 0,
+      hr = st.homeRuns ?? 0;
     return {
       pa,
       bb: reg((st.baseOnBalls ?? 0) + (st.hitByPitch ?? 0), lg.bb),
@@ -84,7 +97,9 @@ async function fetchHitterRates(
 }
 
 /** Boxscore batting order (nine person ids) per side, or [] if not posted yet. */
-export async function fetchBattingOrders(gamePk: number): Promise<{ home: number[]; away: number[] }> {
+export async function fetchBattingOrders(
+  gamePk: number,
+): Promise<{ home: number[]; away: number[] }> {
   try {
     const res = await fetchWithTimeout(`${STATS_API}/game/${gamePk}/boxscore`, 20_000);
     if (!res.ok) return { home: [], away: [] };
@@ -114,7 +129,10 @@ export async function fetchHandedness(
   for (let i = 0; i < need.length; i += 40) {
     const chunk = need.slice(i, i + 40);
     try {
-      const res = await fetchWithTimeout(`${STATS_API}/people?personIds=${chunk.join(",")}`, 20_000);
+      const res = await fetchWithTimeout(
+        `${STATS_API}/people?personIds=${chunk.join(",")}`,
+        20_000,
+      );
       if (!res.ok) continue;
       const json: any = await res.json();
       for (const p of json?.people ?? []) {
@@ -138,7 +156,15 @@ function platoonAdvantage(bat: string, hand: string): boolean {
 function applyPlatoon(r: BattingRates, adv: boolean): BattingRates {
   const ob = adv ? PLATOON_ON_BASE_ADV : PLATOON_ON_BASE_DIS;
   const so = adv ? PLATOON_SO_ADV : PLATOON_SO_DIS;
-  return { ...r, bb: r.bb * ob, b1: r.b1 * ob, b2: r.b2 * ob, b3: r.b3 * ob, hr: r.hr * ob, so: r.so * so };
+  return {
+    ...r,
+    bb: r.bb * ob,
+    b1: r.b1 * ob,
+    b2: r.b2 * ob,
+    b3: r.b3 * ob,
+    hr: r.hr * ob,
+    so: r.so * so,
+  };
 }
 
 /** PA-share-weighted blend of the (up to nine) usable hitters into one line. */
@@ -151,12 +177,24 @@ function weightedLineup(rates: Array<BattingRates | null>): BattingRates | null 
     usable++;
     const w = SLOT_PA[Math.min(slot, SLOT_PA.length - 1)];
     W += w;
-    acc.bb += w * r.bb; acc.so += w * r.so; acc.b1 += w * r.b1;
-    acc.b2 += w * r.b2; acc.b3 += w * r.b3; acc.hr += w * r.hr;
+    acc.bb += w * r.bb;
+    acc.so += w * r.so;
+    acc.b1 += w * r.b1;
+    acc.b2 += w * r.b2;
+    acc.b3 += w * r.b3;
+    acc.hr += w * r.hr;
     acc.pa += r.pa;
   });
   if (usable < 5 || W === 0) return null;
-  return { pa: acc.pa, bb: acc.bb / W, so: acc.so / W, b1: acc.b1 / W, b2: acc.b2 / W, b3: acc.b3 / W, hr: acc.hr / W };
+  return {
+    pa: acc.pa,
+    bb: acc.bb / W,
+    so: acc.so / W,
+    b1: acc.b1 / W,
+    b2: acc.b2 / W,
+    b3: acc.b3 / W,
+    hr: acc.hr / W,
+  };
 }
 
 export interface LineupSide {
@@ -233,15 +271,20 @@ export async function buildLineupOffenses(
 
   // 4. Environment normalization: re-center each variant so the slate's mean
   //    equals the team-line league mean, component by component (fix #3).
-  const normalize = (pick: (s: LineupSide) => BattingRates | null, write: (s: LineupSide, r: BattingRates) => void) => {
+  const normalize = (
+    pick: (s: LineupSide) => BattingRates | null,
+    write: (s: LineupSide, r: BattingRates) => void,
+  ) => {
     const lines: BattingRates[] = [];
     for (const v of raw.values()) {
-      const h = pick(v.home), a = pick(v.away);
+      const h = pick(v.home),
+        a = pick(v.away);
       if (h) lines.push(h);
       if (a) lines.push(a);
     }
     if (lines.length < 6) return; // tiny slates: leave un-normalized rather than over-correct
-    const mean = (f: (r: BattingRates) => number) => lines.reduce((s, r) => s + f(r), 0) / lines.length;
+    const mean = (f: (r: BattingRates) => number) =>
+      lines.reduce((s, r) => s + f(r), 0) / lines.length;
     const ratio = {
       bb: lg.bb / (mean((r) => r.bb) || lg.bb),
       so: lg.so / (mean((r) => r.so) || lg.so),
@@ -256,14 +299,24 @@ export async function buildLineupOffenses(
         if (!r) continue;
         write(s, {
           pa: r.pa,
-          bb: r.bb * ratio.bb, so: r.so * ratio.so, b1: r.b1 * ratio.b1,
-          b2: r.b2 * ratio.b2, b3: r.b3 * ratio.b3, hr: r.hr * ratio.hr,
+          bb: r.bb * ratio.bb,
+          so: r.so * ratio.so,
+          b1: r.b1 * ratio.b1,
+          b2: r.b2 * ratio.b2,
+          b3: r.b3 * ratio.b3,
+          hr: r.hr * ratio.hr,
         });
       }
     }
   };
-  normalize((s) => s.line, (s, r) => (s.line = r));
-  normalize((s) => s.lineNoPlatoon, (s, r) => (s.lineNoPlatoon = r));
+  normalize(
+    (s) => s.line,
+    (s, r) => (s.line = r),
+  );
+  normalize(
+    (s) => s.lineNoPlatoon,
+    (s, r) => (s.lineNoPlatoon = r),
+  );
 
   return raw;
 }

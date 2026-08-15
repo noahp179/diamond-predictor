@@ -24,7 +24,8 @@ const C = model.constants;
 /** Standardize → logistic → Platt calibration, matching export_model.py. */
 function infer(x: number[]): number {
   let z = model.intercept;
-  for (let i = 0; i < model.coef.length; i++) z += model.coef[i] * ((x[i] - model.mean[i]) / model.std[i]);
+  for (let i = 0; i < model.coef.length; i++)
+    z += model.coef[i] * ((x[i] - model.mean[i]) / model.std[i]);
   const raw = 1 / (1 + Math.exp(-z));
   const lg = Math.log(raw / (1 - raw));
   return 1 / (1 + Math.exp(-(model.platt_a * lg + model.platt_b)));
@@ -40,15 +41,31 @@ const SCHEDULE_TTL = 6 * 60 * 60 * 1000;
 const ODDS_TTL = 30 * 60 * 1000;
 
 async function getJson(url: string, ms = 10000): Promise<unknown> {
-  const res = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(ms) });
+  const res = await fetch(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(ms),
+  });
   if (!res.ok) throw new Error(`ESPN ${res.status}: ${url}`);
   return res.json();
 }
 
 type BoxPlayer = {
-  id: string; name: string; car: number; tgt: number; ry: number; cy: number; rtd: number; ctd: number;
+  id: string;
+  name: string;
+  car: number;
+  tgt: number;
+  ry: number;
+  cy: number;
+  rtd: number;
+  ctd: number;
 };
-type BoxTeam = { abbr: string; isHome: boolean; players: BoxPlayer[]; rushTd: number; recTd: number };
+type BoxTeam = {
+  abbr: string;
+  isHome: boolean;
+  players: BoxPlayer[];
+  rushTd: number;
+  recTd: number;
+};
 type ParsedSummary = { date: string; teams: BoxTeam[] };
 
 const num = (v: unknown) => {
@@ -72,13 +89,23 @@ function parseSummary(d: any): ParsedSummary | null {
         const id = a?.athlete?.id;
         if (!id) continue;
         const p = byId.get(id) ?? {
-          id, name: a.athlete.displayName ?? "", car: 0, tgt: 0, ry: 0, cy: 0, rtd: 0, ctd: 0,
+          id,
+          name: a.athlete.displayName ?? "",
+          car: 0,
+          tgt: 0,
+          ry: 0,
+          cy: 0,
+          rtd: 0,
+          ctd: 0,
         };
         const s = Object.fromEntries(keys.map((k, i) => [k, a.stats?.[i]]));
         if (cat.name === "rushing") {
-          p.car = num(s.rushingAttempts); p.ry = num(s.rushingYards); p.rtd = num(s.rushingTouchdowns);
+          p.car = num(s.rushingAttempts);
+          p.ry = num(s.rushingYards);
+          p.rtd = num(s.rushingTouchdowns);
         } else if (cat.name === "receiving") {
-          p.tgt = num(s.receivingTargets); p.cy = num(s.receivingYards);
+          p.tgt = num(s.receivingTargets);
+          p.cy = num(s.receivingYards);
           p.ctd = num(s.receivingTouchdowns);
         } else continue;
         byId.set(id, p);
@@ -86,7 +113,9 @@ function parseSummary(d: any): ParsedSummary | null {
     }
     const players = [...byId.values()];
     teams.push({
-      abbr, isHome: abbr === homeAbbr, players,
+      abbr,
+      isHome: abbr === homeAbbr,
+      players,
       rushTd: players.reduce((s, p) => s + p.rtd, 0),
       recTd: players.reduce((s, p) => s + p.ctd, 0),
     });
@@ -99,7 +128,11 @@ async function fetchSummary(eventId: number): Promise<ParsedSummary | null> {
   if (c && Date.now() - c.at < SUMMARY_TTL) return c.v;
   let v: ParsedSummary | null = null;
   try {
-    v = parseSummary(await getJson(`https://site.api.espn.com/apis/site/v2/sports/${NFL}/summary?event=${eventId}`));
+    v = parseSummary(
+      await getJson(
+        `https://site.api.espn.com/apis/site/v2/sports/${NFL}/summary?event=${eventId}`,
+      ),
+    );
   } catch (err) {
     console.error(`[nfl-td summary] ${eventId}:`, err);
   }
@@ -131,7 +164,9 @@ async function fetchTeamCompletedIds(teamId: string, season: number): Promise<nu
 /** Market total + home spread for a game. The game summary's `pickcenter`
  *  carries `overUnder` and the home `spread` for both upcoming and past games
  *  (the core odds feed empties out once a game is old), so read it from there. */
-async function fetchTotalSpread(eventId: number): Promise<{ total: number; homeSpread: number } | null> {
+async function fetchTotalSpread(
+  eventId: number,
+): Promise<{ total: number; homeSpread: number } | null> {
   const c = oddsCache.get(eventId);
   if (c && Date.now() - c.at < ODDS_TTL) return c.v;
   let v: { total: number; homeSpread: number } | null = null;
@@ -154,18 +189,46 @@ async function fetchTotalSpread(eventId: number): Promise<{ total: number; homeS
 
 // ------------------------------------------------------------ aggregation
 type PlayerAgg = {
-  id: string; name: string; gp: number; car: number; tgt: number; ry: number; cy: number;
-  rtd: number; ctd: number; scg: number;
+  id: string;
+  name: string;
+  gp: number;
+  car: number;
+  tgt: number;
+  ry: number;
+  cy: number;
+  rtd: number;
+  ctd: number;
+  scg: number;
 };
 type TeamAgg = {
   players: Map<string, PlayerAgg>;
-  gp: number; car: number; tgt: number; rtd: number; ctd: number; dRtd: number; dCtd: number;
+  gp: number;
+  car: number;
+  tgt: number;
+  rtd: number;
+  ctd: number;
+  dRtd: number;
+  dCtd: number;
 };
 
 /** Season-to-date usage + team offense/defense, from this team's completed
  *  games strictly before `beforeDate`. */
-async function aggregateTeam(teamAbbr: string, teamId: string, season: number, beforeDate: string): Promise<TeamAgg> {
-  const agg: TeamAgg = { players: new Map(), gp: 0, car: 0, tgt: 0, rtd: 0, ctd: 0, dRtd: 0, dCtd: 0 };
+async function aggregateTeam(
+  teamAbbr: string,
+  teamId: string,
+  season: number,
+  beforeDate: string,
+): Promise<TeamAgg> {
+  const agg: TeamAgg = {
+    players: new Map(),
+    gp: 0,
+    car: 0,
+    tgt: 0,
+    rtd: 0,
+    ctd: 0,
+    dRtd: 0,
+    dCtd: 0,
+  };
   const ids = await fetchTeamCompletedIds(teamId, season);
   const summaries = await Promise.all(ids.map(fetchSummary));
   for (const s of summaries) {
@@ -174,15 +237,35 @@ async function aggregateTeam(teamAbbr: string, teamId: string, season: number, b
     const opp = s.teams.find((t) => t.abbr !== teamAbbr);
     if (!mine) continue;
     agg.gp += 1;
-    agg.rtd += mine.rushTd; agg.ctd += mine.recTd;
-    if (opp) { agg.dRtd += opp.rushTd; agg.dCtd += opp.recTd; }
+    agg.rtd += mine.rushTd;
+    agg.ctd += mine.recTd;
+    if (opp) {
+      agg.dRtd += opp.rushTd;
+      agg.dCtd += opp.recTd;
+    }
     for (const p of mine.players) {
-      agg.car += p.car; agg.tgt += p.tgt;
+      agg.car += p.car;
+      agg.tgt += p.tgt;
       const a = agg.players.get(p.id) ?? {
-        id: p.id, name: p.name, gp: 0, car: 0, tgt: 0, ry: 0, cy: 0, rtd: 0, ctd: 0, scg: 0,
+        id: p.id,
+        name: p.name,
+        gp: 0,
+        car: 0,
+        tgt: 0,
+        ry: 0,
+        cy: 0,
+        rtd: 0,
+        ctd: 0,
+        scg: 0,
       };
-      a.gp += 1; a.car += p.car; a.tgt += p.tgt; a.ry += p.ry; a.cy += p.cy;
-      a.rtd += p.rtd; a.ctd += p.ctd; a.scg += p.rtd + p.ctd > 0 ? 1 : 0;
+      a.gp += 1;
+      a.car += p.car;
+      a.tgt += p.tgt;
+      a.ry += p.ry;
+      a.cy += p.cy;
+      a.rtd += p.rtd;
+      a.ctd += p.ctd;
+      a.scg += p.rtd + p.ctd > 0 ? 1 : 0;
       a.name = p.name || a.name;
       agg.players.set(p.id, a);
     }
@@ -192,8 +275,13 @@ async function aggregateTeam(teamAbbr: string, teamId: string, season: number, b
 
 // -------------------------------------------------------------- features
 function featureVector(
-  p: PlayerAgg, team: TeamAgg, oppDef: TeamAgg, isHome: boolean, impliedTotal: number,
-  total: number, margin: number,
+  p: PlayerAgg,
+  team: TeamAgg,
+  oppDef: TeamAgg,
+  isHome: boolean,
+  impliedTotal: number,
+  total: number,
+  margin: number,
 ): number[] {
   return [
     team.car ? p.car / team.car : 0, // carry_share
@@ -235,7 +323,10 @@ export type TdGame = {
   picks: TdPick[]; // top scorers across both teams, most likely first
 };
 
-function confidenceFor(pick: { prob: number; gp: number; touches: number }, secondProb: number): number {
+function confidenceFor(
+  pick: { prob: number; gp: number; touches: number },
+  secondProb: number,
+): number {
   const sep = Math.min(1, Math.max(0, (pick.prob - secondProb) / (pick.prob + 1e-9) / 0.5));
   const maturity = Math.min(1, pick.gp / 6);
   const volume = Math.min(1, pick.touches / 18);
@@ -243,7 +334,9 @@ function confidenceFor(pick: { prob: number; gp: number; touches: number }, seco
 }
 
 /** Top touchdown-scorer picks for every game on `date`. */
-export async function tdScorersSlate(date: string): Promise<{ season: number | null; games: TdGame[] }> {
+export async function tdScorersSlate(
+  date: string,
+): Promise<{ season: number | null; games: TdGame[] }> {
   const season = seasonOf("nfl", date);
   const slate = await fetchScoreboard("nfl", date);
   if (season == null || slate.length === 0) return { season, games: [] };
@@ -273,7 +366,8 @@ export async function tdScorersSlate(date: string): Promise<{ season: number | n
           const prob = infer(x);
           cand.push({
             pick: { playerId: p.id, player: p.name, team: abbr, prob, confidence: 0 },
-            gp: p.gp, touches: (p.car + p.tgt) / p.gp,
+            gp: p.gp,
+            touches: (p.car + p.tgt) / p.gp,
           });
         }
       }
@@ -288,8 +382,13 @@ export async function tdScorersSlate(date: string): Promise<{ season: number | n
         ),
       }));
       return {
-        gameId: g.id, date: g.date, home: g.home.abbr, away: g.away.abbr,
-        matchup: `${g.away.abbr} @ ${g.home.abbr}`, total: odds?.total ?? null, picks,
+        gameId: g.id,
+        date: g.date,
+        home: g.home.abbr,
+        away: g.away.abbr,
+        matchup: `${g.away.abbr} @ ${g.home.abbr}`,
+        total: odds?.total ?? null,
+        picks,
       };
     }),
   );

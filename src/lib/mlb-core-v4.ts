@@ -56,7 +56,7 @@ export interface PredictInputsV4 {
 }
 
 export interface PredictedGameV4 extends PredictedGame {
-  v4WinProb: number;    // home win probability from v4 model
+  v4WinProb: number; // home win probability from v4 model
   v4Rationale: string[];
   features: V4Features;
 }
@@ -68,10 +68,7 @@ export interface PredictedGameV4 extends PredictedGame {
  * Processes `batchSize` tasks concurrently, waits for each batch to complete
  * before starting the next. Eliminates the burst-all-at-once pattern of v0.3.
  */
-export async function batchedAll<T>(
-  tasks: Array<() => Promise<T>>,
-  batchSize = 8,
-): Promise<T[]> {
+export async function batchedAll<T>(tasks: Array<() => Promise<T>>, batchSize = 8): Promise<T[]> {
   const results: T[] = [];
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize).map((t) => t());
@@ -148,11 +145,15 @@ export function predictV4({
   } else if (ht != null) {
     const adj = ht * 0.08;
     lo += adj;
-    rationale.push(`Home starter ERA ${homeEra!.toFixed(2)} vs lg 4.20 → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`);
+    rationale.push(
+      `Home starter ERA ${homeEra!.toFixed(2)} vs lg 4.20 → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`,
+    );
   } else if (at != null) {
     const adj = -at * 0.08;
     lo += adj;
-    rationale.push(`Away starter ERA ${awayEra!.toFixed(2)} vs lg 4.20 → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`);
+    rationale.push(
+      `Away starter ERA ${awayEra!.toFixed(2)} vs lg 4.20 → ${adj >= 0 ? "+" : ""}${adj.toFixed(2)} logit`,
+    );
   }
 
   // ── 5. Park factor (same as v0.3) ────────────────────────────────────────
@@ -228,7 +229,7 @@ export function predictV4({
   if (h2h.totalGames >= 2) {
     const h2hPct = h2h.homeWins / h2h.totalGames;
     const confidence = Math.min(1.0, h2h.totalGames / 6);
-    const h2hAdj = (h2hPct - 0.5) * 0.10 * confidence;
+    const h2hAdj = (h2hPct - 0.5) * 0.1 * confidence;
     lo += h2hAdj;
     rationale.push(
       `H2H ${h2h.homeWins}-${h2h.awayWins} (${h2h.totalGames}g) → ${h2hAdj >= 0 ? "+" : ""}${h2hAdj.toFixed(2)} logit`,
@@ -246,17 +247,12 @@ export function predictV4({
  * Fetch all data and compute v0.4 predictions for every game on `date`.
  * Returns PredictedGameV4 objects that extend PredictedGame with v4 fields.
  */
-export async function buildPredictionsV4ForDate(
-  date: string,
-): Promise<PredictedGameV4[]> {
+export async function buildPredictionsV4ForDate(date: string): Promise<PredictedGameV4[]> {
   const season = parseInt(date.slice(0, 4), 10);
 
   // ── Step 1: Schedule + standings in parallel ──────────────────────────────
   const scheduleUrl = `${STATS_API}/schedule?sportId=1&hydrate=probablePitcher,team,venue,linescore&startDate=${date}&endDate=${date}`;
-  const [scheduleRes, standings] = await Promise.all([
-    fetch(scheduleUrl),
-    fetchStandings(season),
-  ]);
+  const [scheduleRes, standings] = await Promise.all([fetch(scheduleUrl), fetchStandings(season)]);
   if (!scheduleRes.ok) throw new Error(`MLB schedule fetch failed: ${scheduleRes.status}`);
   const scheduleJson: any = await scheduleRes.json();
   const games: any[] = scheduleJson?.dates?.[0]?.games ?? [];
@@ -292,10 +288,18 @@ export async function buildPredictionsV4ForDate(
   const l5Map = new Map<number, L5Record>();
 
   const teamTasks = Array.from(teamIds).flatMap((id) => [
-    async () => { teamHittingMap.set(id, await fetchTeamHitting(id, season)); },
-    async () => { teamPitchingMap.set(id, await fetchTeamPitching(id, season)); },
-    async () => { restMap.set(id, await fetchRestDays(id, date)); },
-    async () => { l5Map.set(id, await fetchLastNGames(id, date, 5)); },
+    async () => {
+      teamHittingMap.set(id, await fetchTeamHitting(id, season));
+    },
+    async () => {
+      teamPitchingMap.set(id, await fetchTeamPitching(id, season));
+    },
+    async () => {
+      restMap.set(id, await fetchRestDays(id, date));
+    },
+    async () => {
+      l5Map.set(id, await fetchLastNGames(id, date, 5));
+    },
   ]);
   await batchedAll(teamTasks, 8);
 
@@ -331,7 +335,11 @@ export async function buildPredictionsV4ForDate(
       awayRest: restMap.get(awayTeam.id) ?? { daysSinceLastGame: 1 },
       homeL5: l5Map.get(homeTeam.id) ?? { wins: 0, losses: 0, pct: 0.5 },
       awayL5: l5Map.get(awayTeam.id) ?? { wins: 0, losses: 0, pct: 0.5 },
-      h2h: h2hMap.get(`${homeTeam.id}-${awayTeam.id}`) ?? { homeWins: 0, awayWins: 0, totalGames: 0 },
+      h2h: h2hMap.get(`${homeTeam.id}-${awayTeam.id}`) ?? {
+        homeWins: 0,
+        awayWins: 0,
+        totalGames: 0,
+      },
     };
 
     // v0.3 prediction
@@ -349,12 +357,7 @@ export async function buildPredictionsV4ForDate(
       features: v4Features,
     });
 
-    const makeSide = (
-      raw: any,
-      st: typeof hs,
-      pitcher: any,
-      ps: typeof hps,
-    ): TeamSide => ({
+    const makeSide = (raw: any, st: typeof hs, pitcher: any, ps: typeof hps): TeamSide => ({
       id: raw.id,
       name: raw.name,
       abbreviation: raw.abbreviation ?? raw.teamCode?.toUpperCase() ?? "",
@@ -379,7 +382,12 @@ export async function buildPredictionsV4ForDate(
     const isFinal = /final|game over|completed/i.test(statusStr);
     let winner: "home" | "away" | null = null;
     let correct: boolean | null = null;
-    if (isFinal && typeof homeScore === "number" && typeof awayScore === "number" && homeScore !== awayScore) {
+    if (
+      isFinal &&
+      typeof homeScore === "number" &&
+      typeof awayScore === "number" &&
+      homeScore !== awayScore
+    ) {
       winner = homeScore > awayScore ? "home" : "away";
       correct = (v4.home >= 0.5 ? "home" : "away") === winner;
     }
@@ -391,7 +399,7 @@ export async function buildPredictionsV4ForDate(
       venue: g.venue?.name ?? "—",
       home: makeSide(homeTeam, hs, hp, hps),
       away: makeSide(awayTeam, as, ap, aps),
-      homeWinProb: v3.home,       // v0.3 probability (backward-compat)
+      homeWinProb: v3.home, // v0.3 probability (backward-compat)
       awayWinProb: v3.away,
       rationale: v3.rationale,
       homeScore,

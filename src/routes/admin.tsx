@@ -40,10 +40,10 @@ function Admin() {
     <div className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="font-display text-3xl">Pipeline admin</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Manually trigger ingest + settle + recompute metrics — the same code path the daily
-        Vercel cron runs. Self-heals up to 10 missing days in one call. Requires the{" "}
-        <code className="font-mono">CRON_SECRET</code> from Vercel → Project Settings →
-        Environment Variables.
+        Manually trigger ingest + settle + recompute metrics — the same code path the daily Vercel
+        cron runs. Self-heals up to 10 missing days in one call. Requires the{" "}
+        <code className="font-mono">CRON_SECRET</code> from Vercel → Project Settings → Environment
+        Variables.
       </p>
       <div className="mt-6 space-y-3">
         <input
