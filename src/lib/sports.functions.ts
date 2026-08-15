@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { withViewer } from "./viewer";
+import { canSeeProps, redact, type Tier } from "./entitlements";
 import {
   bestOddsSlate,
   predictSlate,
@@ -55,13 +57,39 @@ async function buildSlate(sport: Sport, date: string) {
   }
 }
 
+/**
+ * Redact the games a tier may not see, before the payload is built.
+ *
+ * Confidence for a two-way market is distance from a coin flip: a 22% home side
+ * is as confident a call as a 78% one, stated about the away side.
+ */
+function gateGames<T extends { homeWinProb?: number | null }>(games: T[], tier: Tier) {
+  const g = redact(
+    games,
+    tier,
+    (x) => (x.homeWinProb == null ? null : Math.max(x.homeWinProb, 1 - x.homeWinProb)),
+    (x) => ({ ...x, homeWinProb: null }),
+  );
+  return { games: g.items, lockedCount: g.lockedCount, allowance: g.allowance };
+}
+
 export const getNbaSlate = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildSlate("nba", data?.date ?? todayISO()));
+  .handler(async ({ data, context }) => {
+    const slate = await buildSlate("nba", data?.date ?? todayISO());
+    const { tier } = context.viewer;
+    return { ...slate, ...gateGames(slate.games, tier), tier };
+  });
 
 export const getNflSlate = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildSlate("nfl", data?.date ?? todayISO()));
+  .handler(async ({ data, context }) => {
+    const slate = await buildSlate("nfl", data?.date ?? todayISO());
+    const { tier } = context.viewer;
+    return { ...slate, ...gateGames(slate.games, tier), tier };
+  });
 
 // ---------------------------------------------------------------- Recommended
 
@@ -176,9 +204,25 @@ export const getNflTrackRecord = createServerFn({ method: "GET" }).handler(async
 // -------------------------------------------------------------- MLB Props
 
 export const getMlbProps = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const date = data?.date ?? todayISO();
+    const { tier } = context.viewer;
+    // Premium only, always. Nothing is computed and nothing is returned.
+    if (!canSeeProps(tier)) {
+      return {
+        date,
+        games: [],
+        markets: [],
+        season: 0,
+        seasonLabel: "",
+        tier,
+        locked: true as const,
+        note: null,
+        source: "locked" as const,
+      };
+    }
     try {
       const { propsSlate } = await import("./mlb-props.server");
       const { season, games, markets } = await propsSlate(date);
@@ -188,6 +232,8 @@ export const getMlbProps = createServerFn({ method: "GET" })
         markets,
         season,
         seasonLabel: season ? `${season}` : "",
+        tier,
+        locked: false as const,
         note: null as string | null,
         source: "live" as const,
       };
@@ -200,6 +246,8 @@ export const getMlbProps = createServerFn({ method: "GET" })
         season: 0,
         seasonLabel: "",
         note: "MLB Stats API is unreachable right now. Try refreshing in a moment.",
+        tier,
+        locked: false as const,
         source: "error" as const,
       };
     }
@@ -208,9 +256,24 @@ export const getMlbProps = createServerFn({ method: "GET" })
 // --------------------------------------------------------------- TD Scorers
 
 export const getNflTdScorers = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const date = data?.date ?? todayISO();
+    const { tier } = context.viewer;
+    // Touchdown scorers are a player-prop market, so the props rule applies.
+    if (!canSeeProps(tier)) {
+      return {
+        date,
+        games: [],
+        season: 0,
+        seasonLabel: "",
+        tier,
+        locked: true as const,
+        note: null as string | null,
+        source: "locked" as const,
+      };
+    }
     try {
       const { tdScorersSlate } = await import("./nfl-td.server");
       const { season, games } = await tdScorersSlate(date);
@@ -219,6 +282,8 @@ export const getNflTdScorers = createServerFn({ method: "GET" })
         games,
         season,
         seasonLabel: season ? `${season}` : "",
+        tier,
+        locked: false as const,
         note: offseasonNote("nfl", date),
         source: "live" as const,
       };
@@ -230,6 +295,8 @@ export const getNflTdScorers = createServerFn({ method: "GET" })
         season: 0,
         seasonLabel: "",
         note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
+        tier,
+        locked: false as const,
         source: "error" as const,
       };
     }

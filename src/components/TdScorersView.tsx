@@ -2,6 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { PremiumWall } from "@/components/Locked";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getNflTdScorers } from "@/lib/sports.functions";
 
@@ -123,6 +124,8 @@ export function TdScorersView() {
         </StatBar>
       }
     >
+      {!isLoading && data?.locked && <PremiumWall tier={data.tier} title="NFL touchdown scorers" />}
+
       {isLoading && <div className="h-56 animate-pulse border border-border bg-card" />}
       {isError && (
         <div className="border border-destructive/40 bg-destructive/10 p-6 font-mono text-sm text-destructive-foreground">

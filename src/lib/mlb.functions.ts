@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { withViewer } from "./viewer";
+import { predictionAllowance, splitByAllowance } from "./entitlements";
+
 import { buildPredictionsForDate, MODEL_VERSION, type PredictedGame } from "./mlb-core";
 import { buildSimPredictionsForDate, MODEL_VERSION_SIM } from "./mlb-sim";
 import {
@@ -330,9 +333,31 @@ async function attachPickConfidence(
   });
 }
 
+/**
+ * Redact the games this tier may not see. Confidence for a two-way market is
+ * distance from a coin flip, so a 22% home side is as confident a call as a
+ * 78% one — the same conviction, stated about the away side.
+ */
+function gateGames<T extends { homeWinProb: number }>(
+  games: T[],
+  tier: Parameters<typeof predictionAllowance>[0],
+) {
+  const { visible, lockedCount } = splitByAllowance(games, tier, (g) =>
+    Math.max(g.homeWinProb, 1 - g.homeWinProb),
+  );
+  return {
+    games: games.map((g, i) =>
+      visible.has(i) ? { ...g, locked: false } : { ...g, homeWinProb: 0.5, locked: true },
+    ),
+    lockedCount,
+    allowance: predictionAllowance(tier),
+  };
+}
+
 export const getDailyGames = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { runPipelineIfDue } = await import("./mlb-pipeline.server");
     await runPipelineIfDue().catch((err) =>
       console.error("[getDailyGames] runPipelineIfDue failed:", err),
@@ -343,7 +368,15 @@ export const getDailyGames = createServerFn({ method: "GET" })
       console.error("[getDailyGames] attachPickConfidence failed:", err);
       return games;
     });
-    return { date, games: withConf, source };
+    const gated = gateGames(withConf, context.viewer.tier);
+    return {
+      date,
+      games: gated.games,
+      tier: context.viewer.tier,
+      lockedCount: gated.lockedCount,
+      allowance: gated.allowance,
+      source,
+    };
   });
 
 // Aggregate metrics for the dashboard
@@ -790,13 +823,29 @@ function confidenceOf(g: PredictedGame): number {
 // the same canonical game list as Today's Slate and Best Odds (loadGamesForDate)
 // so all three pages always agree on the underlying probabilities.
 export const getRecommendedPicks = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const date = data?.date ?? todayISO();
+    const { tier } = context.viewer;
     const { games: raw, source } = await loadGamesForDate(date);
-    const games = await attachPickConfidence(date, raw).catch(() => raw);
-    const picks = [...games].sort((a, b) => confidenceOf(b) - confidenceOf(a)).slice(0, 3);
-    return { date, games, picks, source, modelVersion: MODEL_VERSION_SIM };
+    const all = await attachPickConfidence(date, raw).catch(() => raw);
+    const gated = gateGames(all, tier);
+    // The three "best game" picks ARE the free allowance — they are the
+    // highest-confidence calls on the slate, which is exactly what a free
+    // account is entitled to. So they are never locked, and the rest of the
+    // slate below them is.
+    const picks = [...all].sort((a, b) => confidenceOf(b) - confidenceOf(a)).slice(0, 3);
+    return {
+      date,
+      games: gated.games,
+      picks,
+      tier,
+      lockedCount: gated.lockedCount,
+      allowance: gated.allowance,
+      source,
+      modelVersion: MODEL_VERSION_SIM,
+    };
   });
 
 export interface GameOdds {
@@ -822,9 +871,11 @@ export interface GameWithOdds {
 // Market odds come from ESPN/DraftKings, cached in `game_odds` and refreshed
 // here for any game that's missing or stale.
 export const getBestOddsPicks = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const date = data?.date ?? todayISO();
+    const { tier } = context.viewer;
     const { games, source } = await loadGamesForDate(date);
     if (games.length === 0) {
       return {
@@ -833,6 +884,9 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
         confidencePicks: [] as GameWithOdds[],
         marketPicks: [] as GameWithOdds[],
         blendPicks: [] as GameWithOdds[],
+        tier,
+        lockedCount: 0,
+        allowance: predictionAllowance(tier),
         source,
         modelVersion: MODEL_VERSION_SIM,
         blendVersion: MODEL_VERSION_BLEND,
@@ -923,12 +977,31 @@ export const getBestOddsPicks = createServerFn({ method: "GET" })
       .sort((a, b) => pickProb(b.blendedHomeProb!) - pickProb(a.blendedHomeProb!))
       .slice(0, 3);
 
+    // Gate AFTER ranking, so the free allowance goes to the strongest calls —
+    // the same three this page was already leading with. A locked entry keeps
+    // its teams and its posted line (the book's number is public) and loses our
+    // probability, which is the part being sold.
+    const { visible } = splitByAllowance(withOdds, tier, (x) => pickProb(x.game.homeWinProb));
+    const lock = (x: GameWithOdds): GameWithOdds & { locked: boolean } =>
+      visible.has(withOdds.indexOf(x))
+        ? { ...x, locked: false }
+        : {
+            ...x,
+            game: { ...x.game, homeWinProb: 0.5 },
+            edge: null,
+            blendedHomeProb: null,
+            locked: true,
+          };
+
     return {
       date,
-      games: withOdds,
-      confidencePicks,
-      marketPicks,
-      blendPicks,
+      games: withOdds.map(lock),
+      confidencePicks: confidencePicks.map(lock),
+      marketPicks: marketPicks.map(lock),
+      blendPicks: blendPicks.map(lock),
+      tier,
+      lockedCount: withOdds.length - visible.size,
+      allowance: predictionAllowance(tier),
       source,
       modelVersion: MODEL_VERSION_SIM,
       blendVersion: MODEL_VERSION_BLEND,

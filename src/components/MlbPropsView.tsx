@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { boardPicks } from "@/lib/props-board";
 import { getMlbProps } from "@/lib/sports.functions";
+import { PremiumWall } from "@/components/Locked";
 
 type Result = Awaited<ReturnType<typeof getMlbProps>>;
 type Game = Result["games"][number];
@@ -139,15 +140,17 @@ export function MlbPropsView() {
         </StatBar>
       }
     >
+      {!isLoading && data?.locked && <PremiumWall tier={data.tier} title="MLB player props" />}
+
       {isLoading && <div className="h-56 animate-pulse border border-border bg-card" />}
       {isError && (
         <div className="border border-destructive/40 bg-destructive/10 p-6 font-mono text-sm text-destructive-foreground">
           Failed to load MLB props. MLB Stats API may be unreachable.
         </div>
       )}
-      {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
+      {!isLoading && !data?.locked && !isError && data?.note && <Note>{data.note}</Note>}
 
-      {!isLoading && !isError && markets.length > 0 && (
+      {!isLoading && !data?.locked && !isError && markets.length > 0 && (
         <div className="mb-6 border border-border bg-card">
           <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-2">
             {[{ key: "all", label: "Top picks", kind: "", base: 0, auc: 0 }, ...markets].map(
@@ -191,7 +194,7 @@ export function MlbPropsView() {
         </div>
       )}
 
-      {!isLoading && !isError && games.length > 0 && (
+      {!isLoading && !data?.locked && !isError && games.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
           {games.map((g) => (
             <GameCard key={g.gameId} game={g} market={market} />
@@ -199,7 +202,7 @@ export function MlbPropsView() {
         </div>
       )}
 
-      {!isLoading && !isError && games.length === 0 && !data?.note && (
+      {!isLoading && !data?.locked && !isError && games.length === 0 && !data?.note && (
         <div className="border border-border bg-card p-10 text-center">
           <div className="font-display text-3xl">No props to project</div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">

@@ -8,6 +8,7 @@ import { StatBar, Stat, Note } from "@/components/SportShell";
 import { getSoccerProps } from "@/lib/soccer.functions";
 import { boardPicks } from "@/lib/props-board";
 import { leagueOf, type LeagueSlug } from "@/lib/soccer-leagues";
+import { PremiumWall } from "@/components/Locked";
 
 export const Route = createFileRoute("/soccer/$league/props")({
   head: ({ params }) => {
@@ -92,6 +93,10 @@ function SoccerPropsPage() {
       }
       footerNote={`Data · ESPN soccer API · per-league logistic prop models`}
     >
+      {!isLoading && data?.locked && (
+        <PremiumWall tier={data.tier} title={`${l.name} player props`} />
+      )}
+
       {isLoading && (
         <>
           <Note>
@@ -107,9 +112,9 @@ function SoccerPropsPage() {
           Failed to load {l.name} props.
         </div>
       )}
-      {!isLoading && data?.note && <Note>{data.note}</Note>}
+      {!isLoading && !data?.locked && data?.note && <Note>{data.note}</Note>}
 
-      {!isLoading && markets.length > 0 && (
+      {!isLoading && !data?.locked && markets.length > 0 && (
         <div className="mb-6 border border-border bg-card">
           <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-2">
             {[{ key: "all", label: "Top picks", auc: 0, base: 0 }, ...markets].map((m) => (
@@ -149,7 +154,7 @@ function SoccerPropsPage() {
         </div>
       )}
 
-      {!isLoading && fixtures.length > 0 && (
+      {!isLoading && !data?.locked && fixtures.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
           {fixtures.map((f) => (
             <div key={f.matchId} className="border border-border bg-card p-5">
@@ -204,7 +209,7 @@ function SoccerPropsPage() {
         </div>
       )}
 
-      {!isLoading && !isError && fixtures.length === 0 && !data?.note && (
+      {!isLoading && !data?.locked && !isError && fixtures.length === 0 && !data?.note && (
         <div className="border border-border bg-card p-10 text-center">
           <div className="font-display text-3xl">No fixtures to project</div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">

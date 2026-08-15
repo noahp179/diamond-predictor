@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
 import { getTennisSlate } from "@/lib/tennis.functions";
 import { tourOf, type TourSlug } from "@/lib/tennis-tours";
+import { Blurred, LockedNumber, UpgradePrompt } from "@/components/Locked";
 
 export const Route = createFileRoute("/tennis/$tour/")({
   head: ({ params }) => {
@@ -108,6 +109,12 @@ function TennisDrawPage() {
         </div>
       )}
 
+      {!isLoading && (data?.lockedCount ?? 0) > 0 && (
+        <div className="mb-6">
+          <UpgradePrompt tier={data!.tier} lockedCount={data!.lockedCount} what="matches" />
+        </div>
+      )}
+
       {!isLoading && matches.length > 0 && (
         <div className="grid gap-3">
           {matches.map((m) => (
@@ -175,10 +182,26 @@ function MatchCard({ match: m }: { match: Match }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-border">
-        <Side player={m.a} prob={p} won={m.winner === "a"} lead={favA} />
-        <Side player={m.b} prob={p == null ? null : 1 - p} won={m.winner === "b"} lead={!favA} />
-      </div>
+      {m.locked ? (
+        // Stripped server-side; the blur is what a withheld number looks like.
+        <Blurred>
+          <div className="grid grid-cols-2 gap-px bg-border">
+            {[m.a, m.b].map((pl) => (
+              <div key={pl.id} className="bg-card px-5 py-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="truncate font-display text-xl leading-tight">{pl.name}</div>
+                  <LockedNumber />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Blurred>
+      ) : (
+        <div className="grid grid-cols-2 gap-px bg-border">
+          <Side player={m.a} prob={p} won={m.winner === "a"} lead={favA} />
+          <Side player={m.b} prob={p == null ? null : 1 - p} won={m.winner === "b"} lead={!favA} />
+        </div>
+      )}
 
       {p != null && (
         <div className="flex h-1.5 w-full overflow-hidden">
@@ -188,7 +211,9 @@ function MatchCard({ match: m }: { match: Match }) {
       )}
 
       <div className="border-t border-border/60 px-5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        {p == null ? (
+        {m.locked ? (
+          <>Locked · this match is outside today&apos;s free allowance</>
+        ) : p == null ? (
           <>Neither player has history in the window — left unpriced rather than guessed.</>
         ) : (
           <>
