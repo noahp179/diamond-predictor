@@ -47,7 +47,12 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 // index.html's <body> comment.
 const STATIC_FALLBACK_MARKER = "No client script tag here on purpose";
 
-function logRequest(request: Request, response: Response, durationMs: number, isStaticFallback: boolean) {
+function logRequest(
+  request: Request,
+  response: Response,
+  durationMs: number,
+  isStaticFallback: boolean,
+) {
   const url = new URL(request.url);
   const line = `[ssr] ${request.method} ${url.pathname} -> ${response.status} (${durationMs.toFixed(0)}ms)`;
   if (isStaticFallback) {

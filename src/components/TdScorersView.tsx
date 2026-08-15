@@ -118,10 +118,7 @@ export function TdScorersView() {
         <StatBar>
           <Stat label="Games" value={`${games.length}`} />
           <Stat label="Solid+ leads" value={`${solidCount}`} />
-          <Stat
-            label="Top pick"
-            value={topPick ? `${Math.round(topPick.prob * 100)}%` : "—"}
-          />
+          <Stat label="Top pick" value={topPick ? `${Math.round(topPick.prob * 100)}%` : "—"} />
           <Stat label="Season" value={data?.seasonLabel || "—"} />
         </StatBar>
       }
@@ -137,8 +134,7 @@ export function TdScorersView() {
       {!isLoading && !isError && allGames.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-border bg-card px-4 py-3">
           <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            Backtested tiers ·{" "}
-            {TIERS.map((t) => `${t.label} ${t.hitRate}`).join(" · ")}
+            Backtested tiers · {TIERS.map((t) => `${t.label} ${t.hitRate}`).join(" · ")}
           </div>
           <button
             type="button"
@@ -167,8 +163,8 @@ export function TdScorersView() {
         <div className="border border-border bg-card p-10 text-center">
           <div className="font-display text-3xl">No Solid+ picks today</div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">
-            No game's lead pick clears confidence {SOLID}. Turn off the filter to see the full
-            slate — those picks hit closer to 44%.
+            No game's lead pick clears confidence {SOLID}. Turn off the filter to see the full slate
+            — those picks hit closer to 44%.
           </p>
         </div>
       )}

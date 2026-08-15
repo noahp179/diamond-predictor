@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
-import { boardPicks } from "@/lib/mlb-props-board";
+import { boardPicks } from "@/lib/props-board";
 import { getMlbProps } from "@/lib/sports.functions";
 
 type Result = Awaited<ReturnType<typeof getMlbProps>>;

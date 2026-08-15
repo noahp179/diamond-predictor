@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
- * Checks the Player Props board rules in src/lib/mlb-props-board.ts — the
+ * Checks the Player Props board rules in src/lib/props-board.ts — the
  * one-row-per-player collapse on Top picks, the fact that per-market tabs are
  * exempt from it, and that "Strong only" filters before the collapse rather
  * than after.
  *
+ * One module now serves both boards: MLB keys players by number and ESPN's
+ * soccer feed by string, so the last block exercises the string path too. If
+ * the id type is ever narrowed back to `number`, that block stops compiling —
+ * which is the point.
+ *
  * Run:  npx tsx scripts/test-props-board.ts
  */
-import { bestRungPerPlayer, boardPicks, PER_GAME } from "../src/lib/mlb-props-board";
+import { bestRungPerPlayer, boardPicks, PER_GAME } from "../src/lib/props-board";
 
 type P = { playerId: number; market: string; edge: number; tier: string | null };
 const p = (playerId: number, market: string, edge: number, tier: string | null = "Solid"): P => ({
@@ -77,6 +82,19 @@ check(
 
 // ---- empty input is not a crash
 check("empty board is empty", boardPicks([], "all", false).length, 0);
+
+// ---- the same rule over ESPN's string player ids (the soccer board)
+const s1 = { playerId: "150225", market: "sh1", edge: 0.09, tier: "Solid" };
+const s2 = { playerId: "150225", market: "sh2", edge: 0.21, tier: "Solid" };
+const s3 = { playerId: "45843", market: "goal1", edge: 0.14, tier: "Strong" };
+const soccer = boardPicks([s1, s2, s3], "all", false);
+check("string ids collapse per player too", soccer.length, 2);
+check("and keep the biggest-edge rung", soccer[0].market, "sh2");
+check(
+  "string ids are not coerced or collided",
+  soccer.map((x) => x.playerId),
+  ["150225", "45843"],
+);
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

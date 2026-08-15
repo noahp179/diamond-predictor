@@ -91,8 +91,18 @@ function computeMetrics(results: GameResult[]) {
   return {
     total: results.length,
     settled: settled.length,
-    v3: { correct: v3Correct, accuracy: v3Correct / settled.length, brier: v3Brier, logLoss: v3LogLoss },
-    v4: { correct: v4Correct, accuracy: v4Correct / settled.length, brier: v4Brier, logLoss: v4LogLoss },
+    v3: {
+      correct: v3Correct,
+      accuracy: v3Correct / settled.length,
+      brier: v3Brier,
+      logLoss: v3LogLoss,
+    },
+    v4: {
+      correct: v4Correct,
+      accuracy: v4Correct / settled.length,
+      brier: v4Brier,
+      logLoss: v4LogLoss,
+    },
   };
 }
 
@@ -101,15 +111,12 @@ function computeMetrics(results: GameResult[]) {
 function featureSummary(results: GameResult[]) {
   const settled = results.filter((r) => r.winner != null);
   const agree = settled.filter(
-    (r) =>
-      (r.v3HomeProb >= 0.5 ? "home" : "away") ===
-      (r.v4HomeProb >= 0.5 ? "home" : "away"),
+    (r) => (r.v3HomeProb >= 0.5 ? "home" : "away") === (r.v4HomeProb >= 0.5 ? "home" : "away"),
   ).length;
   const disagree = settled.length - agree;
   const flipped = settled.filter(
     (r) =>
-      (r.v3HomeProb >= 0.5 ? "home" : "away") !==
-        (r.v4HomeProb >= 0.5 ? "home" : "away") &&
+      (r.v3HomeProb >= 0.5 ? "home" : "away") !== (r.v4HomeProb >= 0.5 ? "home" : "away") &&
       (r.v4HomeProb >= 0.5 ? "home" : "away") === r.winner,
   ).length;
   return { agree, disagree, flippedToCorrect: flipped };
@@ -138,8 +145,12 @@ function printTable(metrics: NonNullable<ReturnType<typeof computeMetrics>>) {
   const brierDelta = (metrics.v4.brier - metrics.v3.brier).toFixed(4);
   const llDelta = (metrics.v4.logLoss - metrics.v3.logLoss).toFixed(4);
   console.log(`\n  Δ accuracy : ${accDelta.startsWith("-") ? "" : "+"}${accDelta}%`);
-  console.log(`  Δ brier    : ${brierDelta.startsWith("-") ? "" : "+"}${brierDelta}  (negative = better)`);
-  console.log(`  Δ log-loss : ${llDelta.startsWith("-") ? "" : "+"}${llDelta}  (negative = better)`);
+  console.log(
+    `  Δ brier    : ${brierDelta.startsWith("-") ? "" : "+"}${brierDelta}  (negative = better)`,
+  );
+  console.log(
+    `  Δ log-loss : ${llDelta.startsWith("-") ? "" : "+"}${llDelta}  (negative = better)`,
+  );
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -187,9 +198,7 @@ async function main() {
 
       allResults.push(...dayResults);
       const settled = dayResults.filter((r) => r.winner != null).length;
-      process.stdout.write(
-        `  ${v3Games.length} games, ${settled} settled\n`,
-      );
+      process.stdout.write(`  ${v3Games.length} games, ${settled} settled\n`);
     } catch (err) {
       process.stdout.write(`  ERROR: ${(err as Error).message}\n`);
     }
@@ -211,7 +220,9 @@ async function main() {
   const fs = featureSummary(allResults);
   console.log(`\n  Models agreed on pick   : ${fs.agree} games`);
   console.log(`  Models disagreed         : ${fs.disagree} games`);
-  console.log(`  v4 flipped to correct    : ${fs.flippedToCorrect} of ${fs.disagree} disagreements\n`);
+  console.log(
+    `  v4 flipped to correct    : ${fs.flippedToCorrect} of ${fs.disagree} disagreements\n`,
+  );
 
   // Per-game breakdown for disagreements
   if (fs.disagree > 0) {
@@ -219,11 +230,13 @@ async function main() {
     console.log("  ─────────────────────────────────────────────────────────────────");
     console.log("  Date       Home              Away              v0.3  v0.4  Result");
     console.log("  ─────────────────────────────────────────────────────────────────");
-    for (const r of allResults.filter(
-      (r) =>
-        r.winner != null &&
-        (r.v3HomeProb >= 0.5 ? "home" : "away") !== (r.v4HomeProb >= 0.5 ? "home" : "away"),
-    ).slice(0, 20)) {
+    for (const r of allResults
+      .filter(
+        (r) =>
+          r.winner != null &&
+          (r.v3HomeProb >= 0.5 ? "home" : "away") !== (r.v4HomeProb >= 0.5 ? "home" : "away"),
+      )
+      .slice(0, 20)) {
       const v3Pick = r.v3HomeProb >= 0.5 ? "HM" : "AW";
       const v4Pick = r.v4HomeProb >= 0.5 ? "HM" : "AW";
       const actual = r.winner === "home" ? "HM" : "AW";

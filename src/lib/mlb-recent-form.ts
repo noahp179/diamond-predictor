@@ -289,7 +289,9 @@ export async function buildRecentFormPredictionsForDate(
     const homeElo = elo.get(homeTeam.id) ?? 1500;
     const awayElo = elo.get(awayTeam.id) ?? 1500;
     const eloProb = eloWinProb(homeElo, awayElo);
-    const ensembleProb = sigmoidFn((logitFn(clamp01(recentSimProb)) + logitFn(clamp01(eloProb))) / 2);
+    const ensembleProb = sigmoidFn(
+      (logitFn(clamp01(recentSimProb)) + logitFn(clamp01(eloProb))) / 2,
+    );
 
     return {
       gameId: g.gamePk,
@@ -421,7 +423,9 @@ export async function buildRecentFormV2PredictionsForDate(
     const homeElo = elo.get(homeTeam.id) ?? 1500;
     const awayElo = elo.get(awayTeam.id) ?? 1500;
     const eloProb = eloWinProb(homeElo, awayElo);
-    const ensembleProb = sigmoidFn((logitFn(clamp01(recentSimProb)) + logitFn(clamp01(eloProb))) / 2);
+    const ensembleProb = sigmoidFn(
+      (logitFn(clamp01(recentSimProb)) + logitFn(clamp01(eloProb))) / 2,
+    );
 
     return {
       gameId: g.gamePk,

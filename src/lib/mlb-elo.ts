@@ -99,7 +99,10 @@ export async function computeMlbElo(
   season: number,
   date: string,
 ): Promise<{ elo: Map<number, number>; seasonGames: number }> {
-  const priorSeasons = Array.from({ length: WARMUP_SEASONS }, (_, i) => season - WARMUP_SEASONS + i);
+  const priorSeasons = Array.from(
+    { length: WARMUP_SEASONS },
+    (_, i) => season - WARMUP_SEASONS + i,
+  );
   const [priorLogs, current] = await Promise.all([
     Promise.all(priorSeasons.map((s) => fetchSeasonResults(s, `${s + 1}-01-01`))),
     fetchSeasonResults(season, date),
