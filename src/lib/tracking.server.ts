@@ -370,8 +370,17 @@ export type LedgerView = {
   }[];
   /** Most recent settled calls, newest first. */
   recent: LedgerRow[];
-  /** Cumulative accuracy over settled predictions, oldest to newest. */
-  running: { i: number; accuracy: number }[];
+  /**
+   * Cumulative accuracy over settled predictions, oldest to newest.
+   *
+   * Carries the date and a running Brier alongside, because a hit rate that
+   * drifts is only interesting next to WHEN it drifted and whether the
+   * probabilities drifted with it. `n` is the sample behind each point, which
+   * is what makes the early wobble readable rather than alarming.
+   */
+  running: { i: number; date: string; accuracy: number; brier: number }[];
+  /** One row per day the ledger settled anything, oldest first. */
+  daily: { date: string; n: number; correct: number; accuracy: number; brier: number }[];
 };
 
 const BANDS: [number, number, string][] = [
@@ -402,6 +411,7 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
     calibration: [],
     recent: [],
     running: [],
+    daily: [],
   };
 
   try {
@@ -448,12 +458,41 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
       };
     }).filter((b) => b.n > 0);
 
+    // Oldest first, so the running series reads left to right like a chart.
     const chrono = [...settled].reverse();
-    let run = 0;
+    let hits = 0;
+    let brierSum = 0;
     const running = chrono.map((r, i) => {
-      run += r.correct ? 1 : 0;
-      return { i: i + 1, accuracy: run / (i + 1) };
+      hits += r.correct ? 1 : 0;
+      brierSum += Number(r.brier ?? 0);
+      return {
+        i: i + 1,
+        date: r.event_date,
+        accuracy: hits / (i + 1),
+        brier: brierSum / (i + 1),
+      };
     });
+
+    // Per-day aggregates. A day with one settled call is noisy on its own but
+    // is what makes the volume of the ledger visible, which is the honest
+    // context for every other number on the page.
+    const byDay = new Map<string, { n: number; correct: number; brier: number }>();
+    for (const r of chrono) {
+      const d = byDay.get(r.event_date) ?? { n: 0, correct: 0, brier: 0 };
+      d.n += 1;
+      d.correct += r.correct ? 1 : 0;
+      d.brier += Number(r.brier ?? 0);
+      byDay.set(r.event_date, d);
+    }
+    const daily = [...byDay.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, d]) => ({
+        date,
+        n: d.n,
+        correct: d.correct,
+        accuracy: d.correct / d.n,
+        brier: d.brier / d.n,
+      }));
 
     return {
       sport,
@@ -473,6 +512,7 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
       calibration,
       recent: settled.slice(0, 50),
       running,
+      daily,
     };
   } catch (err) {
     console.error("[tracking] read threw:", err);

@@ -2,6 +2,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
+import {
+  AccuracyTrend,
+  CalibrationChart,
+  ChartCard,
+  EmptyChart,
+  VolumeChart,
+} from "@/components/LedgerCharts";
 import { getTrackLedger } from "@/lib/tracking.functions";
 import type { DivisionSlug, SportKey } from "@/lib/nav";
 
@@ -157,49 +164,56 @@ export function LedgerView({
         )}
       </section>
 
-      {/* Calibration: the check a hit rate cannot make. */}
-      {(data?.calibration.length ?? 0) > 0 && (
-        <section className="mb-8 border border-border bg-card">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="font-display text-2xl">Is 70% actually 70%?</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Accuracy alone cannot catch a model that is confident at the wrong times. These are
-              the live picks grouped by how sure the model was, against how often they landed.
-            </p>
-          </div>
-          <div className="px-5 py-4">
-            {data!.calibration.map((b) => (
-              <div
-                key={b.band}
-                className="flex items-center gap-3 border-b border-border/50 py-2.5"
-              >
-                <div className="w-20 shrink-0 font-mono text-[11px] uppercase tracking-widest text-foreground">
-                  {b.band}
-                </div>
-                <div className="w-14 shrink-0 font-mono text-[11px] text-muted-foreground">
-                  n={b.n}
-                </div>
-                <div className="relative h-3 min-w-0 flex-1 bg-secondary">
-                  <div className="h-full bg-primary/40" style={{ width: `${b.actual * 100}%` }} />
-                  <div
-                    className="absolute top-0 h-3 w-0.5 bg-foreground"
-                    style={{ left: `${b.predicted * 100}%` }}
-                    title={`said ${(b.predicted * 100).toFixed(0)}%`}
-                  />
-                </div>
-                <div className="w-32 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
-                  said {(b.predicted * 100).toFixed(0)}% · hit{" "}
-                  <span className="text-foreground">{(b.actual * 100).toFixed(0)}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="border-t border-border px-5 py-3 font-mono text-[11px] text-muted-foreground">
-            The bar is what happened; the tick is what the model said. A well-calibrated model puts
-            them on top of each other. Bands with only a handful of calls will scatter regardless.
-          </div>
-        </section>
-      )}
+      {/* Everything below is drawn from event_predictions — rows written the
+          morning of an event and scored afterwards. The backtest appears only
+          as a dashed reference line, never as a plotted series. */}
+      <ChartCard
+        title="Has it done what it said it would?"
+        subtitle="The live hit rate as calls settle, against the backtest it was sold on. Early points swing hard because the denominator is tiny; the line is meant to steady toward the dashes, or visibly not."
+        footer="Cumulative, not per-day — one matchday is far too small to read. Every point is every call settled up to that moment."
+      >
+        {(data?.running.length ?? 0) > 0 ? (
+          <AccuracyTrend
+            running={data!.running}
+            claim={claim?.accuracy ?? null}
+            meaningfulN={data!.meaningfulN}
+          />
+        ) : (
+          <EmptyChart>
+            Nothing has settled yet, so there is no line to draw. The first point appears once a
+            recorded prediction has a result.
+          </EmptyChart>
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title="Is 70% actually 70%?"
+        subtitle="Every settled call bucketed by how confident the model was, next to how often that bucket actually landed. Matching heights mean the number on the card can be taken at face value."
+        footer="A shorter blue bar than orange means the model was under-confident in that bucket; taller means it was over-confident, which is the expensive direction. Buckets with only a handful of calls will disagree wildly no matter how good the model is — the count is in the tooltip."
+      >
+        {(data?.calibration.length ?? 0) > 0 ? (
+          <CalibrationChart calibration={data!.calibration} />
+        ) : (
+          <EmptyChart>
+            Calibration needs settled calls spread across confidence bands. Nothing to plot yet.
+          </EmptyChart>
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title="How fast is this filling up?"
+        subtitle="Calls settled per day, with that day's hit rate riding on top. The bars are the honest context for every other number on this page."
+        footer="A single day is almost never a meaningful sample, which is why the daily rate is drawn thin and the volume is drawn solid."
+      >
+        {(data?.daily.length ?? 0) > 0 ? (
+          <VolumeChart daily={data!.daily} />
+        ) : (
+          <EmptyChart>
+            The ledger records predictions once a day and scores them once the results are in.
+            Nothing has settled yet.
+          </EmptyChart>
+        )}
+      </ChartCard>
 
       {/* The raw ledger. */}
       {(data?.recent.length ?? 0) > 0 && (
