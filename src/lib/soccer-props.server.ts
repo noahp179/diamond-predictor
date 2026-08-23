@@ -556,7 +556,15 @@ export async function soccerProps(slug: LeagueSlug, date: string): Promise<Socce
     seasonForm(slug, season),
     seasonForm(slug, season - 1),
   ]);
-  const { players, teams } = foldSeason(thisSeason.rows);
+  // When a new season starts, early matchdays have fewer than 3 games per team/player.
+  // Include last season's completed matches so form has sufficient history to price
+  // player props starting from matchday 1.
+  const activeRows =
+    thisSeason.rows.length < 600
+      ? [...lastSeason.rows, ...thisSeason.rows]
+      : thisSeason.rows;
+
+  const { players, teams } = foldSeason(activeRows);
   const py = priorSeason(lastSeason.rows);
 
   const fixtures: SoccerPropsFixture[] = [];
@@ -612,14 +620,18 @@ export async function soccerProps(slug: LeagueSlug, date: string): Promise<Socce
     });
   }
 
+  const totalPicks = fixtures.reduce((sum, f) => sum + f.picks.length, 0);
+
   return {
     league: slug,
     date,
     fixtures,
     markets,
     note:
-      thisSeason.rows.length === 0
-        ? "No completed matches yet this season, so there is no form to project from. Props return once the campaign is under way."
-        : null,
+      totalPicks === 0 && events.length > 0
+        ? "Not enough team or player history available yet to project player props for these fixtures."
+        : thisSeason.rows.length === 0 && lastSeason.rows.length === 0
+          ? "No completed matches yet this season, so there is no form to project from. Props return once the campaign is under way."
+          : null,
   };
 }
