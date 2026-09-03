@@ -31,14 +31,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { LEAGUES, type LeagueSlug } from "./soccer-leagues";
 import { TOURS, type TourSlug } from "./tennis-tours";
 import { bucketise, type Bucket } from "./ledger-stats";
+import { predictSlate } from "./espn.server";
 import { soccerSlate } from "./soccer.server";
 import { tennisSlate } from "./tennis.server";
 
 /** Bumped when a model changes in a way that makes old rows incomparable. */
 export const SOCCER_MODEL_VERSION = "soccer-elo-gd-v1";
 export const TENNIS_MODEL_VERSION = "tennis-logistic-no-h2h-v1";
+/**
+ * NFL and NBA use the same Elo-with-market-blend that builds their daily slate.
+ * They had Track Record pages long before this ledger existed, but those pages
+ * replayed finished seasons and scored them afterwards — a backtest wearing a
+ * track record's name. These versions mark the rows that are the real thing.
+ */
+export const NFL_MODEL_VERSION = "nfl-elo-market-v1";
+export const NBA_MODEL_VERSION = "nba-elo-market-v1";
 
 export type Outcome = "a" | "draw" | "b";
+
+/** Which model's rows belong to a sport. */
+export function modelVersionFor(sport: string): string {
+  if (sport === "soccer") return SOCCER_MODEL_VERSION;
+  if (sport === "tennis") return TENNIS_MODEL_VERSION;
+  if (sport === "nfl") return NFL_MODEL_VERSION;
+  return NBA_MODEL_VERSION;
+}
 
 export type LedgerRow = {
   sport: string;
@@ -229,6 +246,46 @@ export async function snapshotTennis(date: string): Promise<number> {
   return written;
 }
 
+/**
+ * Record every priced NFL or NBA game for a date.
+ *
+ * `predictSlate` is exactly what the daily slate page renders, so what gets
+ * written down is what a reader was shown that morning — which is the only
+ * version of this worth storing. A game already in progress or finished is
+ * skipped: a "prediction" made after first pitch is not one.
+ */
+export async function snapshotTeamSport(sport: "nfl" | "nba", date: string): Promise<number> {
+  const version = sport === "nfl" ? NFL_MODEL_VERSION : NBA_MODEL_VERSION;
+  try {
+    const { games } = await predictSlate(sport, date);
+    const rows = games
+      .filter((g) => g.winner == null && g.homeScore == null)
+      .map((g) => {
+        const probs = { a: g.homeWinProb, draw: null, b: g.awayWinProb };
+        const pick = pickOf(probs);
+        return {
+          sport,
+          division: sport,
+          model_version: version,
+          event_id: String(g.gameId),
+          event_date: date,
+          subject_a: g.home.name,
+          subject_b: g.away.name,
+          context: g.venue || null,
+          prob_a: probs.a,
+          prob_draw: null,
+          prob_b: probs.b,
+          pick,
+          pick_prob: pick === "a" ? probs.a : probs.b,
+        };
+      });
+    return await insertNew(rows);
+  } catch (err) {
+    console.error(`[tracking] ${sport} ${date}:`, err);
+    return 0;
+  }
+}
+
 // ------------------------------------------------------------------ settle
 
 /**
@@ -290,11 +347,21 @@ export async function settlePending(throughDate: string, lookbackDays = 21) {
             score: `${m.homeGoals}-${m.awayGoals}`,
           });
         }
-      } else {
+      } else if (sport === "tennis") {
         const s = await tennisSlate(division as TourSlug, date);
         for (const m of s.matches) {
           if (!m.winner) continue;
           outcomes.set(m.id, { result: m.winner, score: m.scoreline || "" });
+        }
+      } else {
+        // NFL and NBA. "a" is always the home side, matching the snapshot.
+        const { games } = await predictSlate(sport as "nfl" | "nba", date);
+        for (const g of games) {
+          if (!g.winner) continue;
+          outcomes.set(String(g.gameId), {
+            result: g.winner === "home" ? "a" : "b",
+            score: `${g.homeScore ?? ""}-${g.awayScore ?? ""}`,
+          });
         }
       }
 
@@ -338,8 +405,10 @@ export async function runTrackingCycle(today: string) {
 
   const soccer = (await snapshotSoccer(today)) + (await snapshotSoccer(next));
   const tennis = (await snapshotTennis(today)) + (await snapshotTennis(next));
+  const nfl = (await snapshotTeamSport("nfl", today)) + (await snapshotTeamSport("nfl", next));
+  const nba = (await snapshotTeamSport("nba", today)) + (await snapshotTeamSport("nba", next));
   const settled = await settlePending(today);
-  return { today, recorded: { soccer, tennis }, ...settled };
+  return { today, recorded: { soccer, tennis, nfl, nba }, ...settled };
 }
 
 // -------------------------------------------------------------------- read
@@ -416,7 +485,7 @@ export async function readLedger(
   division: string,
   provenance: "forward" | "reconstructed" = "forward",
 ): Promise<LedgerView> {
-  const modelVersion = sport === "soccer" ? SOCCER_MODEL_VERSION : TENNIS_MODEL_VERSION;
+  const modelVersion = modelVersionFor(sport);
   const empty: LedgerView = {
     sport,
     division,

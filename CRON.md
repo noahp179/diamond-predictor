@@ -42,59 +42,23 @@ Verify what is actually stored, for every sport, in one command:
 npx tsx scripts/check-ledger.ts
 ```
 
-### Creating it, backfilling it, and starting to record
+### Creating it and starting to record
 
 ```bash
-npx tsx scripts/provision-ledger.ts                 # 1. create the table (+ provenance)
-npx tsx scripts/backfill-ledger.ts --dry-run        # 2. preview the reconstruction
-npx tsx scripts/backfill-ledger.ts --since 2025-09-03   #    …then write it
-scripts/run-tracking-local.sh                       # 3. start recording forward
-npx tsx scripts/check-ledger.ts                     # 4. confirm what landed
+npx tsx scripts/provision-ledger.ts     # 1. create the table
+scripts/run-tracking-local.sh           # 2. record today, settle what finished
+npx tsx scripts/check-ledger.ts         # 3. confirm
 ```
 
-#### Forward rows vs reconstructed rows
+Every row the ledger holds is `provenance = 'forward'`: written before the
+event, scored after. The `reconstructed` value the column also allows is a
+leftover from a backfill that has since been removed — the Track Record pages
+draw forward rows only, and `readLedger` takes provenance as a required
+argument so nothing can average the two by accident if that ever changes.
 
-The ledger holds two kinds of row and `provenance` says which:
-
-| | `forward` | `reconstructed` |
-|---|---|---|
-| written | the morning of the event | afterwards, by `backfill-ledger.ts` |
-| by | the cron / `run-tracking-local.sh` | replaying point-in-time ratings |
-| can be re-run until it looks good | **no** | yes |
-| what it proves | the model works | the arithmetic works |
-
-The reconstruction is not fudged — each match is priced by the replay observer,
-which fires *before* that match is folded into the ratings, so the probability
-is the one the model would have produced that morning. It is the same code path
-the Track Record page uses, so the stored rows and the chart cannot disagree.
-
-But it was computed today, by a model frozen on 2026-08-15, over matches whose
-results were already known. That is a backtest. Every read path filters on
-`provenance` and no page ever averages the two — a combined accuracy would be a
-number with no meaning, and the more rows the backfill adds the more thoroughly
-it would drown the real record.
-
-Window: `--since 2026-08-15` (the default, when the sports shipped) gives ~740
-matches. `--since 2025-09-03` gives ~12,000. Re-running is safe: inserts ignore
-conflicts on `(model_version, event_id)`, so a forward row is never overwritten
-by a reconstructed one.
-
-`provision-ledger` applies the migration itself when `SUPABASE_DB_URL` (a
-Postgres connection string) is in `.env`; a service-role key alone cannot run
-DDL, because it authenticates against PostgREST, which exposes tables rather
-than `CREATE TABLE`. Either way the script re-checks afterwards and says whether
-the table is actually there.
-
-`run-tracking-local.sh` is the soccer/tennis counterpart to
-`run-pipeline-local.sh` and takes the same two crontab lines. It refuses to run
-if the table is missing, rather than writing into the void — which is exactly
-how this went unnoticed.
-
-**Note on how far back the ledger can go: only forward.** Soccer and tennis
-shipped on 2026-08-15 and nothing was ever stored, so the ledger necessarily
-starts on the day it is first run. Backfilling it would mean writing rows dated
-before they were decided, which destroys the one property a forward record has.
-The Track Record pages show a labelled replay in the meantime.
+**The ledger only ever fills forward.** Nothing backfills it. A sport's page is
+empty until the cron has run and its events have finished, and that is the
+correct thing for it to show.
 
 ## Local operation (while the Vercel cron is down)
 

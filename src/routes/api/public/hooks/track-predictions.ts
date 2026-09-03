@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { canTrack, readLedger, runTrackingCycle } from "@/lib/tracking.server";
 
 /**
- * Records today's and tomorrow's soccer and tennis predictions, then scores
- * whatever has finished since the last run.
+ * Records today's and tomorrow's predictions for every sport the ledger covers
+ * — soccer, tennis, NFL and NBA — then scores whatever has finished.
  *
  * Runs after the MLB pipeline so the two are not competing for the same cold
  * start. Idempotent by construction: predictions conflict on
@@ -70,8 +70,9 @@ async function run(request: Request): Promise<Response> {
   try {
     const result = await runTrackingCycle(startedAt.slice(0, 10));
     console.log(
-      `[cron] tracking: recorded ${result.recorded.soccer} soccer + ` +
-        `${result.recorded.tennis} tennis, settled ${result.settled}`,
+      `[cron] tracking: recorded ${result.recorded.soccer} soccer, ` +
+        `${result.recorded.tennis} tennis, ${result.recorded.nfl} nfl, ` +
+        `${result.recorded.nba} nba; settled ${result.settled}`,
     );
     return Response.json({ ok: true, startedAt, ...result });
   } catch (err) {
