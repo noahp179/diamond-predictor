@@ -445,6 +445,69 @@ Reproduce with `python3 research/mlb-tb2/team_concentration.py`.
 
 ---
 
+### Would spreading the picks out be more accurate?
+
+The obvious follow-up: stop taking three hitters off one lineup and force the
+board apart — one per team, one per game, at most two of either. Tested on the
+held-out season, picking 3, 5 and 10 hitters a day.
+
+Every strategy is graded on the **same slates**. That matters more than it
+sounds: a one-per-game rule needs as many games as picks, so short slates drop
+out, and grading each strategy on whatever days it happened to fill made
+diversity look like it *gained* a point at ten picks. Pairing on a common set of
+slates and bootstrapping the difference makes that vanish.
+
+Ten picks a day, 122 slates every rule can fill:
+
+| rule | predicted | actual | vs unconstrained (95%) |
+|---|--:|--:|---|
+| **top 10, no constraint (ships)** | 49.8% | **47.0%** | — |
+| at most 2 per team | 49.2% | 47.0% | −0.0 [−1.8, +1.8] |
+| one per team | 48.3% | 45.9% | −1.1 [−3.6, +1.3] |
+| at most 2 per game | 49.1% | 47.3% | +0.2 [−1.6, +2.2] |
+| one per game | 48.0% | 44.4% | **−2.6 [−5.0, −0.2] worse** |
+
+Three and five picks tell the same story: every point estimate is negative or
+zero, and the only bands that exclude zero are on the *losing* side — one per
+game at ten picks (−2.6) and at most two per game at five picks (−2.0).
+
+**Nothing beats taking the highest numbers.** Which is what should happen if the
+projections are calibrated: a diversity rule works by passing over a hitter the
+model rates higher for one it rates lower, and it only pays if the higher-rated
+one is systematically over-stated. He is not — that is what the team-level
+calibration above establishes.
+
+The sharpest version of the same question, with no rule imposed at all: split
+each day's ten-pick board by how many teams it happened to draw from, and see
+whether the spread-out days beat their projection by more.
+
+| teams on the board | predicted | actual | gap |
+|---|--:|--:|--:|
+| ≤5 | 50.1% | 44.9% | −5.2 |
+| 6 | 48.7% | 47.1% | −1.6 |
+| 7 | 48.1% | 43.9% | −4.2 |
+| 8+ | 47.8% | 44.4% | −3.4 |
+
+No pattern, and the correlation between "more teams" and "beat the projection"
+is **+0.018** — nothing. The board misses its number by two to five points at
+the very top whether it is concentrated or spread, so concentration is not what
+causes the miss. That over-confidence is the top-decile calibration issue noted
+earlier, and it is worth fixing on its own; spreading the picks out does not
+fix it.
+
+Two caveats worth keeping. This measures **per-pick accuracy**, which is the
+right measure for betting each pick on its own. If they go on one slip instead,
+concentration matters for a different reason — the same-lineup correlation makes
+a one-sided card bust 22.9% of the time against 19.7% — so a parlay wants the
+diversity that a set of singles does not. And "at most two per team" costs
+nothing measurable (−0.0 points at ten picks) while cutting the board from 5.9
+teams to 7.3, so it is available for free if the spread is worth something to
+you for reasons other than accuracy.
+
+Reproduce with `python3 research/mlb-tb2/diversity.py`.
+
+---
+
 ## What ships
 
 `/mlb/two-bases` opens on **the three most likely hitters in each game**, which
