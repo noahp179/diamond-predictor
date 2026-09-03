@@ -4,12 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
 import {
   AccuracyTrend,
+  BucketAccuracy,
   CalibrationChart,
   ChartCard,
   EmptyChart,
   VolumeChart,
 } from "@/components/LedgerCharts";
-import { getTrackLedger } from "@/lib/tracking.functions";
+import { getReplayedHistory, getTrackLedger } from "@/lib/tracking.functions";
 import type { DivisionSlug, SportKey } from "@/lib/nav";
 
 /**
@@ -24,6 +25,18 @@ import type { DivisionSlug, SportKey } from "@/lib/nav";
  * The ledger begins empty and stays uninformative for months. A page that
  * quietly showed the backtest while it waited would be worse than no page, so
  * this one says how many calls it has, and says outright when that is too few.
+ *
+ * THE THIRD THING ON THIS PAGE
+ * ----------------------------
+ * Because the ledger starts empty, for months the charts had nothing to draw
+ * and the page was a row of "nothing to plot yet" boxes. That is honest but
+ * useless: a reader learns nothing about whether the model works.
+ *
+ * So the page also shows a REPLAY — the model re-run over the last year of
+ * completed matches, each priced with only what was known before it. That is a
+ * backtest, and it lives in its own clearly-headed section below the live one,
+ * with its own charts. It is never merged into the live numbers, never fills in
+ * for them, and the stat bar at the top still reports the live ledger only.
  */
 
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${(x * 100).toFixed(1)}%`);
@@ -46,6 +59,16 @@ export function LedgerView({
     queryFn: () => run({ data: { sport, division } }),
     staleTime: 5 * 60_000,
   });
+
+  // Fetched separately so the slow half cannot hold up the fast half: the
+  // ledger is one indexed query, the replay walks a year of results.
+  const runReplay = useServerFn(getReplayedHistory);
+  const { data: replay, isLoading: replayLoading } = useQuery({
+    queryKey: ["replay", sport, division],
+    queryFn: () => runReplay({ data: { sport, division } }),
+    staleTime: 30 * 60_000,
+  });
+  const r = replay?.summary;
 
   const s = data?.summary;
   const claim = data?.claim;
@@ -164,56 +187,149 @@ export function LedgerView({
         )}
       </section>
 
-      {/* Everything below is drawn from event_predictions — rows written the
-          morning of an event and scored afterwards. The backtest appears only
-          as a dashed reference line, never as a plotted series. */}
-      <ChartCard
-        title="Has it done what it said it would?"
-        subtitle="The live hit rate as calls settle, against the backtest it was sold on. Early points swing hard because the denominator is tiny; the line is meant to steady toward the dashes, or visibly not."
-        footer="Cumulative, not per-day — one matchday is far too small to read. Every point is every call settled up to that moment."
-      >
-        {(data?.running.length ?? 0) > 0 ? (
-          <AccuracyTrend
-            running={data!.running}
-            claim={claim?.accuracy ?? null}
-            meaningfulN={data!.meaningfulN}
-          />
-        ) : (
-          <EmptyChart>
-            Nothing has settled yet, so there is no line to draw. The first point appears once a
-            recorded prediction has a result.
-          </EmptyChart>
-        )}
-      </ChartCard>
+      {/* Everything in this block is drawn from event_predictions — rows
+          written the morning of an event and scored afterwards. The backtest
+          appears only as a dashed reference line, never as a plotted series.
 
-      <ChartCard
-        title="Is 70% actually 70%?"
-        subtitle="Every settled call bucketed by how confident the model was, next to how often that bucket actually landed. Matching heights mean the number on the card can be taken at face value."
-        footer="A shorter blue bar than orange means the model was under-confident in that bucket; taller means it was over-confident, which is the expensive direction. Buckets with only a handful of calls will disagree wildly no matter how good the model is — the count is in the tooltip."
-      >
-        {(data?.calibration.length ?? 0) > 0 ? (
-          <CalibrationChart calibration={data!.calibration} />
-        ) : (
-          <EmptyChart>
-            Calibration needs settled calls spread across confidence bands. Nothing to plot yet.
-          </EmptyChart>
-        )}
-      </ChartCard>
+          With an empty ledger these were three stacked "nothing to plot yet"
+          boxes, which is honest but says the same thing three times. One line
+          says it once, and the replay below actually has something to show. */}
+      {!isLoading && (s?.n ?? 0) === 0 && (
+        <p className="mb-8 border border-dashed border-border px-5 py-4 text-sm text-muted-foreground">
+          The live charts — hit rate as calls settle, calibration by confidence, and volume per day
+          — appear here once the ledger has settled its first call.
+        </p>
+      )}
 
-      <ChartCard
-        title="How fast is this filling up?"
-        subtitle="Calls settled per day, with that day's hit rate riding on top. The bars are the honest context for every other number on this page."
-        footer="A single day is almost never a meaningful sample, which is why the daily rate is drawn thin and the volume is drawn solid."
-      >
-        {(data?.daily.length ?? 0) > 0 ? (
-          <VolumeChart daily={data!.daily} />
-        ) : (
-          <EmptyChart>
-            The ledger records predictions once a day and scores them once the results are in.
-            Nothing has settled yet.
-          </EmptyChart>
+      {(s?.n ?? 0) > 0 && (
+        <>
+          <ChartCard
+            title="Has it done what it said it would?"
+            subtitle="The live hit rate as calls settle, against the backtest it was sold on. Early points swing hard because the denominator is tiny; the line is meant to steady toward the dashes, or visibly not."
+            footer="Cumulative, not per-day — one matchday is far too small to read. Every point is every call settled up to that moment."
+          >
+            {(data?.running.length ?? 0) > 0 ? (
+              <AccuracyTrend
+                running={data!.running}
+                claim={claim?.accuracy ?? null}
+                meaningfulN={data!.meaningfulN}
+              />
+            ) : (
+              <EmptyChart>
+                Nothing has settled yet, so there is no line to draw. The first point appears once a
+                recorded prediction has a result.
+              </EmptyChart>
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Is 70% actually 70%?"
+            subtitle="Every settled call bucketed by how confident the model was, next to how often that bucket actually landed. Matching heights mean the number on the card can be taken at face value."
+            footer="A shorter blue bar than orange means the model was under-confident in that bucket; taller means it was over-confident, which is the expensive direction. Buckets with only a handful of calls will disagree wildly no matter how good the model is — the count is in the tooltip."
+          >
+            {(data?.calibration.length ?? 0) > 0 ? (
+              <CalibrationChart calibration={data!.calibration} />
+            ) : (
+              <EmptyChart>
+                Calibration needs settled calls spread across confidence bands. Nothing to plot yet.
+              </EmptyChart>
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="How fast is this filling up?"
+            subtitle="Calls settled per day, with that day's hit rate riding on top. The bars are the honest context for every other number on this page."
+            footer="A single day is almost never a meaningful sample, which is why the daily rate is drawn thin and the volume is drawn solid."
+          >
+            {(data?.daily.length ?? 0) > 0 ? (
+              <VolumeChart daily={data!.daily} />
+            ) : (
+              <EmptyChart>
+                The ledger records predictions once a day and scores them once the results are in.
+                Nothing has settled yet.
+              </EmptyChart>
+            )}
+          </ChartCard>
+        </>
+      )}
+
+      {/* ------------------------------------------------------------------
+          The replay. Everything below this divider is a BACKTEST — the model
+          re-run over matches that have already been played, each scored with
+          the ratings as they stood before it. It is separated by a full-width
+          heading rather than a subtitle because the distinction is the entire
+          point, and a subtitle is something a reader can skim past.
+          ------------------------------------------------------------------ */}
+      <section className="mb-8 mt-14 border-t-2 border-foreground pt-6">
+        <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          Below this line: replay, not live
+        </p>
+        <h2 className="mt-2 font-display text-3xl">Replayed over the last year of results</h2>
+        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+          The same model, re-run over every completed match in the last 365 days, each one priced
+          using only the ratings that existed before it was played. That makes it a{" "}
+          <strong className="text-foreground">backtest</strong> — it is available immediately and
+          the sample is large, but it was produced after the fact, so it cannot prove the model was
+          not tuned to it. The live ledger above can. Both are here because each answers a question
+          the other cannot.
+        </p>
+        {replayLoading && <div className="mt-5 h-24 animate-pulse border border-border bg-card" />}
+        {!replayLoading && r && r.n > 0 && (
+          <StatBar>
+            <Stat label="Matches replayed" value={r.n.toLocaleString()} />
+            <Stat label="Replay accuracy" value={pct(r.accuracy)} />
+            <Stat label="Brier ↓" value={num(r.brier)} />
+            <Stat label="Log loss ↓" value={num(r.logLoss)} />
+          </StatBar>
         )}
-      </ChartCard>
+        {!replayLoading && (r?.n ?? 0) === 0 && (
+          <Note>
+            The replay could not be built — the results feed was unreachable, or the league has not
+            played inside the window. Nothing is being hidden; there is simply nothing to score.
+          </Note>
+        )}
+      </section>
+
+      {(r?.n ?? 0) > 0 && (
+        <>
+          <ChartCard
+            title="Accuracy by confidence"
+            subtitle="Every replayed call sorted into a confidence bucket: the bars are how many calls landed in each, the solid line is how often those calls were right, the dotted line is what the model claimed for them."
+            footer="Read the bars first. A bucket the solid line drops out of is only interesting if the bar under it is tall — with thirty calls a ten-point gap is noise, with three thousand it is a finding. The rightmost buckets are usually the thinnest, because a model that is 90% sure is not 90% sure very often."
+          >
+            <BucketAccuracy calibration={replay!.calibration} />
+          </ChartCard>
+
+          <ChartCard
+            title="Is 70% actually 70%, over the full replay?"
+            subtitle="The same buckets as a direct comparison — what the model said against what happened. Matching heights mean the percentage on a prediction card can be taken at face value."
+            footer="Taller orange than blue means the model was under-confident in that bucket; the other way round means over-confident, which is the expensive direction. Call counts are in the tooltip."
+          >
+            <CalibrationChart calibration={replay!.calibration} />
+          </ChartCard>
+
+          <ChartCard
+            title="How the replay accumulated"
+            subtitle="Cumulative hit rate across the replayed year, against the held-out backtest the model was shipped on. This line is drawn over thousands of matches, so unlike the live one above it is past the point where a good week could move it."
+            footer="Left to right is chronological. A line that drifts away from the dashes late is a model that has aged — the sport moved and the ratings did not follow."
+          >
+            <AccuracyTrend
+              running={replay!.running}
+              claim={claim?.accuracy ?? null}
+              meaningfulN={0}
+              seriesName="replayed hit rate"
+            />
+          </ChartCard>
+
+          <ChartCard
+            title="Replayed volume by month"
+            subtitle="How many matches the replay scored each month, with that month's hit rate on top — the shape of the sport's calendar, and whether the model held up across all of it."
+            footer="Grouped by month rather than by day: a year has well over a hundred matchdays, and at that density the accuracy line is a sawtooth between 0% and 100% that hides the volume underneath it. A month is a sample; a matchday usually is not."
+          >
+            <VolumeChart daily={replay!.daily} by="month" />
+          </ChartCard>
+        </>
+      )}
 
       {/* The raw ledger. */}
       {(data?.recent.length ?? 0) > 0 && (

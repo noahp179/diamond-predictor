@@ -30,6 +30,7 @@ import { supabaseAdmin as _admin } from "@/integrations/supabase/client.server";
 import { supabase } from "@/integrations/supabase/client";
 import { LEAGUES, type LeagueSlug } from "./soccer-leagues";
 import { TOURS, type TourSlug } from "./tennis-tours";
+import { bucketise, type Bucket } from "./ledger-stats";
 import { soccerSlate } from "./soccer.server";
 import { tennisSlate } from "./tennis.server";
 
@@ -360,14 +361,7 @@ export type LedgerView = {
   modelVersion: string;
   summary: LedgerSummary;
   /** Accuracy in probability bands — the calibration check that matters. */
-  calibration: {
-    band: string;
-    lo: number;
-    hi: number;
-    n: number;
-    predicted: number;
-    actual: number;
-  }[];
+  calibration: Bucket[];
   /** Most recent settled calls, newest first. */
   recent: LedgerRow[];
   /**
@@ -382,14 +376,6 @@ export type LedgerView = {
   /** One row per day the ledger settled anything, oldest first. */
   daily: { date: string; n: number; correct: number; accuracy: number; brier: number }[];
 };
-
-const BANDS: [number, number, string][] = [
-  [0.5, 0.6, "50-60%"],
-  [0.6, 0.7, "60-70%"],
-  [0.7, 0.8, "70-80%"],
-  [0.8, 0.9, "80-90%"],
-  [0.9, 1.01, "90-100%"],
-];
 
 export async function readLedger(sport: string, division: string): Promise<LedgerView> {
   const modelVersion = sport === "soccer" ? SOCCER_MODEL_VERSION : TENNIS_MODEL_VERSION;
@@ -444,19 +430,11 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
     };
     const dates = settled.map((r) => r.event_date).sort();
 
-    const calibration = BANDS.map(([lo, hi, band]) => {
-      const inBand = settled.filter((r) => Number(r.pick_prob) >= lo && Number(r.pick_prob) < hi);
-      return {
-        band,
-        lo,
-        hi,
-        n: inBand.length,
-        predicted: inBand.length
-          ? inBand.reduce((a, r) => a + Number(r.pick_prob), 0) / inBand.length
-          : 0,
-        actual: inBand.length ? inBand.filter((r) => r.correct).length / inBand.length : 0,
-      };
-    }).filter((b) => b.n > 0);
+    // Shared with the replayed history and with NFL/NBA, so the confidence
+    // buckets on every Track Record page mean the same thing.
+    const calibration = bucketise(
+      settled.map((r) => ({ pickProb: Number(r.pick_prob), correct: Boolean(r.correct) })),
+    );
 
     // Oldest first, so the running series reads left to right like a chart.
     const chrono = [...settled].reverse();

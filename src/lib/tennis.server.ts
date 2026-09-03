@@ -25,6 +25,7 @@
  */
 
 import matchModels from "./tennis-match-model.json";
+import { pickOf, scoreOutcome, type ScoredCall } from "./ledger-stats";
 import { surfaceOf, tourOf, type Surface, type TourSlug } from "./tennis-tours";
 
 type MatchModel = {
@@ -350,7 +351,18 @@ function newPlayer(init: number): PlayerState {
 const LOG10 = Math.log(10);
 
 /** Replay every completed match strictly before `upTo`. Mirrors walk(). */
-function replay(model: MatchModel, raw: Raw[], upTo: string) {
+function replay(
+  model: MatchModel,
+  raw: Raw[],
+  upTo: string,
+  /**
+   * Called for each match immediately BEFORE its result is folded into the
+   * ratings, with the probability the model would have priced it at. The
+   * ordering is what makes a replay a replay: run the observer after the
+   * update and every prediction is made by a model that already saw the answer.
+   */
+  onMatch?: (m: Raw, ctx: { probA: number | null }) => void,
+) {
   const init = model.elo.init;
   const P = new Map<string, PlayerState>();
   const h2h = new Map<string, [number, number]>();
@@ -376,6 +388,15 @@ function replay(model: MatchModel, raw: Raw[], upTo: string) {
     const surf = SURFACES.includes(m.surface) ? m.surface : "unknown";
     const [ga, gb] = m.games;
     const total = Math.max(ga + gb, 1);
+
+    if (onMatch) {
+      // Same "is this player known" test the slate uses: two debutants have no
+      // ratings to price a match with, so there is nothing to be right about.
+      const known = a.n > 0 || b.n > 0;
+      onMatch(m, {
+        probA: known ? scoreModel(model, featuresFor(a, b, surf, x.seed, yPl.seed, m)) : null,
+      });
+    }
 
     for (const [k, key] of [
       [model.elo.k, "elo"],
@@ -565,4 +586,59 @@ export async function tennisSlate(slug: TourSlug, date: string): Promise<TennisS
   ];
 
   return { tour: slug, date, matches, table, tournaments };
+}
+
+// ------------------------------------------------------------ the replay log
+
+/**
+ * How far back the scored replay reaches.
+ *
+ * The rating window is already two years, so this costs nothing extra to fetch
+ * — it is the same cached window the slate uses. A year of scored matches is
+ * several thousand calls on either tour, which is a real sample.
+ */
+const HISTORY_DAYS = 365;
+const HISTORY_TTL = 60 * 60 * 1000;
+const historyCache = new Map<string, { at: number; calls: ScoredCall[] }>();
+
+/**
+ * Score the model over recent completed matches.
+ *
+ * This is a backtest, not the forward ledger, and the Track Record page labels
+ * it as one. It exists because the live ledger starts empty and fills at the
+ * rate the tour plays — for months there is nothing to draw — and because a
+ * page that shows nothing teaches a reader nothing about whether the model
+ * works. It is the same thing the NFL and NBA Track Record pages have always
+ * shown.
+ *
+ * No leakage: `replay` calls the observer before folding each match in, so
+ * every probability here was computable the morning of that match.
+ */
+export async function tennisHistory(
+  slug: TourSlug,
+  upTo: string,
+  days = HISTORY_DAYS,
+): Promise<ScoredCall[]> {
+  const key = `${slug}:${upTo}:${days}`;
+  const hit = historyCache.get(key);
+  if (hit && Date.now() - hit.at < HISTORY_TTL) return hit.calls;
+
+  const model = tennisModelFor(slug);
+  const raw = await loadWindow(slug, upTo);
+  const since = addDays(upTo, -days);
+
+  const calls: ScoredCall[] = [];
+  replay(model, raw, upTo, (m, { probA }) => {
+    if (probA == null || m.date < since) return;
+    const probs = { a: probA, draw: null, b: 1 - probA };
+    // The window orients every match by the feed's competitor order, and
+    // `players[0].won` is the truth for that orientation.
+    const result: "a" | "b" = m.players[0].won ? "a" : "b";
+    const { pick, pickProb } = pickOf(probs);
+    const { brier, logLoss, rps } = scoreOutcome(probs, result);
+    calls.push({ date: m.date, pickProb, correct: pick === result, brier, logLoss, rps });
+  });
+
+  historyCache.set(key, { at: Date.now(), calls });
+  return calls;
 }
