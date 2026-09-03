@@ -205,6 +205,38 @@ export const getMlbProps = createServerFn({ method: "GET" })
     }
   });
 
+// --------------------------------------------------------------- MLB Stacks
+
+export const getMlbStacks = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayISO();
+    try {
+      const { stacksSlate } = await import("./mlb-stacks.server");
+      const { season, teams, backtest } = await stacksSlate(date);
+      return {
+        date,
+        teams,
+        backtest,
+        season,
+        seasonLabel: season ? `${season}` : "",
+        note: null as string | null,
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[mlbStacks] failed:`, err);
+      return {
+        date,
+        teams: [] as Awaited<ReturnType<typeof import("./mlb-stacks.server").stacksSlate>>["teams"],
+        backtest: null,
+        season: 0,
+        seasonLabel: "",
+        note: "MLB Stats API is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
+
 // --------------------------------------------------------------- TD Scorers
 
 export const getNflTdScorers = createServerFn({ method: "GET" })

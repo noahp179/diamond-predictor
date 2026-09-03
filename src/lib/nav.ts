@@ -52,6 +52,7 @@ export type ViewKey =
   | "recommended"
   | "bestOdds"
   | "props"
+  | "stacks"
   | "tdScorers"
   | "trackRecord"
   | "model";
@@ -73,7 +74,8 @@ export const SPORTS: SportNav[] = [
   {
     key: "mlb",
     label: "MLB",
-    blurb: "Win probabilities, the day's parlay, and sixteen player-prop markets.",
+    blurb:
+      "Win probabilities, the day's parlay, sixteen player-prop markets and correlated team stacks.",
     href: "/mlb",
     leagued: false,
   },
@@ -119,13 +121,14 @@ const LABELS: Record<ViewKey, string> = {
   recommended: "Recommended",
   bestOdds: "Best Odds",
   props: "Player Props",
+  stacks: "Team Stacks",
   tdScorers: "TD Scorers",
   trackRecord: "Track Record",
   model: "Model & Backtest",
 };
 
 const VIEWS: Record<SportKey, ViewKey[]> = {
-  mlb: ["slate", "recommended", "bestOdds", "props", "trackRecord"],
+  mlb: ["slate", "recommended", "bestOdds", "props", "stacks", "trackRecord"],
   nfl: ["slate", "recommended", "bestOdds", "tdScorers", "trackRecord"],
   nba: ["slate", "recommended", "bestOdds", "trackRecord"],
   soccer: ["slate", "props", "model", "trackRecord"],
@@ -138,6 +141,7 @@ const SEGMENT: Record<ViewKey, string> = {
   recommended: "recommended",
   bestOdds: "best-odds",
   props: "props",
+  stacks: "stacks",
   tdScorers: "td-scorers",
   trackRecord: "track-record",
   model: "model",
