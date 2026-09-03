@@ -15,6 +15,8 @@ import {
 } from "recharts";
 
 import { getTrackRecord, type ModelTrack, type TrackedGame } from "@/lib/mlb.functions";
+import { bucketise } from "@/lib/ledger-stats";
+import { BucketAccuracy } from "@/components/LedgerCharts";
 import { TRACKED_MODELS, TRACK_RECORD_START } from "@/lib/mlb-models";
 import { AppShell } from "@/components/AppShell";
 
@@ -94,6 +96,28 @@ function HistoryPage() {
   const [selectedModel, setSelectedModel] = React.useState<string | null>(null);
   const selected = selectedModel ?? primaryModel;
   const [activeTab, setActiveTab] = React.useState<"graphs" | "history">("graphs");
+
+  /**
+   * Accuracy by confidence, for the selected model.
+   *
+   * Built here rather than on the server because everything it needs is
+   * already on the page: each stored row carries the home win probability and
+   * whether the pick landed. Confidence is the probability on the side the
+   * model actually took, so a 30% home call is a 70% away call — using the raw
+   * home probability instead would scatter identical convictions across
+   * opposite ends of the axis.
+   *
+   * These are stored rows, written before each game and scored after it. Same
+   * `bucketise` as the soccer, tennis, NFL and NBA pages, so the bands mean the
+   * same thing across the whole site.
+   */
+  const confidenceBuckets = React.useMemo(() => {
+    const calls = games
+      .map((g) => g.models[selected])
+      .filter((m): m is NonNullable<typeof m> => Boolean(m) && m.correct !== null)
+      .map((m) => ({ pickProb: Math.max(m.prob, 1 - m.prob), correct: m.correct as boolean }));
+    return bucketise(calls);
+  }, [games, selected]);
   const [tableFilter, setTableFilter] = React.useState<Segment>("all");
 
   const colorOf = React.useMemo(() => {
@@ -266,6 +290,17 @@ function HistoryPage() {
               onSelect={setSelectedModel}
             />
           </ChartCard>
+
+          {/* 1b — the same record, split by how sure the model was */}
+          {confidenceBuckets.length > 0 && (
+            <ChartCard
+              title="Is it right more often when it is confident?"
+              subtitle={`Every settled prediction ${modelLabel(selected)} has made, sorted by how sure it was. Bars are how many games landed in each bucket; the solid line is how often those were right; the dotted line is what the model claimed. A model whose confident calls are no better than its coin flips is not much use, however good its overall number looks.`}
+              better="up"
+            >
+              <BucketAccuracy calibration={confidenceBuckets} />
+            </ChartCard>
+          )}
 
           {/* 2 — the trend: is each model getting better or worse */}
           <ChartCard

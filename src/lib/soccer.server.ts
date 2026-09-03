@@ -245,9 +245,15 @@ const HISTORY_TTL = 60 * 60 * 1000;
 const historyCache = new Map<string, { at: number; calls: ScoredCall[] }>();
 
 export type Final = {
+  /** ESPN event id — the ledger's primary key for a match. */
+  id: string;
   date: string;
   home: string;
   away: string;
+  /** Display names, carried so a reconstructed row can name its own teams. */
+  homeName: string;
+  awayName: string;
+  venue: string;
   hg: number;
   ag: number;
   season: number;
@@ -272,9 +278,13 @@ async function seasonFinals(espn: string, season: number, current: number): Prom
     const ag = Number(away.score);
     if (!Number.isFinite(hg) || !Number.isFinite(ag)) continue;
     finals.push({
+      id: e.id,
       date: e.date.slice(0, 10),
       home: home.team.id,
       away: away.team.id,
+      homeName: team(home).name,
+      awayName: team(away).name,
+      venue: e.competitions?.[0]?.venue?.fullName ?? "",
       hg,
       ag,
       season,
@@ -295,8 +305,10 @@ async function seasonFinals(espn: string, season: number, current: number): Prom
  * the fold. That ordering cannot be checked from the outside — a leaked replay
  * of a season still lands within a few points of the honest one (measured: 55.4%
  * against 48.9% on the EPL) so no accuracy threshold separates them reliably.
- * The only decisive check is on the arithmetic itself. This is the same arithmetic as research/soccer/ship_soccer.py: the
- * constants live in the model file so the two cannot drift apart.
+ * The only decisive check is on the arithmetic itself.
+ *
+ * This is the same arithmetic as research/soccer/ship_soccer.py: the constants
+ * live in the model file so the two cannot drift apart.
  */
 export function replay(
   model: MatchModel,
@@ -461,7 +473,45 @@ export async function soccerHistory(
   const key = `${slug}:${upTo}:${days}`;
   const hit = historyCache.get(key);
   if (hit && Date.now() - hit.at < HISTORY_TTL) return hit.calls;
+  const calls = (await soccerHistoryRows(slug, upTo, days)).map(scoredOf);
+  historyCache.set(key, { at: Date.now(), calls });
+  return calls;
+}
 
+/** One reconstructed match: everything a ledger row needs, plus its score. */
+export type HistoricMatch = {
+  eventId: string;
+  date: string;
+  homeName: string;
+  awayName: string;
+  venue: string;
+  probs: { home: number; draw: number; away: number };
+  result: "a" | "draw" | "b";
+  finalScore: string;
+};
+
+/** The scoring half, shared by the on-page replay and the stored backfill. */
+function scoredOf(m: HistoricMatch): ScoredCall {
+  const probs = { a: m.probs.home, draw: m.probs.draw, b: m.probs.away };
+  const { pick, pickProb } = pickOf(probs);
+  const { brier, logLoss, rps } = scoreOutcome(probs, m.result);
+  return { date: m.date, pickProb, correct: pick === m.result, brier, logLoss, rps };
+}
+
+/**
+ * The same replay, returning full match records instead of bare scores.
+ *
+ * `soccerHistory` is this plus `scoredOf`. They are one function on purpose:
+ * the numbers the Track Record page draws and the rows the backfill stores must
+ * come from the same arithmetic, or the stored ledger would slowly stop
+ * agreeing with the chart above it and nobody would be able to say which was
+ * right.
+ */
+export async function soccerHistoryRows(
+  slug: LeagueSlug,
+  upTo: string,
+  days = HISTORY_DAYS,
+): Promise<HistoricMatch[]> {
   const league = leagueOf(slug);
   const model = matchModelFor(slug);
   const currentSeason = seasonOf(new Date().toISOString().slice(0, 10));
@@ -482,17 +532,19 @@ export async function soccerHistory(
   for (const s of seasons) history.push(await seasonFinals(league.espn, s, currentSeason));
   const finals = history.flat().sort((a, b) => a.date.localeCompare(b.date));
 
-  const calls: ScoredCall[] = [];
+  const out: HistoricMatch[] = [];
   replay(model, finals, upTo, (m, { gap, known }) => {
     if (!known || m.date < since) return;
-    const p = calibrate(model, gap);
-    const probs = { a: p.home, draw: p.draw, b: p.away };
-    const result: "a" | "draw" | "b" = m.hg > m.ag ? "a" : m.hg === m.ag ? "draw" : "b";
-    const { pick, pickProb } = pickOf(probs);
-    const { brier, logLoss, rps } = scoreOutcome(probs, result);
-    calls.push({ date: m.date, pickProb, correct: pick === result, brier, logLoss, rps });
+    out.push({
+      eventId: m.id,
+      date: m.date,
+      homeName: m.homeName,
+      awayName: m.awayName,
+      venue: m.venue,
+      probs: calibrate(model, gap),
+      result: m.hg > m.ag ? "a" : m.hg === m.ag ? "draw" : "b",
+      finalScore: `${m.hg}-${m.ag}`,
+    });
   });
-
-  historyCache.set(key, { at: Date.now(), calls });
-  return calls;
+  return out;
 }

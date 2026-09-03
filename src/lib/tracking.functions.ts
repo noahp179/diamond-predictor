@@ -98,9 +98,26 @@ export const getTrackLedger = createServerFn({ method: "GET" })
   .inputValidator(input)
   .handler(async ({ data }) => {
     const { sport, division } = resolve(data);
-    const ledger = await readLedger(sport, division);
+    // Two reads, never one: forward rows and reconstructed rows answer
+    // different questions and a combined accuracy would mean nothing.
+    const [ledger, reconstructed] = await Promise.all([
+      readLedger(sport, division, "forward"),
+      readLedger(sport, division, "reconstructed"),
+    ]);
     return {
       ...ledger,
+      /**
+       * The stored backtest: matches replayed from point-in-time ratings and
+       * written to the ledger by scripts/backfill-ledger.ts. Separate from the
+       * forward record above and never folded into it.
+       */
+      reconstructed: {
+        summary: reconstructed.summary,
+        calibration: reconstructed.calibration,
+        running: reconstructed.running,
+        daily: reconstructed.daily,
+        recent: reconstructed.recent,
+      },
       /** What the held-out backtest said to expect. Never mixed into the live numbers. */
       claim: claimFor(sport, division),
       meaningfulN: MEANINGFUL_N,

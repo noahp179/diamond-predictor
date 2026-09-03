@@ -1,8 +1,104 @@
-How# Daily Cron — 3 AM Auto-sync
+# Daily Cron — 3 AM Auto-sync
+
+## Why the cron "stopped writing" (found 2026-09-03)
+
+It never stopped running. **Vercel Cron invokes a scheduled path with `GET`**,
+and both hook handlers did their work on `POST` only — `GET` returned a friendly
+"use POST to run the pipeline" note. So every day, on schedule, Vercel fetched
+the endpoint, got a `200`, and nothing was written. A 200 is a success as far as
+the platform is concerned, so nothing ever alerted.
+
+Both hooks now run on an **authenticated `GET`** as well as `POST`. Vercel sends
+`Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set as
+an environment variable, so the scheduled call authenticates itself. An
+*un*authenticated GET still returns a status page, but one that says plainly
+that it did **not** run and whether the secret is even configured.
+
+Two things must be true in the Vercel project for the schedule to work:
+
+1. `CRON_SECRET` is set (otherwise the cron's GET is unauthenticated → no-op).
+2. `SUPABASE_SERVICE_ROLE_KEY` is set (otherwise every write is dropped).
+
+Check both at any time — no secret required:
+
+```bash
+curl -s https://<the-deployment>/api/public/hooks/track-predictions | jq
+# {"ok":true,"ran":false,"cronSecretSet":true,"writable":true,"ledgerReady":false,...}
+```
+
+## The soccer & tennis ledger is not provisioned
+
+`event_predictions` **does not exist in the database**. It has never existed, so
+no soccer or tennis prediction has ever been stored, and the tracking cron had
+nothing to write to even once the GET/POST bug above is fixed. Apply:
+
+```
+supabase/migrations/20260815120000_event_predictions.sql
+```
+
+Verify what is actually stored, for every sport, in one command:
+
+```bash
+npx tsx scripts/check-ledger.ts
+```
+
+### Creating it, backfilling it, and starting to record
+
+```bash
+npx tsx scripts/provision-ledger.ts                 # 1. create the table (+ provenance)
+npx tsx scripts/backfill-ledger.ts --dry-run        # 2. preview the reconstruction
+npx tsx scripts/backfill-ledger.ts --since 2025-09-03   #    …then write it
+scripts/run-tracking-local.sh                       # 3. start recording forward
+npx tsx scripts/check-ledger.ts                     # 4. confirm what landed
+```
+
+#### Forward rows vs reconstructed rows
+
+The ledger holds two kinds of row and `provenance` says which:
+
+| | `forward` | `reconstructed` |
+|---|---|---|
+| written | the morning of the event | afterwards, by `backfill-ledger.ts` |
+| by | the cron / `run-tracking-local.sh` | replaying point-in-time ratings |
+| can be re-run until it looks good | **no** | yes |
+| what it proves | the model works | the arithmetic works |
+
+The reconstruction is not fudged — each match is priced by the replay observer,
+which fires *before* that match is folded into the ratings, so the probability
+is the one the model would have produced that morning. It is the same code path
+the Track Record page uses, so the stored rows and the chart cannot disagree.
+
+But it was computed today, by a model frozen on 2026-08-15, over matches whose
+results were already known. That is a backtest. Every read path filters on
+`provenance` and no page ever averages the two — a combined accuracy would be a
+number with no meaning, and the more rows the backfill adds the more thoroughly
+it would drown the real record.
+
+Window: `--since 2026-08-15` (the default, when the sports shipped) gives ~740
+matches. `--since 2025-09-03` gives ~12,000. Re-running is safe: inserts ignore
+conflicts on `(model_version, event_id)`, so a forward row is never overwritten
+by a reconstructed one.
+
+`provision-ledger` applies the migration itself when `SUPABASE_DB_URL` (a
+Postgres connection string) is in `.env`; a service-role key alone cannot run
+DDL, because it authenticates against PostgREST, which exposes tables rather
+than `CREATE TABLE`. Either way the script re-checks afterwards and says whether
+the table is actually there.
+
+`run-tracking-local.sh` is the soccer/tennis counterpart to
+`run-pipeline-local.sh` and takes the same two crontab lines. It refuses to run
+if the table is missing, rather than writing into the void — which is exactly
+how this went unnoticed.
+
+**Note on how far back the ledger can go: only forward.** Soccer and tennis
+shipped on 2026-08-15 and nothing was ever stored, so the ledger necessarily
+starts on the day it is first run. Backfilling it would mean writing rows dated
+before they were decided, which destroys the one property a forward record has.
+The Track Record pages show a labelled replay in the meantime.
 
 ## Local operation (while the Vercel cron is down)
 
-The cron stopped writing on 2026-06-15. Until it's revived, the same pipeline
+Until the fix above is deployed and verified, the same pipeline
 can run from any machine with `SUPABASE_SERVICE_ROLE_KEY` in `.env`:
 
 ```bash

@@ -622,23 +622,64 @@ export async function tennisHistory(
   const key = `${slug}:${upTo}:${days}`;
   const hit = historyCache.get(key);
   if (hit && Date.now() - hit.at < HISTORY_TTL) return hit.calls;
+  const calls = (await tennisHistoryRows(slug, upTo, days)).map(scoredOf);
+  historyCache.set(key, { at: Date.now(), calls });
+  return calls;
+}
 
+/** One reconstructed match: everything a ledger row needs, plus its result. */
+export type HistoricMatch = {
+  eventId: string;
+  date: string;
+  aName: string;
+  bName: string;
+  context: string;
+  probA: number;
+  result: "a" | "b";
+  finalScore: string;
+};
+
+/** The scoring half, shared by the on-page replay and the stored backfill. */
+function scoredOf(m: HistoricMatch): ScoredCall {
+  const probs = { a: m.probA, draw: null, b: 1 - m.probA };
+  const { pick, pickProb } = pickOf(probs);
+  const { brier, logLoss, rps } = scoreOutcome(probs, m.result);
+  return { date: m.date, pickProb, correct: pick === m.result, brier, logLoss, rps };
+}
+
+/**
+ * The same replay, returning full match records instead of bare scores.
+ *
+ * `tennisHistory` is this plus `scoredOf`. One function on purpose: the numbers
+ * the Track Record page draws and the rows the backfill stores have to come
+ * from the same arithmetic, or the stored ledger would drift away from the
+ * chart above it with no way to tell which had gone wrong.
+ */
+export async function tennisHistoryRows(
+  slug: TourSlug,
+  upTo: string,
+  days = HISTORY_DAYS,
+): Promise<HistoricMatch[]> {
   const model = tennisModelFor(slug);
   const raw = await loadWindow(slug, upTo);
   const since = addDays(upTo, -days);
 
-  const calls: ScoredCall[] = [];
+  const out: HistoricMatch[] = [];
   replay(model, raw, upTo, (m, { probA }) => {
     if (probA == null || m.date < since) return;
-    const probs = { a: probA, draw: null, b: 1 - probA };
-    // The window orients every match by the feed's competitor order, and
-    // `players[0].won` is the truth for that orientation.
-    const result: "a" | "b" = m.players[0].won ? "a" : "b";
-    const { pick, pickProb } = pickOf(probs);
-    const { brier, logLoss, rps } = scoreOutcome(probs, result);
-    calls.push({ date: m.date, pickProb, correct: pick === result, brier, logLoss, rps });
+    const [x, y] = m.players;
+    out.push({
+      eventId: m.matchId,
+      date: m.date,
+      aName: x.name,
+      bName: y.name,
+      context: [m.tournament, m.round, m.surface].filter(Boolean).join(" · "),
+      probA,
+      // The window orients every match by the feed's competitor order, and
+      // `players[0].won` is the truth for that orientation.
+      result: x.won ? "a" : "b",
+      finalScore: m.scoreline || "",
+    });
   });
-
-  historyCache.set(key, { at: Date.now(), calls });
-  return calls;
+  return out;
 }
