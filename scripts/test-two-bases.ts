@@ -13,7 +13,12 @@
  * Run:  npx tsx scripts/test-two-bases.ts
  */
 import model from "../src/lib/mlb-tb2-model.json";
-import { tb2ParityError, tb2Probability, tb2Reasons } from "../src/lib/mlb-tb2.server";
+import {
+  fallbackTemp,
+  tb2ParityError,
+  tb2Probability,
+  tb2Reasons,
+} from "../src/lib/mlb-tb2.server";
 
 let fails = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -81,6 +86,50 @@ check(
   "a big park beats a small one, all else equal",
   pCoors > pPetco,
   `1.12 ${pCoors.toFixed(4)} vs 0.94 ${pPetco.toFixed(4)}`,
+);
+
+// ---- temperature: warm air carries the ball, and the model should know it
+const tempIdx = model.features.indexOf("temp_fc");
+check("the model carries a temperature feature", tempIdx >= 0);
+const pHot = tb2Probability(x0.map((v, i) => (i === tempIdx ? 95 : v)));
+const pCold = tb2Probability(x0.map((v, i) => (i === tempIdx ? 45 : v)));
+check(
+  "a hot night beats a cold one, all else equal",
+  pHot > pCold,
+  `95F ${pHot.toFixed(4)} vs 45F ${pCold.toFixed(4)}`,
+);
+// the effect should be real but not absurd — this is one of many inputs
+check(
+  "and the temperature swing is meaningful without dominating",
+  pHot - pCold > 0.005 && pHot - pCold < 0.12,
+  `50F swings the projection by ${((pHot - pCold) * 100).toFixed(1)} points`,
+);
+
+// ---- the fallback used when the forecast call fails
+const cold = fallbackTemp("Target Field", "2026-04-05");
+const warm = fallbackTemp("Target Field", "2026-07-05");
+check(
+  "park-month fallback temperatures are seasonal",
+  warm > cold && cold > 20 && warm < 110,
+  `Minneapolis April ${cold}F vs July ${warm}F`,
+);
+check(
+  "an unknown park still gets a number",
+  Number.isFinite(fallbackTemp("Nowhere Park", "2026-06-01")),
+);
+
+// ---- what the research concluded about weather, pinned so it cannot rot
+const w = model.weatherFinding;
+check(
+  "the servable forecast recovers most of the unservable weather block",
+  w.aucForecastTemp > w.aucNoWeather &&
+    (w.aucForecastTemp - w.aucNoWeather) / (w.aucObservedWeather - w.aucNoWeather) > 0.7,
+  `no weather ${w.aucNoWeather}, forecast ${w.aucForecastTemp}, observed ${w.aucObservedWeather}`,
+);
+check(
+  "every park with a forecast has coordinates and a fallback",
+  Object.keys(model.venueCoords).length > 25 && Object.keys(model.parkMonthTemp).length > 100,
+  `${Object.keys(model.venueCoords).length} parks, ${Object.keys(model.parkMonthTemp).length} park-months`,
 );
 
 // ---- the sentence agrees with the arithmetic

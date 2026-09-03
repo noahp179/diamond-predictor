@@ -18,19 +18,22 @@ new **2+ Bases** tab.
 
 ## TL;DR
 
-- **Seven new feature blocks were tried. Three survived.** The park's index for
-  *total bases* (not runs), the opponent's bases allowed per batter faced, and a
-  15-day form window. Everything else — the bullpen, the umpire, the platoon
-  split, rest days — was worth nothing or less than nothing.
-- **The result: AUC 0.5758 against the shipped model's 0.5744**, +0.0014 with a
-  95% bootstrap band of [+0.0003, +0.0026]. Small, and real.
+- **Eight feature blocks were tried. Four survived.** The park's index for
+  *total bases* (not runs), the opponent's bases allowed per batter faced, a
+  15-day form window, and the **temperature at first pitch**. Everything else —
+  the bullpen, the umpire, the platoon split, rest days, wind, the roof — was
+  worth nothing or less than nothing.
+- **The result: AUC 0.5770 against the shipped model's 0.5744**, +0.0026 with a
+  95% bootstrap band of [+0.0012, +0.0040].
 - **What actually improved is the top of the board.** The day's single best pick
-  goes from **51.0% to 52.9%**, and the best three from **48.0% to 50.5%**.
-- **Half of the available gain was thrown away on purpose.** Weather was the
-  strongest block in the bake-off (+0.0014 on its own). StatsAPI publishes a
-  game's weather only *after* first pitch — it is `{}` for every scheduled game
-  — so a board rendered in the morning cannot compute it. Backtesting on it
-  would have been quoting a number the app can never produce.
+  goes from **51.0% to 53.5%**, and the best three from **48.0% to 49.5%**.
+- **The weather nearly got thrown away, and did not have to be.** It was the
+  strongest block in the bake-off, and StatsAPI publishes a game's weather only
+  *after* first pitch — `{}` for every scheduled game — so it looked unservable.
+  It is not: Open-Meteo serves the same quantity twice, as an archive to fit on
+  and a forecast to serve from. One temperature feature recovers **87%** of what
+  the six-variable observed-weather block was worth. See
+  [the weather section](#the-weather-problem-and-how-it-was-solved).
 - **Batting order matters more than the bat.** The biggest coefficient in the
   model, by a factor of two, is where a hitter is in the lineup. Across the
   held-out season the spread from the best hitters to the worst is about 20
@@ -43,24 +46,27 @@ new **2+ Bases** tab.
 
 ## What the model is
 
-A logistic regression on 43 features, fitted on 2024–25 and tested on the 2026
+A logistic regression on 44 features, fitted on 2024–25 and tested on the 2026
 season it never saw: **86,868 training rows, 37,303 held-out rows**, one per
 lineup starter per game. Probabilities are Platt-calibrated, so a 40% means 40%.
 
 The features are the shipped prop model's thirty-four — the hitter's season,
 30-day and prior-season rates, his lineup slot and plate appearances, the
-opposing starter, park and team context — plus the three blocks below.
+opposing starter, park and team context — plus the four blocks below.
 
 | block | features | why |
 |---|---|---|
+| **temperature** | `temp_fc` | The air at first pitch, from Open-Meteo. Balls carry when it is warm, and this turns out to be the whole of the weather signal — wind and the roof add nothing once it is in. |
 | **park index** | `park_tb` | The existing park factor is built for *runs*. Doubles and triples move with the park far more than runs do, so this is a separate index built from total bases per plate appearance at each venue: Coors 1.12, Sutter Health Park 1.07, T-Mobile 0.94. |
 | **opponent** | `def_tb_pa`, `def_xbh_pa`, `def_known` | The whole pitching staff and the defence behind it, as bases and extra-base hits allowed per batter faced. The shipped model only sees the opponent's *runs* allowed and the starter. |
 | **two-week form** | `w15_tb_pa`, `w15_h_pa`, `w15_pa_pg`, `w15_g`, `own15_tb2` | A 15-day window beside the existing 30-day one, for hitters who got hot last week. |
 
-Every one is built by the same strictly chronological walk the rest of the repo
-uses — a row for game *G* only sees games that finished before *G* — and every
-index is shrunk to the league average, so a park with 200 plate appearances
-behind it cannot swing a projection.
+Everything derived from past games is built by the same strictly chronological
+walk the rest of the repo uses — a row for game *G* only sees games that
+finished before *G* — and every index is shrunk to the league average, so a park
+with 200 plate appearances behind it cannot swing a projection. Temperature is
+the exception to the walk, because it is not a running total: it is a property
+of the game itself, fitted from the archive and served from the forecast.
 
 ---
 
@@ -72,7 +78,8 @@ tell a finding from a rounding error at this scale.
 
 | block | cols | AUC | delta vs shipped | 95% band | verdict |
 |---|--:|--:|--:|---|---|
-| **weather** | 6 | 0.5758 | **+0.0014** | [+0.0003, +0.0027] | best block — **and unservable** |
+| observed weather | 6 | 0.5758 | **+0.0014** | [+0.0003, +0.0027] | best block, but **cannot be served** |
+| **forecast temperature** | 1 | 0.5755 | **+0.0012** | [+0.0004, +0.0020] | kept — 87% of the above, from one servable number |
 | **park index** | 1 | 0.5755 | **+0.0011** | [+0.0001, +0.0020] | kept |
 | **opponent** | 3 | 0.5749 | **+0.0005** | [+0.0001, +0.0010] | kept |
 | two-week form | 5 | 0.5746 | +0.0002 | [−0.0001, +0.0005] | kept (helps in combination) |
@@ -106,13 +113,17 @@ in one hitter's four plate appearances.
 Adding whichever block helps most, then repeating:
 
 ```
-+ weather   -> 0.5758   (unservable, see below)
++ weather   -> 0.5758   (later replaced by forecast temperature, see below)
 + park      -> 0.5766
 + opponent  -> 0.5770
 + form15    -> 0.5772
 + rest      -> 0.5772   (no gain; dropped)
   stop: umpire, bullpen and platoon all make it worse
 ```
+
+The greedy run above used the observed weather, since that was all there was at
+the time. Swapping it for the servable forecast temperature costs about a fifth
+of the block's value and is what actually ships.
 
 ### Twelve algorithms
 
@@ -134,42 +145,111 @@ this repo:
 
 ---
 
-## The weather problem
+## The weather problem, and how it was solved
 
 Weather was the single best block: temperature, wind speed and direction, and
-the roof, together worth +0.0014. It is not in the shipped model.
+the roof, together worth +0.0014. The first version of this model shipped
+without it, for a reason that was not statistical.
 
-The reason is not statistical. `game_context.csv` gets weather from the game
-feed, and MLB only populates that object once a game is under way. For a
-scheduled game the API returns:
+`game_context.csv` gets weather from MLB's game feed, and MLB only populates
+that object once a game is under way. For a scheduled game the API returns:
 
 ```json
 "weather": {}
 ```
 
-Every game on today's board, checked one by one, comes back empty; yesterday's
-completed games all have `{"condition": "Sunny", "temp": "94", "wind": "6 mph, Out To LF"}`.
-So a model trained on observed weather is trained on something the live page
-cannot compute at the moment anybody would use it. That is not a leak in the
-usual sense — a forecast exists — but it breaks the rule this repo runs on:
-**training and serving must compute the same numbers**.
+Every game on a live board comes back empty; yesterday's completed games all
+have `{"condition": "Sunny", "temp": "94", "wind": "6 mph, Out To LF"}`. A model
+trained on observed weather is trained on something the page cannot compute at
+the moment anybody would read it. Not a leak in the usual sense — a forecast
+exists — but it breaks the rule this repo runs on: **training and serving must
+compute the same numbers.**
 
-A servable stand-in was built and tested: the park's own average temperature for
-that month of the year, whether the roof is closed, whether it is a day game —
-all knowable from the schedule alone. It adds nothing on top of the park index
-(0.57574 with it, 0.57581 without), which makes sense, because the park index
-already encodes most of what a venue's climate does to a baseball.
+Three questions had to be answered before wiring in an outside source.
 
-So the honest ledger:
+### 1. Does the signal survive being a forecast?
 
-| | AUC | delta |
+`weather_sensitivity.py` degrades the observed values by the error a real
+forecast carries and re-measures. Each level is five draws, so the number is not
+one lucky seed.
+
+| lead time | noise applied | AUC | vs no weather |
+|---|---|--:|--:|
+| perfect (what was measured) | — | 0.57717 | +0.00136 |
+| **same-day forecast** | temp ±2.5°F, wind ±2.5 mph, direction wrong 15% | **0.57692** | **+0.00110** |
+| next-day forecast | ±3.5°F, ±3.5 mph, 25% | 0.57676 | +0.00095 |
+| three days out | ±5°F, ±5 mph, 40% | 0.57653 | +0.00071 |
+| pure noise (control) | ±15°F, ±12 mph, 67% | 0.57576 | −0.00005 |
+
+**81% of the value survives same-day forecast error**, and the bootstrap band on
+that is [+0.00021, +0.00232] — it clears zero. The pure-noise row landing at
+−0.00005 is the control that makes the rest believable: the method finds nothing
+when there is nothing to find.
+
+### 2. Which part of the weather actually matters?
+
+| variables | AUC | vs no weather |
+|---|--:|--:|
+| **temperature only** | **0.57746** | **+0.00164** |
+| wind only | 0.57614 | +0.00033 |
+| roof + day/night only | 0.57542 | −0.00039 |
+
+Temperature is not merely the biggest part — it is *better alone* than the full
+six-variable block, because wind and the roof are adding noise. That is a much
+easier thing to serve than "the weather": one number per game.
+
+### 3. Which API, and does it match?
+
+| source | key | coverage | archive | verdict |
+|---|---|---|---|---|
+| MLB StatsAPI | — | every park | n/a | **empty until first pitch** |
+| **Open-Meteo** | none | global | **yes, back to 1940** | **shipped** |
+| NWS (api.weather.gov) | none | US only | no | good forecast, no history to fit on |
+| OpenWeatherMap | required | global | paid tier | not needed |
+
+The archive is what settles it. Open-Meteo serves the *same model at the same
+coordinates* as both history and forecast, so the model is fitted on the archive
+and served from the forecast, and the two are the same quantity. Fitting on
+MLB's stadium thermometer and serving a forecast would be two different numbers
+wearing one name. NWS has the better US forecast but no archive to fit against,
+which makes it a fallback rather than the source.
+
+`fetch_weather.py` pulls the archive for all 41 venues in the data (keyed by
+venue *id*, because three parks were renamed inside this data set) and matches
+each game to the UTC hour of first pitch — **6,969 of 6,973 games**. Against
+MLB's own thermometer on the 5,776 open-air games where both exist:
+
+```
+correlation 0.9595    mean difference -0.55F    MAE 2.36F
+```
+
+That 2.36°F is almost exactly the same-day forecast error the sensitivity
+analysis assumed, which is a pleasant confirmation that the noise levels above
+were calibrated rather than guessed.
+
+### The result
+
+| | AUC | vs shipped props model |
 |---|--:|--:|
 | shipped props model (34 features) | 0.57438 | — |
-| **this model (43 features, servable)** | **0.57581** | **+0.00143** |
-| the same plus live weather | 0.57717 | +0.00279 |
+| no weather at all (43 features) | 0.57581 | +0.00143 |
+| **forecast temperature (44 features)** | **0.57699** | **+0.00261** |
+| MLB observed weather (49 features) | 0.57717 | +0.00279 *(unservable)* |
 
-Half the available gain is real and unreachable. It is quoted here so the number
-is on the record, and it is not in the app.
+One servable feature recovers **87%** of what six unservable ones were worth,
+and nearly doubles the model's edge over the board it replaces. Temperature is
+now the sixth-largest coefficient in the model, ahead of the park index.
+
+### How it is served
+
+One Open-Meteo call per slate — the API takes comma-separated coordinates, so
+fifteen games is one request, cached thirty minutes. Hours come back in UTC,
+which is what a game's start time already is, so matching is a string compare.
+
+If the call fails the projection does not: it falls back to **that park's mean
+for that month**, computed from the same archive and shipped inside the model
+file, and the card labels the number `(avg)` rather than pretending it is a
+forecast. A weather outage degrades a projection; it does not break a page.
 
 ---
 
@@ -177,13 +257,13 @@ is on the record, and it is not in the app.
 
 | | shipped | **this model** |
 |---|--:|--:|
-| AUC | 0.5744 | **0.5758** |
-| Brier | 0.2242 | **0.2240** |
-| log loss | 0.6401 | **0.6397** |
-| day's best pick | 51.0% | **52.9%** |
-| day's best three | 48.0% | **50.5%** |
-| day's best five | 47.9% | 47.8% |
-| day's best ten | 44.3% | **44.6%** |
+| AUC | 0.5744 | **0.5770** |
+| Brier | 0.2242 | **0.2239** |
+| log loss | 0.6401 | **0.6394** |
+| day's best pick | 51.0% | **53.5%** |
+| day's best three | 48.0% | **49.5%** |
+| day's best five | 47.9% | **48.0%** |
+| day's best ten | 44.3% | **45.0%** |
 
 For scale: a naive "how often has this guy done it this season", with no model
 at all, gets **0.5519**. The base rate is 35.4%.
@@ -262,9 +342,9 @@ contributions are exact and they sum to the model's own linear predictor — but
 read one at a time they will happily tell you a hitter's home-run rate is
 working against him.
 
-So the 43 features are tagged into six groups the trainer freezes into the model
-file — his bat, recent form, how many at-bats he should get, the pitcher he
-faces, the ballpark, the lineup around him — and the contributions are summed
+So the 44 features are tagged into seven groups the trainer freezes into the
+model file — his bat, recent form, how many at-bats he should get, the pitcher
+he faces, the ballpark, the weather, the lineup around him — and the summed
 *within* a group before anything is said. Collinear features cancel inside the
 group they belong to, and every group ends up correlating positively with the
 final projection:
@@ -276,16 +356,25 @@ final projection:
 | the ballpark | 0.098 | +0.38 |
 | his bat | 0.076 | +0.48 |
 | recent form | 0.045 | +0.54 |
+| the weather | — | positive |
 | the lineup around him | 0.002 | +0.07 |
+
+The weather was split out of "the ballpark" once temperature became a real
+driver: a hot night and a big park are different reasons, and a card that says
+`88°F` tells you something `Globe Life Field` does not.
 
 Then the group's biggest single feature supplies the number, so the sentence is
 specific rather than generic:
 
-> **47%** — well above the 35% a typical starter runs.
-> Helps: bats 1st. Hurts: the starter strikes out 23% of hitters.
+> **49%** — well above the 35% a typical starter runs.
+> Helps: bats 2nd, and the starter strikes out 21% of hitters.
 
 > **23%** — well below the 35% a typical starter runs.
 > Hurts: bats 9th.
+
+Two helpers, not one: inside a single game the top reason is nearly always the
+batting order, so a card that stopped at one would say the same thing three
+times down a game card.
 
 `scripts/test-two-bases.ts` enforces the properties that make this honest: every
 feature belongs to exactly one group, the group contributions add back to the
@@ -297,7 +386,14 @@ the projection the right way.
 
 ## What ships
 
-`/mlb/two-bases`, one card per lineup starter, sorted by probability:
+`/mlb/two-bases` opens on **the three most likely hitters in each game**, which
+is how a slate actually gets read — games are the unit, not a flat leaderboard
+of 162 names. Each game card carries the matchup, the ballpark, the forecast
+temperature at first pitch, and its three best hitters; one click opens the rest
+of that game's lineup, and a toggle switches to the whole board ranked end to
+end.
+
+Every hitter shows:
 
 - the **percentage** and the fair American price it implies,
 - the **tier** and what that tier actually hit on the held-out season,
@@ -317,9 +413,11 @@ number for the same hitter.
 ```bash
 cd research/mlb-props && python3 fetch_props.py && python3 fetch_context.py && python3 features.py
 cd ../mlb-tb2
-python3 features_tb2.py       # the seven candidate blocks
-python3 bakeoff_tb2.py        # ablation, greedy selection, twelve algorithms
-python3 final_tb2.py          # freeze -> src/lib/mlb-tb2-model.json
+python3 fetch_weather.py          # Open-Meteo archive, per venue, per game
+python3 features_tb2.py           # the eight candidate blocks
+python3 bakeoff_tb2.py            # ablation, greedy selection, twelve algorithms
+python3 weather_sensitivity.py    # does the weather survive being a forecast?
+python3 final_tb2.py              # freeze -> src/lib/mlb-tb2-model.json
 npx tsx scripts/test-two-bases.ts
 ```
 
@@ -332,9 +430,10 @@ npx tsx scripts/test-two-bases.ts
   season average. Projecting it from the actual game — expected innings, the
   opposing starter's pace, whether his team bats in the ninth — is the obvious
   next feature, and it attacks the largest coefficient rather than the smallest.
-- **A weather forecast.** Not from StatsAPI, which does not have one pre-game,
-  but from a weather API keyed on the venue's coordinates. The +0.0014 is
-  measured and sitting there; it needs a source the app can actually call.
+- **The last fifth of the weather.** Forecast temperature recovers 87% of the
+  observed block. The rest is wind, and wind direction is the least reliable
+  thing a forecast gives you — worth a look only if a source with real skill at
+  it turns up.
 - **The top-of-board over-confidence.** The 45–50% bucket predicts 46.9% and
   delivers 44.3%. A second calibration pass fitted only on the top decile would
   cost nothing and would make the best picks quotable at face value.

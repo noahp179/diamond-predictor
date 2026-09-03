@@ -46,7 +46,8 @@
   "w15_h_pa",
   "w15_pa_pg",
   "w15_g",
-  "own15_tb2"
+  "own15_tb2",
+  "temp_fc"
  ],
  "mean": [
   0.22003425680044816,
@@ -91,7 +92,8 @@
   0.2192308646544226,
   3.8175754986494934,
   10.121501799937183,
-  0.35237389054470847
+  0.35237389054470847,
+  74.91052449230585
  ],
  "std": [
   0.016316730960534452,
@@ -136,56 +138,58 @@
   0.03289814265252987,
   0.6425463850562682,
   3.5115630291284248,
-  0.09976273999158981
+  0.09976273999158981,
+  12.627609476914708
  ],
  "coef": [
-  0.008061278980717913,
-  0.04586109885491099,
-  -0.0406317298400352,
-  0.0296288965001893,
-  -0.008995550917495893,
-  -0.03297199810582622,
-  -0.019410741808418234,
-  0.00460689793753924,
-  0.046213726396316615,
-  -0.029155924568524588,
-  0.025959313414931507,
-  0.010183564720896925,
-  0.03460425147301664,
-  0.02970655922418643,
-  -0.0026031513310974513,
-  0.01730134253596763,
-  -0.013574364015442552,
-  0.01770026265238849,
-  -0.02594522562883204,
-  -0.13055765560761515,
-  0.07277702873249962,
-  -0.004175662319941945,
-  -0.018524508635949365,
-  0.028114375382005903,
-  0.0030455252284048158,
-  0.008771840864705982,
-  -0.07358211219421731,
-  0.009000135271200065,
-  0.0157071811026861,
-  -0.01290496848057681,
-  0.00025467365495429855,
-  -0.007720573321070615,
-  -0.04166594836966723,
-  0.025131155470445855,
-  0.042629305860616605,
-  0.0009230716987864187,
-  0.022655365377884318,
+  0.007445586761559917,
+  0.04933470027002772,
+  -0.0393635231136759,
+  0.028950068579575373,
+  -0.010552433616916128,
+  -0.03276050964088211,
+  -0.019039578641921594,
+  0.00481297379139088,
+  0.04709367157764368,
+  -0.028476708969856844,
+  0.025201695011141875,
+  0.008993888639008171,
+  0.03457256196122151,
+  0.017491097029733116,
+  -0.004336400070545755,
+  0.019128621136568193,
+  -0.017019931042948033,
+  0.02386060393652881,
+  -0.024271796802197786,
+  -0.13191628720484422,
+  0.07566927626413161,
+  -0.012746543635793896,
+  -0.018561396716059064,
+  0.026438521008109513,
+  0.0029311866827431273,
+  0.011882435918300405,
+  -0.07220054711498815,
+  0.010442873197484284,
+  0.016419905485019655,
+  -0.012128184840294395,
+  -0.0006329671675586302,
+  -0.008918112585574445,
+  -0.04270154344660383,
+  0.02451279222818865,
+  0.0356889470959292,
+  -0.016213371038289615,
+  0.036783037577746314,
   0.0,
-  -0.0073608924813814685,
-  0.03380323304910743,
-  -0.014552766927823141,
-  0.0005484915971377727,
-  -0.019729228069372603
+  -0.008007555780106892,
+  0.03335921223707984,
+  -0.015259739714209186,
+  0.008626283962325738,
+  -0.019737713773226476,
+  0.04428330811157653
  ],
- "intercept": -0.6137354532661305,
- "plattA": 1.0000919834966877,
- "plattB": 0.00026380278130716127,
+ "intercept": -0.6137742962896402,
+ "plattA": 0.999638792650603,
+ "plattB": -0.0002005762018865906,
  "base": 0.35383463127461323,
  "groups": {
   "power": {
@@ -248,11 +252,17 @@
    ]
   },
   "conditions": {
-   "label": "the ballpark and weather",
+   "label": "the ballpark",
    "features": [
     "park",
     "park_tb",
     "is_home"
+   ]
+  },
+  "weather": {
+   "label": "the weather",
+   "features": [
+    "temp_fc"
    ]
   },
   "lineup": {
@@ -309,6 +319,416 @@
   "loanDepot park": 0.984505217350237
  },
  "leagueTbPa": 0.3584360679632025,
+ "venueCoords": {
+  "Angel Stadium": {
+   "lat": 33.80019044,
+   "lon": -117.8823996
+  },
+  "Oriole Park at Camden Yards": {
+   "lat": 39.283787,
+   "lon": -76.621689
+  },
+  "Fenway Park": {
+   "lat": 42.346456,
+   "lon": -71.097441
+  },
+  "Rate Field": {
+   "lat": 41.83,
+   "lon": -87.634167
+  },
+  "Progressive Field": {
+   "lat": 41.495861,
+   "lon": -81.685255
+  },
+  "London Stadium": {
+   "lat": 51.50853,
+   "lon": -0.12574
+  },
+  "Field of Dreams": {
+   "lat": 42.498241,
+   "lon": -91.056486
+  },
+  "Kauffman Stadium": {
+   "lat": 39.051567,
+   "lon": -94.480483
+  },
+  "Busch Stadium": {
+   "lat": 38.62256667,
+   "lon": -90.19286667
+  },
+  "loanDepot park": {
+   "lat": 25.77796236,
+   "lon": -80.21951795
+  },
+  "Oakland Coliseum": {
+   "lat": 37.751511,
+   "lon": -122.200698
+  },
+  "Tropicana Field": {
+   "lat": 27.767778,
+   "lon": -82.6525
+  },
+  "Globe Life Field": {
+   "lat": 32.747299,
+   "lon": -97.081818
+  },
+  "Rogers Centre": {
+   "lat": 43.64155,
+   "lon": -79.38915
+  },
+  "Chase Field": {
+   "lat": 33.445302,
+   "lon": -112.066687
+  },
+  "Wrigley Field": {
+   "lat": 41.948171,
+   "lon": -87.655503
+  },
+  "Coors Field": {
+   "lat": 39.756042,
+   "lon": -104.994136
+  },
+  "UNIQLO Field at Dodger Stadium": {
+   "lat": 34.07368,
+   "lon": -118.24053
+  },
+  "Daikin Park": {
+   "lat": 29.756967,
+   "lon": -95.355509
+  },
+  "Citi Field": {
+   "lat": 40.75753012,
+   "lon": -73.84559155
+  },
+  "Comerica Park": {
+   "lat": 42.3391151,
+   "lon": -83.048695
+  },
+  "Oracle Park": {
+   "lat": 37.778383,
+   "lon": -122.389448
+  },
+  "George M. Steinbrenner Field": {
+   "lat": 27.97997,
+   "lon": -82.50702
+  },
+  "Tokyo Dome": {
+   "lat": 35.7056,
+   "lon": 139.7519
+  },
+  "Gocheok Sky Dome": {
+   "lat": 37.4982,
+   "lon": 126.867
+  },
+  "PNC Park": {
+   "lat": 40.446904,
+   "lon": -80.005753
+  },
+  "American Family Field": {
+   "lat": 43.02838,
+   "lon": -87.97099
+  },
+  "Sutter Health Park": {
+   "lat": 38.57994,
+   "lon": -121.51246
+  },
+  "Truist Park": {
+   "lat": 33.890672,
+   "lon": -84.467641
+  },
+  "T-Mobile Park": {
+   "lat": 47.591333,
+   "lon": -122.33251
+  },
+  "Great American Ball Park": {
+   "lat": 39.097389,
+   "lon": -84.506611
+  },
+  "Las Vegas Ballpark": {
+   "lat": 36.152607,
+   "lon": -115.329888
+  },
+  "Nationals Park": {
+   "lat": 38.872861,
+   "lon": -77.007501
+  },
+  "Rickwood Field": {
+   "lat": 33.5023303,
+   "lon": -86.8563555
+  },
+  "Journey Bank Ballpark": {
+   "lat": 41.2419845,
+   "lon": -77.0475104
+  },
+  "Target Field": {
+   "lat": 44.981829,
+   "lon": -93.277891
+  },
+  "Yankee Stadium": {
+   "lat": 40.82919482,
+   "lon": -73.9264977
+  },
+  "Petco Park": {
+   "lat": 32.707861,
+   "lon": -117.157278
+  },
+  "Citizens Bank Park": {
+   "lat": 39.90539086,
+   "lon": -75.16716957
+  },
+  "Bristol Motor Speedway": {
+   "lat": 31.5156,
+   "lon": -82.5269
+  }
+ },
+ "parkMonthTemp": {
+  "American Family Field|03": 52.0,
+  "American Family Field|04": 51.06,
+  "American Family Field|05": 60.25,
+  "American Family Field|06": 73.7,
+  "American Family Field|07": 79.9,
+  "American Family Field|08": 76.18,
+  "American Family Field|09": 70.64,
+  "Angel Stadium|04": 70.49,
+  "Angel Stadium|05": 69.96,
+  "Angel Stadium|06": 74.34,
+  "Angel Stadium|07": 78.6,
+  "Angel Stadium|08": 81.86,
+  "Angel Stadium|09": 77.25,
+  "Bristol Motor Speedway|08": 83.2,
+  "Busch Stadium|03": 67.21,
+  "Busch Stadium|04": 63.99,
+  "Busch Stadium|05": 71.51,
+  "Busch Stadium|06": 82.53,
+  "Busch Stadium|07": 85.17,
+  "Busch Stadium|08": 85.1,
+  "Busch Stadium|09": 79.7,
+  "Chase Field|03": 77.86,
+  "Chase Field|04": 84.08,
+  "Chase Field|05": 91.26,
+  "Chase Field|06": 103.27,
+  "Chase Field|07": 102.36,
+  "Chase Field|08": 105.49,
+  "Chase Field|09": 100.21,
+  "Citi Field|03": 52.92,
+  "Citi Field|04": 55.87,
+  "Citi Field|05": 66.25,
+  "Citi Field|06": 77.26,
+  "Citi Field|07": 80.65,
+  "Citi Field|08": 77.99,
+  "Citi Field|09": 72.17,
+  "Citizens Bank Park|03": 63.29,
+  "Citizens Bank Park|04": 64.6,
+  "Citizens Bank Park|05": 72.55,
+  "Citizens Bank Park|06": 83.38,
+  "Citizens Bank Park|07": 85.18,
+  "Citizens Bank Park|08": 81.25,
+  "Citizens Bank Park|09": 76.47,
+  "Comerica Park|04": 58.26,
+  "Comerica Park|05": 66.03,
+  "Comerica Park|06": 76.8,
+  "Comerica Park|07": 81.22,
+  "Comerica Park|08": 78.97,
+  "Comerica Park|09": 73.59,
+  "Coors Field|04": 61.0,
+  "Coors Field|05": 65.56,
+  "Coors Field|06": 83.73,
+  "Coors Field|07": 86.75,
+  "Coors Field|08": 86.05,
+  "Coors Field|09": 80.11,
+  "Daikin Park|03": 75.56,
+  "Daikin Park|04": 78.36,
+  "Daikin Park|05": 82.16,
+  "Daikin Park|06": 82.63,
+  "Daikin Park|07": 89.09,
+  "Daikin Park|08": 90.7,
+  "Daikin Park|09": 86.31,
+  "Dodger Stadium|03": 59.71,
+  "Dodger Stadium|04": 62.58,
+  "Dodger Stadium|05": 67.2,
+  "Dodger Stadium|06": 72.58,
+  "Dodger Stadium|07": 78.82,
+  "Dodger Stadium|08": 79.2,
+  "Dodger Stadium|09": 76.23,
+  "Fenway Park|04": 52.45,
+  "Fenway Park|05": 62.84,
+  "Fenway Park|06": 73.8,
+  "Fenway Park|07": 79.47,
+  "Fenway Park|08": 75.77,
+  "Fenway Park|09": 68.02,
+  "Field of Dreams|08": 75.7,
+  "George M. Steinbrenner Field|03": 82.78,
+  "George M. Steinbrenner Field|04": 79.49,
+  "George M. Steinbrenner Field|05": 86.1,
+  "George M. Steinbrenner Field|06": 84.18,
+  "George M. Steinbrenner Field|07": 87.01,
+  "George M. Steinbrenner Field|08": 86.5,
+  "George M. Steinbrenner Field|09": 83.74,
+  "Globe Life Field|03": 75.69,
+  "Globe Life Field|04": 72.92,
+  "Globe Life Field|05": 80.67,
+  "Globe Life Field|06": 86.41,
+  "Globe Life Field|07": 92.84,
+  "Globe Life Field|08": 95.91,
+  "Globe Life Field|09": 85.82,
+  "Gocheok Sky Dome|03": 39.25,
+  "Great American Ball Park|03": 64.11,
+  "Great American Ball Park|04": 63.82,
+  "Great American Ball Park|05": 71.93,
+  "Great American Ball Park|06": 79.87,
+  "Great American Ball Park|07": 84.32,
+  "Great American Ball Park|08": 82.17,
+  "Great American Ball Park|09": 81.52,
+  "Guaranteed Rate Field|03": 49.83,
+  "Guaranteed Rate Field|04": 61.86,
+  "Guaranteed Rate Field|05": 63.61,
+  "Guaranteed Rate Field|06": 77.07,
+  "Guaranteed Rate Field|07": 80.06,
+  "Guaranteed Rate Field|08": 79.27,
+  "Guaranteed Rate Field|09": 75.8,
+  "Journey Bank Ballpark|08": 74.0,
+  "Kauffman Stadium|03": 70.2,
+  "Kauffman Stadium|04": 63.16,
+  "Kauffman Stadium|05": 73.14,
+  "Kauffman Stadium|06": 83.08,
+  "Kauffman Stadium|07": 85.19,
+  "Kauffman Stadium|08": 83.26,
+  "Kauffman Stadium|09": 77.76,
+  "Las Vegas Ballpark|06": 96.08,
+  "London Stadium|06": 61.45,
+  "Minute Maid Park|03": 73.85,
+  "Minute Maid Park|04": 75.59,
+  "Minute Maid Park|05": 79.75,
+  "Minute Maid Park|06": 86.24,
+  "Minute Maid Park|07": 83.19,
+  "Minute Maid Park|08": 88.85,
+  "Minute Maid Park|09": 84.28,
+  "Nationals Park|03": 72.07,
+  "Nationals Park|04": 64.32,
+  "Nationals Park|05": 72.94,
+  "Nationals Park|06": 81.86,
+  "Nationals Park|07": 84.92,
+  "Nationals Park|08": 81.88,
+  "Nationals Park|09": 77.7,
+  "Oakland Coliseum|03": 56.48,
+  "Oakland Coliseum|04": 60.6,
+  "Oakland Coliseum|05": 64.05,
+  "Oakland Coliseum|06": 70.35,
+  "Oakland Coliseum|07": 79.99,
+  "Oakland Coliseum|08": 70.78,
+  "Oakland Coliseum|09": 72.18,
+  "Oracle Park|03": 70.0,
+  "Oracle Park|04": 60.07,
+  "Oracle Park|05": 60.66,
+  "Oracle Park|06": 63.22,
+  "Oracle Park|07": 61.94,
+  "Oracle Park|08": 64.34,
+  "Oracle Park|09": 66.01,
+  "Oriole Park at Camden Yards|03": 65.36,
+  "Oriole Park at Camden Yards|04": 67.16,
+  "Oriole Park at Camden Yards|05": 70.23,
+  "Oriole Park at Camden Yards|06": 83.95,
+  "Oriole Park at Camden Yards|07": 84.76,
+  "Oriole Park at Camden Yards|08": 79.41,
+  "Oriole Park at Camden Yards|09": 73.83,
+  "PNC Park|04": 60.12,
+  "PNC Park|05": 66.7,
+  "PNC Park|06": 79.01,
+  "PNC Park|07": 81.64,
+  "PNC Park|08": 80.92,
+  "PNC Park|09": 73.97,
+  "Petco Park|03": 64.02,
+  "Petco Park|04": 64.03,
+  "Petco Park|05": 65.66,
+  "Petco Park|06": 69.06,
+  "Petco Park|07": 71.94,
+  "Petco Park|08": 76.25,
+  "Petco Park|09": 74.72,
+  "Progressive Field|04": 48.72,
+  "Progressive Field|05": 62.63,
+  "Progressive Field|06": 73.49,
+  "Progressive Field|07": 77.65,
+  "Progressive Field|08": 75.38,
+  "Progressive Field|09": 71.41,
+  "Rate Field|03": 58.83,
+  "Rate Field|04": 54.94,
+  "Rate Field|05": 62.44,
+  "Rate Field|06": 75.21,
+  "Rate Field|07": 79.83,
+  "Rate Field|08": 76.77,
+  "Rate Field|09": 75.12,
+  "Rickwood Field|06": 88.0,
+  "Rogers Centre|03": 41.3,
+  "Rogers Centre|04": 49.15,
+  "Rogers Centre|05": 60.12,
+  "Rogers Centre|06": 73.88,
+  "Rogers Centre|07": 77.32,
+  "Rogers Centre|08": 73.68,
+  "Rogers Centre|09": 69.68,
+  "Sutter Health Park|04": 67.3,
+  "Sutter Health Park|05": 78.8,
+  "Sutter Health Park|06": 83.64,
+  "Sutter Health Park|07": 88.96,
+  "Sutter Health Park|08": 87.5,
+  "Sutter Health Park|09": 79.58,
+  "T-Mobile Park|03": 50.78,
+  "T-Mobile Park|04": 55.19,
+  "T-Mobile Park|05": 62.99,
+  "T-Mobile Park|06": 67.03,
+  "T-Mobile Park|07": 73.38,
+  "T-Mobile Park|08": 75.04,
+  "T-Mobile Park|09": 64.92,
+  "Target Field|04": 51.45,
+  "Target Field|05": 65.34,
+  "Target Field|06": 76.73,
+  "Target Field|07": 81.5,
+  "Target Field|08": 78.85,
+  "Target Field|09": 75.24,
+  "Tokyo Dome|03": 44.6,
+  "Tropicana Field|03": 73.8,
+  "Tropicana Field|04": 78.02,
+  "Tropicana Field|05": 85.95,
+  "Tropicana Field|06": 88.05,
+  "Tropicana Field|07": 87.54,
+  "Tropicana Field|08": 87.14,
+  "Tropicana Field|09": 84.23,
+  "Truist Park|03": 70.08,
+  "Truist Park|04": 71.87,
+  "Truist Park|05": 75.48,
+  "Truist Park|06": 82.11,
+  "Truist Park|07": 85.55,
+  "Truist Park|08": 82.66,
+  "Truist Park|09": 78.22,
+  "UNIQLO Field at Dodger Stadium|03": 71.67,
+  "UNIQLO Field at Dodger Stadium|04": 65.03,
+  "UNIQLO Field at Dodger Stadium|05": 68.94,
+  "UNIQLO Field at Dodger Stadium|06": 71.89,
+  "UNIQLO Field at Dodger Stadium|07": 77.08,
+  "UNIQLO Field at Dodger Stadium|08": 82.52,
+  "UNIQLO Field at Dodger Stadium|09": 73.4,
+  "Wrigley Field|03": 52.1,
+  "Wrigley Field|04": 50.44,
+  "Wrigley Field|05": 62.05,
+  "Wrigley Field|06": 75.4,
+  "Wrigley Field|07": 78.17,
+  "Wrigley Field|08": 75.7,
+  "Wrigley Field|09": 71.67,
+  "Yankee Stadium|03": 59.1,
+  "Yankee Stadium|04": 56.75,
+  "Yankee Stadium|05": 66.21,
+  "Yankee Stadium|06": 78.72,
+  "Yankee Stadium|07": 83.96,
+  "Yankee Stadium|08": 78.58,
+  "Yankee Stadium|09": 72.75,
+  "loanDepot park|03": 77.22,
+  "loanDepot park|04": 78.52,
+  "loanDepot park|05": 84.14,
+  "loanDepot park|06": 84.72,
+  "loanDepot park|07": 86.13,
+  "loanDepot park|08": 86.98,
+  "loanDepot park|09": 83.04
+ },
+ "leagueTemp": 74.83,
  "phrases": {
   "h_pa": "how often he gets a hit",
   "tb_pa": "he racks up bases per trip to the plate",
@@ -338,25 +758,26 @@
   "def_xbh_pa": "how many extra-base hits this opponent allows",
   "w15_tb_pa": "his bases per plate appearance over the last two weeks",
   "w15_pa_pg": "his plate appearances over the last two weeks",
-  "own15_tb2": "how often he has done this in the last two weeks"
+  "own15_tb2": "how often he has done this in the last two weeks",
+  "temp_fc": "the temperature at first pitch"
  },
  "tiers": [
   {
-   "minProb": 0.4628465773485824,
+   "minProb": 0.4661854544496991,
    "label": "Strong",
-   "hitRate": 0.4734584450402145,
+   "hitRate": 0.4707774798927614,
    "n": 1865
   },
   {
-   "minProb": 0.32347108231484833,
+   "minProb": 0.3240664972897553,
    "label": "Solid",
-   "hitRate": 0.3805906795942987,
+   "hitRate": 0.38117152942227783,
    "n": 22381
   },
   {
    "minProb": 0.0,
    "label": "Lean",
-   "hitRate": 0.28099869801638966,
+   "hitRate": 0.28038599984682544,
    "n": 13057
   }
  ],
@@ -364,70 +785,70 @@
   {
    "lo": 0.2,
    "hi": 0.25,
-   "n": 1839,
-   "pred": 0.23384691812831185,
-   "actual": 0.23110386079390974
+   "n": 1854,
+   "pred": 0.23407825192673243,
+   "actual": 0.22923408845738943
   },
   {
    "lo": 0.25,
    "hi": 0.3,
-   "n": 6883,
-   "pred": 0.27765930469735683,
-   "actual": 0.2788028475955252
+   "n": 6819,
+   "pred": 0.27812971626552346,
+   "actual": 0.27628684557853056
   },
   {
    "lo": 0.3,
    "hi": 0.35,
-   "n": 9269,
-   "pred": 0.32526035909609247,
-   "actual": 0.32322796418168087
+   "n": 9233,
+   "pred": 0.3255327757122194,
+   "actual": 0.32286364128668904
   },
   {
    "lo": 0.35,
    "hi": 0.4,
-   "n": 9688,
-   "pred": 0.374846724464316,
-   "actual": 0.3819157720891825
+   "n": 9538,
+   "pred": 0.3750492197976931,
+   "actual": 0.3820507443908576
   },
   {
    "lo": 0.4,
    "hi": 0.45,
-   "n": 6762,
-   "pred": 0.4216574521213502,
-   "actual": 0.4069801833776989
+   "n": 6779,
+   "pred": 0.4218655378650673,
+   "actual": 0.40522200914589174
   },
   {
    "lo": 0.45,
    "hi": 0.5,
-   "n": 2237,
-   "pred": 0.46898836330693927,
-   "actual": 0.4425569959767546
+   "n": 2401,
+   "pred": 0.4695555745660029,
+   "actual": 0.45064556434818825
   },
   {
    "lo": 0.5,
    "hi": 1.01,
-   "n": 538,
-   "pred": 0.5279875924892987,
-   "actual": 0.5037174721189591
+   "n": 594,
+   "pred": 0.5253689953923856,
+   "actual": 0.49158249158249157
   }
  ],
  "metrics": {
-  "auc": 0.5758143199859841,
+  "auc": 0.5769929564517594,
   "aucShipped": 0.5743824514687507,
-  "delta": 0.0014318685172334256,
+  "delta": 0.0026105049830087435,
   "ci": [
-   0.0002708547221276586,
-   0.0025762699983841687
+   0.0012362983746623147,
+   0.003958559824693124
   ],
-  "brier": 0.2240339092441899,
-  "logloss": 0.6396986752421118,
+  "brier": 0.22392116805798423,
+  "logloss": 0.639446199605718,
   "base": 0.35037396456049114,
-  "meanPred": 0.3535522343773991,
+  "meanPred": 0.354631481814445,
   "aucNaive": 0.5518867974270828,
-  "top1": 0.5286624203821656,
-  "top3": 0.505307855626327,
-  "top5": 0.47770700636942676,
-  "top10": 0.445859872611465,
+  "top1": 0.535031847133758,
+  "top3": 0.49469214437367304,
+  "top5": 0.4802547770700637,
+  "top10": 0.45031847133757963,
   "top5Shipped": 0.4789808917197452,
   "nTest": 37303,
   "nTrain": 86868
@@ -444,6 +865,9 @@
   ],
   "weather": [],
   "known": [],
+  "fcwx": [
+   "temp_fc"
+  ],
   "ump": [],
   "form15": [
    "w15_tb_pa",
@@ -455,10 +879,11 @@
   "rest": []
  },
  "weatherFinding": {
-  "aucWithLiveWeather": 0.5771744070595431,
-  "aucServable": 0.5758143199859841,
+  "aucObservedWeather": 0.5771744070595431,
+  "aucForecastTemp": 0.5769929564517594,
+  "aucNoWeather": 0.5758143199859841,
   "aucShipped": 0.5743824514687507,
-  "note": "Weather was the single best block in the bake-off, but StatsAPI only publishes it once a game is under way, so a pre-game board cannot compute it. Roughly half the available gain is not servable and was dropped rather than quoted."
+  "note": "MLB publishes a game's weather only once it is under way, so the block that won the bake-off could not be served. Temperature is essentially the whole of that signal, and Open-Meteo serves it both as an archive (to fit on) and a forecast (to serve from), which recovers most of it from one feature instead of six."
  },
  "selftest": [
   {
@@ -505,9 +930,10 @@
     0.2142222222222222,
     5.0,
     1.0,
-    0.3085714285714286
+    0.3085714285714286,
+    39.1
    ],
-   "p": 0.39589323225044926
+   "p": 0.37766299134878506
   },
   {
    "x": [
@@ -553,9 +979,10 @@
     0.2142222222222222,
     5.0,
     1.0,
-    0.3085714285714286
+    0.3085714285714286,
+    39.1
    ],
-   "p": 0.38118444172730986
+   "p": 0.3630317756633143
   },
   {
    "x": [
@@ -601,9 +1028,10 @@
     0.2057142857142857,
     2.0,
     1.0,
-    0.3085714285714286
+    0.3085714285714286,
+    39.1
    ],
-   "p": 0.24278229587518046
+   "p": 0.22621179271411973
   },
   {
    "x": [
@@ -649,9 +1077,10 @@
     0.2216666666666666,
     4.0,
     2.0,
-    0.395
+    0.395,
+    57.6
    ],
-   "p": 0.373344064269944
+   "p": 0.36955216035388794
   },
   {
    "x": [
@@ -697,9 +1126,10 @@
     0.1848888888888889,
     4.166666666666667,
     12.0,
-    0.2311111111111111
+    0.2311111111111111,
+    53.6
    ],
-   "p": 0.3569433819190765
+   "p": 0.34265178329021273
   }
  ]
 }

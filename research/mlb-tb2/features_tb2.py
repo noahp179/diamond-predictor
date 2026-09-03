@@ -17,6 +17,14 @@ picked because there is a mechanism, not because it was available:
            and Fenway inflate doubles far more than they inflate runs.
   weather  temperature, wind speed and direction, roof. Balls carry in warm
            air and die into the wind; this is the classic "obvious" edge.
+  fcwx     the servable weather block: temperature at first pitch from
+           Open-Meteo, whose archive (used here) and forecast (used by the live
+           app) are the same model at the same coordinates. weather_sensitivity
+           .py showed temperature is essentially the whole weather signal and
+           that ~80% of it survives forecast-grade error, so this is the one
+           weather feature that earns a place in a model people can actually
+           use. Gaps fall back to the park's own mean for that month, computed
+           from the same archive.
   known    the part of the weather a bettor actually knows before first pitch.
            StatsAPI publishes `weather` only once a game is under way — it is
            {} for every scheduled game — so the live app can never see the
@@ -71,6 +79,7 @@ EXTRA_BLOCKS = {
     "parktb": ["park_tb"],
     "weather": ["temp", "wind_mph", "wind_out", "wind_in", "is_dome", "is_day"],
     "known": ["temp_norm", "is_dome", "is_day"],
+    "fcwx": ["temp_fc"],
     "ump": ["ump_tb"],
     "form15": ["w15_tb_pa", "w15_h_pa", "w15_pa_pg", "w15_g", "own15_tb2"],
     "rest": ["bat_rest", "bat_g7"],
@@ -129,6 +138,21 @@ def build():
     bg["xbh"] = bg.d2 + bg.d3 + bg.hr
     bg["y_tb2"] = (bg.tb >= 2).astype(int)
 
+    # Forecast-grade temperature, keyed by game (fetch_weather.py). Missing
+    # games fall back to that park's mean for the calendar month, from the same
+    # archive — never to MLB's thermometer, which the live app cannot read.
+    fc_path = os.path.join(DATA, "venue_temps.csv")
+    if os.path.exists(fc_path):
+        fc = pd.read_csv(fc_path)
+        fc = fc.merge(bg[["gamePk", "date", "venue"]].drop_duplicates("gamePk"),
+                      on="gamePk", how="left")
+        fc["month"] = fc.date.str.slice(5, 7)
+        park_month = fc.groupby(["venue", "month"]).temp_fc.mean().to_dict()
+        lg_fc = float(fc.temp_fc.mean())
+        temp_fc_map = dict(zip(fc.gamePk, fc.temp_fc))
+    else:
+        park_month, temp_fc_map, lg_fc = {}, {}, 73.6
+
     ctx = ctx.set_index("gamePk")
     ctx_temp = ctx.temp.to_dict()
     ctx_wind = {r.Index: parse_wind(r) for r in ctx.itertuples()}
@@ -179,6 +203,9 @@ def build():
         # this month of the year, backed off to the park's own average and then
         # to the league. Known from the schedule; no forecast required.
         month = int(str(gdf.date.iloc[0])[5:7])
+        temp_fc = temp_fc_map.get(gpk)
+        if temp_fc is None:
+            temp_fc = park_month.get((venue, f"{month:02d}"), lg_fc)
         pm, pt = PARKMONTH[(venue, month)], PARKTEMP[venue]
         temp_norm = ((pm["t"] + 6 * ((pt["t"] + 30 * league_temp) / (pt["n"] + 30)))
                      / (pm["n"] + 6))
@@ -216,6 +243,7 @@ def build():
                 is_dome=is_dome,
                 is_day=is_day,
                 temp_norm=temp_norm,
+                temp_fc=temp_fc,
                 ump_tb=ump_tb,
                 w15_tb_pa=shrunk(w.tot["tb"], wp, LG_TB_PA, 40),
                 w15_h_pa=shrunk(w.tot["h"], wp, 0.216, 40),

@@ -16,19 +16,26 @@
  *   opponent     bases and extra-base hits allowed per batter faced — the
  *                whole staff and the defence behind it, in two numbers.
  *   two-week form  a 15-day window beside the model's existing 30-day one.
+ *   temperature  at first pitch. Balls carry in warm air, and this is the one
+ *                weather variable worth having: it is essentially the whole of
+ *                the weather signal, and it survives being a forecast.
  *
- * On the held-out 2026 season that is AUC 0.5758 against the shipped model's
- * 0.5744, and the day's best pick goes from 51.0% to 52.9%.
+ * On the held-out 2026 season that is AUC 0.5770 against the shipped model's
+ * 0.5744, and the day's best pick goes from 51.0% to 53.5%.
  *
  * The features come from `batterRows` in mlb-props.server.ts rather than being
  * recomputed here, so the two boards can never quote a different number for the
  * same hitter. Everything this module adds on top is a lookup or a single
  * StatsAPI aggregate call.
  *
- * A note on what is deliberately missing: weather was the strongest block in
- * the bake-off and it is not here. StatsAPI publishes a game's weather only
- * once the game is under way — it is empty for every scheduled game — so a
- * board rendered before first pitch cannot compute it. See TWO-BASES.md.
+ * On the weather: MLB publishes a game's weather only once it is under way, so
+ * that block could not be served from StatsAPI at all. Open-Meteo can, and
+ * more usefully it serves the *same* quantity twice — an archive the model was
+ * fitted on and a forecast the app reads — so training and serving are the same
+ * number rather than two numbers wearing one name. Wind and the roof turned out
+ * to be worth nothing once temperature was in, so only temperature is fetched.
+ * If the call fails the projection falls back to that park's average for the
+ * month, from the same archive, and says so. See TWO-BASES.md.
  */
 import model from "./mlb-tb2-model.json";
 import { batterRows, type BatterRow } from "./mlb-props.server";
@@ -83,16 +90,73 @@ async function fetchDefence(season: number): Promise<Map<number, DefLine>> {
   });
 }
 
+/**
+ * Temperature at first pitch for every game on the slate, in one call.
+ *
+ * Open-Meteo takes comma-separated coordinates, so the whole slate is a single
+ * request rather than fifteen. Hours come back in UTC, which is what the game's
+ * start time is in, so matching is a string compare rather than a timezone
+ * problem. `past_days` lets a board for a recent date still get real numbers.
+ */
+const OPEN_METEO = "https://api.open-meteo.com/v1/forecast";
+const VENUE_COORDS: Record<string, { lat: number; lon: number }> = model.venueCoords;
+const PARK_MONTH_TEMP: Record<string, number> = model.parkMonthTemp;
+
+/** What this park averages in this month — the fallback when the forecast is
+ *  unavailable, taken from the same archive the model was fitted on. */
+export function fallbackTemp(venue: string, date: string): number {
+  return PARK_MONTH_TEMP[`${venue}|${date.slice(5, 7)}`] ?? model.leagueTemp;
+}
+
+async function fetchTemps(
+  games: { venue: string; startsAt: string }[],
+): Promise<Map<string, number>> {
+  const venues = [...new Set(games.map((g) => g.venue))].filter((v) => VENUE_COORDS[v]).sort();
+  if (venues.length === 0) return new Map();
+  const day = games[0]?.startsAt?.slice(0, 10) ?? "";
+  return cached(`tb2:temp:${day}:${venues.join(",")}`, 30 * 60_000, async () => {
+    const out = new Map<string, number>();
+    const lat = venues.map((v) => VENUE_COORDS[v].lat).join(",");
+    const lon = venues.map((v) => VENUE_COORDS[v].lon).join(",");
+    const res = await fetch(
+      `${OPEN_METEO}?latitude=${lat}&longitude=${lon}&hourly=temperature_2m` +
+        `&temperature_unit=fahrenheit&timezone=UTC&past_days=7&forecast_days=3`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20000) },
+    );
+    if (!res.ok) throw new Error(`open-meteo ${res.status}`);
+    const body = await res.json();
+    // one location comes back as an object, several as an array
+    type Loc = { hourly?: { time?: string[]; temperature_2m?: (number | null)[] } };
+    const locs: Loc[] = Array.isArray(body) ? body : [body];
+    locs.forEach((loc, i) => {
+      const venue = venues[i];
+      const times: string[] = loc?.hourly?.time ?? [];
+      const temps: (number | null)[] = loc?.hourly?.temperature_2m ?? [];
+      const byHour = new Map<string, number>();
+      times.forEach((t, j) => {
+        if (temps[j] != null) byHour.set(t.slice(0, 13), temps[j]);
+      });
+      for (const g of games) {
+        if (g.venue !== venue || !g.startsAt) continue;
+        const hour = new Date(g.startsAt).toISOString().slice(0, 13);
+        const v = byHour.get(hour);
+        if (v != null) out.set(g.startsAt + "|" + venue, v);
+      }
+    });
+    return out;
+  });
+}
+
 // ----------------------------------------------------------------- inference
 const PARK_TB: Record<string, number> = model.parkTb;
 const FEATURES = model.features;
 
 /**
- * Assemble the 43-feature vector: the 34 the props model computes, then the
- * park index, the opponent's three, and the 15-day form block — in exactly the
- * order research/mlb-tb2/final_tb2.py froze them.
+ * Assemble the 44-feature vector: the 34 the props model computes, then the
+ * park index, the opponent's three, the 15-day form block and the temperature
+ * — in exactly the order research/mlb-tb2/final_tb2.py froze them.
  */
-export function tb2Vector(row: BatterRow, def: DefLine | undefined): number[] {
+export function tb2Vector(row: BatterRow, def: DefLine | undefined, temp: number): number[] {
   const known = !!def && def.bf > 0;
   return [
     ...row.base,
@@ -101,6 +165,7 @@ export function tb2Vector(row: BatterRow, def: DefLine | undefined): number[] {
     known ? shrunk(def!.xbh, def!.bf, LG_XBH_PA, K_DEF) : LG_XBH_PA,
     known ? 1 : 0,
     ...row.form15,
+    temp,
   ];
 }
 
@@ -295,12 +360,14 @@ export function tb2Summary(p: number, r: { up: Reason[]; down: Reason[] }): stri
   const parts = [
     `${Math.round(p * 100)}% — ${vs} the ${Math.round(base * 100)}% a typical starter runs.`,
   ];
-  const lead = r.up[0];
-  const drag = r.down[0];
-  if (lead?.detail) parts.push(`Helps: ${lead.detail}.`);
-  else if (lead) parts.push(`Helps: ${lead.label}.`);
-  if (drag?.detail) parts.push(`Hurts: ${drag.detail}.`);
-  else if (drag) parts.push(`Hurts: ${drag.label}.`);
+  // Two helpers, not one. Within a single game the top reason is nearly always
+  // the batting order, so a card that stops there says the same thing three
+  // times; the second reason is what distinguishes these hitters.
+  const helps = r.up.filter((g) => g.detail).slice(0, 2);
+  const drag = r.down.find((g) => g.detail) ?? r.down[0];
+  if (helps.length) parts.push(`Helps: ${helps.map((h) => h.detail).join(", and ")}.`);
+  else if (r.up[0]) parts.push(`Helps: ${r.up[0].label}.`);
+  if (drag) parts.push(`Hurts: ${drag.detail || drag.label}.`);
   return parts.join(" ");
 }
 
@@ -330,12 +397,35 @@ export type TwoBasePick = {
   summary: string;
   up: Reason[];
   down: Reason[];
+  /** Temperature at first pitch, and where it came from. */
+  tempF: number;
+  tempSource: "forecast" | "seasonal average";
+  /** 1 = the most likely hitter in this game. */
+  rankInGame: number;
+};
+
+/** One game, with the hitters most likely to get two bases in it. */
+export type TwoBaseGame = {
+  gameId: number;
+  matchup: string;
+  venue: string;
+  startsAt: string;
+  park: number;
+  tempF: number;
+  tempSource: "forecast" | "seasonal average";
+  lineupsPosted: boolean;
+  /** Every starter in the game, most likely first. */
+  picks: TwoBasePick[];
 };
 
 export type TwoBaseSlate = {
   date: string;
   season: number;
+  /** Flat board, most likely first, across the whole slate. */
   picks: TwoBasePick[];
+  /** The same hitters grouped by game, so a card can lead with the three most
+   *  likely in each — which is how somebody actually reads a slate. */
+  byGame: TwoBaseGame[];
   lineupsPosted: number;
   games: number;
   model: {
@@ -373,16 +463,39 @@ export async function twoBaseSlate(date: string): Promise<TwoBaseSlate> {
 
   const { season, rows } = await batterRows(date);
   if (rows.length === 0) {
-    return { date, season, picks: [], lineupsPosted: 0, games: 0, model: meta };
+    return { date, season, picks: [], byGame: [], lineupsPosted: 0, games: 0, model: meta };
   }
-  const def = await fetchDefence(season).catch(() => new Map<number, DefLine>());
+  const gameKeys = [...new Map(rows.map((r) => [r.gamePk, r])).values()].map((r) => ({
+    venue: r.venue,
+    startsAt: r.startsAt,
+  }));
+  const [def, temps] = await Promise.all([
+    fetchDefence(season).catch(() => new Map<number, DefLine>()),
+    fetchTemps(gameKeys).catch((err) => {
+      console.error("[mlbTwoBases] forecast unavailable, using park averages:", err);
+      return new Map<string, number>();
+    }),
+  ]);
+
+  const tempFor = (
+    row: BatterRow,
+  ): { tempF: number; tempSource: "forecast" | "seasonal average" } => {
+    const live = temps.get(row.startsAt + "|" + row.venue);
+    return live != null
+      ? { tempF: live, tempSource: "forecast" }
+      : { tempF: fallbackTemp(row.venue, date), tempSource: "seasonal average" };
+  };
 
   const picks: TwoBasePick[] = rows.map((row) => {
-    const x = tb2Vector(row, def.get(row.opponentId));
+    const { tempF, tempSource } = tempFor(row);
+    const x = tb2Vector(row, def.get(row.opponentId), tempF);
     const prob = tb2Probability(x);
     const reasons = tb2Reasons(x, row.venue);
     const t = tierFor(prob);
     return {
+      tempF,
+      tempSource,
+      rankInGame: 0,
       playerId: row.playerId,
       player: row.player,
       team: row.team,
@@ -408,8 +521,42 @@ export async function twoBaseSlate(date: string): Promise<TwoBaseSlate> {
   });
 
   picks.sort((a, b) => b.prob - a.prob);
-  const games = new Set(rows.map((r) => r.gamePk)).size;
+
+  // Group by game. Sorting games by their best hitter puts the matchup most
+  // worth looking at first, which is the same ordering the flat board uses.
+  const meta_ = new Map(rows.map((r) => [r.gamePk, r]));
+  const byGame: TwoBaseGame[] = [];
+  for (const [gameId, list] of groupBy(picks, (p) => p.gameId)) {
+    const r = meta_.get(gameId)!;
+    list.forEach((p, i) => (p.rankInGame = i + 1));
+    byGame.push({
+      gameId,
+      matchup: r.matchup,
+      venue: r.venue,
+      startsAt: r.startsAt,
+      park: r.park,
+      tempF: list[0].tempF,
+      tempSource: list[0].tempSource,
+      lineupsPosted: rows.filter((x) => x.gamePk === gameId).every((x) => x.lineupPosted),
+      picks: list,
+    });
+  }
+  byGame.sort((a, b) => (b.picks[0]?.prob ?? 0) - (a.picks[0]?.prob ?? 0));
+
+  const games = byGame.length;
   const posted = new Set(rows.filter((r) => r.lineupPosted).map((r) => `${r.gamePk}:${r.teamId}`))
     .size;
-  return { date, season, picks, lineupsPosted: posted, games, model: meta };
+  return { date, season, picks, byGame, lineupsPosted: posted, games, model: meta };
+}
+
+/** Stable grouping that keeps each group in the order it was given. */
+function groupBy<T, K>(items: T[], key: (t: T) => K): Map<K, T[]> {
+  const m = new Map<K, T[]>();
+  for (const it of items) {
+    const k = key(it);
+    const cur = m.get(k);
+    if (cur) cur.push(it);
+    else m.set(k, [it]);
+  }
+  return m;
 }

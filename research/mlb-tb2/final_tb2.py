@@ -65,9 +65,16 @@ GROUPS = {
                      "opp_r_allowed_pg", "def_tb_pa", "def_xbh_pa", "def_known"],
     },
     "conditions": {
-        "label": "the ballpark and weather",
-        "features": ["park", "park_tb", "temp", "wind_mph", "wind_out", "wind_in",
-                     "is_dome", "is_day", "is_home"],
+        "label": "the ballpark",
+        "features": ["park", "park_tb", "is_home"],
+    },
+    "weather": {
+        # Split out from the ballpark once temperature became a real driver.
+        # A hot night and a big park are different reasons, and a card that
+        # says "88F at first pitch" tells you something "the ballpark" does not.
+        "label": "the weather",
+        "features": ["temp", "temp_fc", "temp_norm", "wind_mph", "wind_out",
+                     "wind_in", "is_dome", "is_day"],
     },
     "lineup": {
         "label": "the lineup around him",
@@ -103,6 +110,8 @@ PHRASES = {
     "park": "the ballpark",
     "park_tb": "how this ballpark plays for extra-base hits",
     "temp": "the temperature",
+    "temp_fc": "the temperature at first pitch",
+    "temp_norm": "how warm this park usually is now",
     "wind_out": "the wind blowing out",
     "wind_in": "the wind blowing in",
     "is_dome": "the closed roof",
@@ -177,16 +186,21 @@ def main():
     # under way; it is {} for every scheduled game, so a board rendered before
     # first pitch can never see it. Backtesting on it would be quoting a number
     # the app cannot compute. It is measured here for the record and dropped.
-    servable = BASE + EXTRA_BLOCKS["parktb"] + EXTRA_BLOCKS["def"] + EXTRA_BLOCKS["form15"]
-    unservable = servable + EXTRA_BLOCKS["weather"]
+    servable = (BASE + EXTRA_BLOCKS["parktb"] + EXTRA_BLOCKS["def"]
+                + EXTRA_BLOCKS["form15"] + EXTRA_BLOCKS["fcwx"])
+    no_weather = [f for f in servable if f not in EXTRA_BLOCKS["fcwx"]]
+    unservable = no_weather + EXTRA_BLOCKS["weather"]
     p_base = fit(df, BASE, tr, te, y)
     p = fit(df, servable, tr, te, y)
+    p_nw = fit(df, no_weather, tr, te, y)
     p_un = fit(df, unservable, tr, te, y)
-    a0, a_s, a_un = auc(yte, p_base), auc(yte, p), auc(yte, p_un)
-    print(f"shipped 34 features            auc={a0:.5f}")
-    print(f"SERVABLE  ({len(servable)} features)        auc={a_s:.5f}  delta {a_s - a0:+.5f}")
-    print(f"with live weather ({len(unservable)} feats)  auc={a_un:.5f}  delta {a_un - a0:+.5f}"
-          f"   <- not servable, for the record only")
+    a0, a_s, a_nw, a_un = (auc(yte, p_base), auc(yte, p), auc(yte, p_nw),
+                           auc(yte, p_un))
+    print(f"shipped props model (34)         auc={a0:.5f}")
+    print(f"no weather at all ({len(no_weather)})           auc={a_nw:.5f}  delta {a_nw - a0:+.5f}")
+    print(f"SERVABLE, forecast temp ({len(servable)})     auc={a_s:.5f}  delta {a_s - a0:+.5f}")
+    print(f"MLB observed weather ({len(unservable)})        auc={a_un:.5f}  delta {a_un - a0:+.5f}"
+          f"   <- cannot be served, for the record")
     FEATS = servable
     print(f"  -> shipping {len(FEATS)} features\n")
 
@@ -235,6 +249,23 @@ def main():
     for v, x in sorted(park_tb.items(), key=lambda kv: kv[1])[:3]:
         print(f"  {v:34s} {x:.3f}")
 
+    # Fallback temperatures for serving: what this park averages in this month,
+    # from the same archive the model was fitted on. Used when the forecast call
+    # fails, so a weather outage degrades the projection rather than breaking it.
+    fc = pd.read_csv(os.path.join(DATA, "venue_temps.csv"))
+    bgv = pd.read_csv(os.path.join(PROPS, "batter_games.csv"),
+                      usecols=["gamePk", "date", "venue"]).drop_duplicates("gamePk")
+    fc = fc.merge(bgv, on="gamePk", how="left")
+    fc["month"] = fc.date.str.slice(5, 7)
+    park_month_temp = {f"{v}|{m}": round(float(t), 2)
+                       for (v, m), t in fc.groupby(["venue", "month"]).temp_fc.mean().items()}
+    league_temp = round(float(fc.temp_fc.mean()), 2)
+    coords = json.load(open(os.path.join(DATA, "venue_coords.json")))
+    venue_coords = {c["name"]: {"lat": c["lat"], "lon": c["lon"]}
+                    for c in coords.values() if c.get("name")}
+    print(f"\npark-month temperature fallbacks: {len(park_month_temp)}, "
+          f"venue coordinates: {len(venue_coords)}, league mean {league_temp}F")
+
     known = {f for g in GROUPS.values() for f in g["features"]}
     missing = [f for f in FEATS if f not in known]
     assert not missing, f"ungrouped features: {missing}"
@@ -261,6 +292,9 @@ def main():
         "groups": groups,
         "parkTb": park_tb,
         "leagueTbPa": lg,
+        "venueCoords": venue_coords,
+        "parkMonthTemp": park_month_temp,
+        "leagueTemp": league_temp,
         "phrases": {f: PHRASES[f] for f in FEATS if f in PHRASES},
         "tiers": tiers,
         "calibration": cal,
@@ -276,13 +310,15 @@ def main():
         },
         "blocks": {k: [f for f in v if f in FEATS] for k, v in EXTRA_BLOCKS.items()},
         "weatherFinding": {
-            "aucWithLiveWeather": a_un,
-            "aucServable": a_s,
+            "aucObservedWeather": a_un,
+            "aucForecastTemp": a_s,
+            "aucNoWeather": a_nw,
             "aucShipped": a0,
-            "note": ("Weather was the single best block in the bake-off, but StatsAPI "
-                     "only publishes it once a game is under way, so a pre-game board "
-                     "cannot compute it. Roughly half the available gain is not "
-                     "servable and was dropped rather than quoted."),
+            "note": ("MLB publishes a game's weather only once it is under way, so the "
+                     "block that won the bake-off could not be served. Temperature is "
+                     "essentially the whole of that signal, and Open-Meteo serves it "
+                     "both as an archive (to fit on) and a forecast (to serve from), "
+                     "which recovers most of it from one feature instead of six."),
         },
         "selftest": [
             {"x": X[i].tolist(),

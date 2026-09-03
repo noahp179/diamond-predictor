@@ -258,6 +258,7 @@ export const getMlbTwoBases = createServerFn({ method: "GET" })
         date,
         season: 0,
         picks: [] as Awaited<ReturnType<typeof import("./mlb-tb2.server").twoBaseSlate>>["picks"],
+        byGame: [] as Awaited<ReturnType<typeof import("./mlb-tb2.server").twoBaseSlate>>["byGame"],
         lineupsPosted: 0,
         games: 0,
         model: null,
