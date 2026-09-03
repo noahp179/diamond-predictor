@@ -13,6 +13,7 @@
  * cached with a short TTL so new results flow in.
  */
 
+import { bucketise, type Bucket } from "./ledger-stats";
 import type { PredictedGame, TeamSide } from "./mlb-core";
 
 export type Sport = "nba" | "nfl";
@@ -670,6 +671,16 @@ export async function trackRecord(
   perSeason: SeasonMetrics[];
   recent: TrackGame[];
   running: { i: number; accuracy: number }[];
+  /**
+   * Accuracy by confidence bucket, over every scored game.
+   *
+   * A hit rate alone cannot tell you whether a 90% prediction means anything —
+   * a model can be right 62% of the time overall while its confident calls are
+   * no better than its coin flips. This splits the record by how sure the model
+   * was. Bucketed by the same helper as the soccer and tennis pages, so the
+   * bands mean the same thing everywhere on the site.
+   */
+  calibration: Bucket[];
   seasonLabels: string[];
 }> {
   const scored = trackSeasons(sport, today);
@@ -759,11 +770,14 @@ export async function trackRecord(
     .reverse()
     .map(({ season: _s, ...g }) => g);
 
+  const calibration = bucketise(all.map((g) => ({ pickProb: g.pickProb, correct: g.correct })));
+
   return {
     overall,
     perSeason,
     recent,
     running,
+    calibration,
     seasonLabels: perSeason.map((p) => p.seasonLabel),
   };
 }

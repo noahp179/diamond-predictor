@@ -158,6 +158,7 @@ async function buildTrackRecord(sport: Sport) {
       perSeason: [],
       recent: [],
       running: [],
+      calibration: [],
       seasonLabels: [],
       source: "error" as const,
       note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",

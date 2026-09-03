@@ -29,6 +29,7 @@
 
 import matchModels from "./soccer-match-model.json";
 import { leagueOf, type LeagueSlug } from "./soccer-leagues";
+import { pickOf, scoreOutcome, type ScoredCall } from "./ledger-stats";
 
 type MatchModel = {
   league: string;
@@ -121,14 +122,31 @@ type EspnEvent = {
 
 const API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 
+/**
+ * Fetch a date range from the scoreboard, retrying a throttle.
+ *
+ * ESPN answers a burst of whole-season requests with a 403 rather than a 429 —
+ * it looks like a permissions failure and is really a rate limit, which is why
+ * this retries a status that would normally be pointless to retry. Two
+ * attempts with a growing pause clears it; anything that survives that is a
+ * real failure and is thrown.
+ */
 async function espnFetch(espn: string, dates: string): Promise<EspnEvent[]> {
-  const res = await fetch(`${API}/${espn}/scoreboard?dates=${dates}&limit=1000`, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`ESPN soccer ${espn} ${dates}: ${res.status}`);
-  const json = (await res.json()) as { events?: EspnEvent[] };
-  return json.events ?? [];
+  let last = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * 3 ** (attempt - 1)));
+    const res = await fetch(`${API}/${espn}/scoreboard?dates=${dates}&limit=1000`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      const json = (await res.json()) as { events?: EspnEvent[] };
+      return json.events ?? [];
+    }
+    last = String(res.status);
+    if (res.status !== 403 && res.status !== 429 && res.status < 500) break;
+  }
+  throw new Error(`ESPN soccer ${espn} ${dates}: ${last}`);
 }
 
 function team(c: EspnCompetitor): SoccerTeam {
@@ -216,7 +234,24 @@ const seasonWindow = (season: number) => `${season}0701-${season + 1}0630`;
 /** How many completed seasons to replay before the target so ratings arrive warm. */
 const WARMUP_SEASONS = 2;
 
-type Final = { date: string; home: string; away: string; hg: number; ag: number; season: number };
+/**
+ * How far back the scored replay reaches. A European season is about ten
+ * months, so a year covers a full campaign plus the tail of the one before —
+ * enough matches for a hit rate to mean something, recent enough that it is
+ * still describing the model as it is shipped today.
+ */
+const HISTORY_DAYS = 365;
+const HISTORY_TTL = 60 * 60 * 1000;
+const historyCache = new Map<string, { at: number; calls: ScoredCall[] }>();
+
+export type Final = {
+  date: string;
+  home: string;
+  away: string;
+  hg: number;
+  ag: number;
+  season: number;
+};
 
 const finalsCache = new Map<string, { at: number; finals: Final[] }>();
 const LIVE_TTL = 10 * 60 * 1000;
@@ -254,10 +289,28 @@ async function seasonFinals(espn: string, season: number, current: number): Prom
 
 /**
  * Replay the league up to (but not including) `upTo`, returning each team's
- * rating. This is the same arithmetic as research/soccer/ship_soccer.py: the
+ * rating.
+ *
+ * Exported for scripts/test-replay.ts, which asserts the observer fires before
+ * the fold. That ordering cannot be checked from the outside — a leaked replay
+ * of a season still lands within a few points of the honest one (measured: 55.4%
+ * against 48.9% on the EPL) so no accuracy threshold separates them reliably.
+ * The only decisive check is on the arithmetic itself. This is the same arithmetic as research/soccer/ship_soccer.py: the
  * constants live in the model file so the two cannot drift apart.
  */
-function replay(model: MatchModel, finals: Final[], upTo: string) {
+export function replay(
+  model: MatchModel,
+  finals: Final[],
+  upTo: string,
+  /**
+   * Called for each match immediately BEFORE it is folded into the ratings,
+   * with the rating gap the model would have priced it at. That ordering is the
+   * whole point: an observer that ran after the update would be looking at a
+   * table that already knows the result, which is the classic way a replay
+   * quietly turns into a fit.
+   */
+  onMatch?: (m: Final, ctx: { gap: number; known: boolean }) => void,
+) {
   const { init, k, hfa, gdExp, carry } = model.elo;
   const elo = new Map<string, number>();
   const played = new Map<string, number>();
@@ -271,6 +324,15 @@ function replay(model: MatchModel, finals: Final[], upTo: string) {
       for (const [t, r] of elo) elo.set(t, init + carry * (r - init));
     }
     season = m.season;
+
+    if (onMatch) {
+      onMatch(m, {
+        gap: rate(m.home) + hfa - rate(m.away),
+        // Same test the slate uses: a club with no rating yet has nothing to be
+        // right or wrong about, so it is not scored.
+        known: elo.has(m.home) || elo.has(m.away),
+      });
+    }
 
     const gd = m.hg - m.ag;
     const res = gd > 0 ? 1 : gd === 0 ? 0.5 : 0;
@@ -369,4 +431,68 @@ export async function soccerSlate(slug: LeagueSlug, date: string): Promise<Socce
     .sort((a, b) => b.rating - a.rating);
 
   return { league: slug, date, matches, season, table };
+}
+
+// ------------------------------------------------------------ the replay log
+
+/**
+ * Score the model over recent completed matches.
+ *
+ * The live ledger in tracking.server.ts is the honest forward record, but it
+ * starts empty and fills at the rate the sport plays — for months a Track
+ * Record page backed only by it can draw nothing at all. This fills that gap
+ * with the one thing that is legitimately available immediately: the model run
+ * over matches that have already happened, each priced with the ratings as they
+ * stood BEFORE it.
+ *
+ * That is a backtest, not a forward record, and the page says so. It is exactly
+ * what the NFL and NBA Track Record pages have always shown. The reason it is
+ * worth showing is that the alternative — an empty page — tells a reader
+ * nothing about whether the model works.
+ *
+ * No leakage: `replay` invokes the observer before folding the match in, so
+ * every probability here was computable the morning of the match.
+ */
+export async function soccerHistory(
+  slug: LeagueSlug,
+  upTo: string,
+  days = HISTORY_DAYS,
+): Promise<ScoredCall[]> {
+  const key = `${slug}:${upTo}:${days}`;
+  const hit = historyCache.get(key);
+  if (hit && Date.now() - hit.at < HISTORY_TTL) return hit.calls;
+
+  const league = leagueOf(slug);
+  const model = matchModelFor(slug);
+  const currentSeason = seasonOf(new Date().toISOString().slice(0, 10));
+
+  const from = new Date(`${upTo}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - days);
+  const since = from.toISOString().slice(0, 10);
+
+  // Warm-up seasons before the scored window, so the ratings are not still
+  // sitting at their initial value when the first scored match arrives.
+  const seasons: number[] = [];
+  for (let s = seasonOf(since) - WARMUP_SEASONS; s <= seasonOf(upTo); s += 1) seasons.push(s);
+
+  // Sequential, unlike the slate: this asks for up to four whole seasons at
+  // once and ESPN throttles a burst of those. The seasons are cached after the
+  // first call, so the cost is paid once an hour at most.
+  const history: Final[][] = [];
+  for (const s of seasons) history.push(await seasonFinals(league.espn, s, currentSeason));
+  const finals = history.flat().sort((a, b) => a.date.localeCompare(b.date));
+
+  const calls: ScoredCall[] = [];
+  replay(model, finals, upTo, (m, { gap, known }) => {
+    if (!known || m.date < since) return;
+    const p = calibrate(model, gap);
+    const probs = { a: p.home, draw: p.draw, b: p.away };
+    const result: "a" | "draw" | "b" = m.hg > m.ag ? "a" : m.hg === m.ag ? "draw" : "b";
+    const { pick, pickProb } = pickOf(probs);
+    const { brier, logLoss, rps } = scoreOutcome(probs, result);
+    calls.push({ date: m.date, pickProb, correct: pick === result, brier, logLoss, rps });
+  });
+
+  historyCache.set(key, { at: Date.now(), calls });
+  return calls;
 }

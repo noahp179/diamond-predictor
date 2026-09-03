@@ -2,6 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
+import { BucketAccuracy, ChartCard } from "@/components/LedgerCharts";
 import type { getNbaTrackRecord } from "@/lib/sports.functions";
 
 type Result = Awaited<ReturnType<typeof getNbaTrackRecord>>;
@@ -30,6 +31,7 @@ export function TrackRecordView({
   const perSeason = data?.perSeason ?? [];
   const recent = data?.recent ?? [];
   const running = data?.running ?? [];
+  const calibration = data?.calibration ?? [];
 
   return (
     <SportShell
@@ -69,6 +71,20 @@ export function TrackRecordView({
                 {pct(overall.accuracy)}
               </p>
             </section>
+          )}
+
+          {/* Accuracy split by how sure the model was. The headline win rate
+              averages the coin flips in with the locks, and those are not the
+              same product: a bettor only ever acts on the confident end, so
+              that end is the one worth measuring separately. */}
+          {calibration.length > 0 && (
+            <ChartCard
+              title="Accuracy by confidence"
+              subtitle="Every scored game sorted by how sure the model was: bars are how many games landed in each bucket, the solid line is how often those were right, the dotted line is what the model claimed."
+              footer="Read the bars first — a gap between the lines only means something where the bar under it is tall. The high-confidence buckets are always the thinnest, because a model that is 85% sure is not 85% sure very often."
+            >
+              <BucketAccuracy calibration={calibration} />
+            </ChartCard>
           )}
 
           <section className="mb-10">
