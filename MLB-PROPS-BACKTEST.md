@@ -11,6 +11,11 @@ The 2+ total-bases market from this study is one half of
 and his own team's run total go on the same slip — the two turn out to be 25%
 more correlated than independent pricing assumes.
 
+That same market gets a model of its own in [TWO-BASES.md](TWO-BASES.md) — the
+thirty-four features here plus a park index built for total bases, the
+opponent's bases allowed and a two-week form window, with every projection
+explained in a sentence.
+
 ---
 
 ## TL;DR
