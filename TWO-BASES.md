@@ -384,6 +384,67 @@ the projection the right way.
 
 ---
 
+## Why so many picks come from one lineup
+
+About a third of game cards show all three of their hitters from the same side.
+Chance alone would do that 21% of the time (2 × C(9,3) ÷ C(18,3)); across the
+held-out season it happens **39%** of the time. So the board really is
+clustered, and it is worth knowing whether it is clustered *correctly*.
+
+Nothing in the code groups by team or rewards a lineup for being popular. The
+clustering is structural: **15 of the 44 features are the same number for all
+nine hitters in a lineup** — the park and its total-bases index, the temperature
+at first pitch, the opposing starter's five features, the opponent's staff,
+home or away, and the team's own run rate. A good spot lifts all nine together,
+which is what a good spot *is*.
+
+It does not take the board over, though. Splitting the projection's variance:
+
+| | share of the spread | sd |
+|---|--:|--:|
+| between lineups (the spot) | 28.8% | 3.60 points |
+| **within a lineup (the hitter)** | **71.2%** | **5.67 points** |
+
+The hitter is still doing most of the work. And the lineup half is honest —
+bucketing the 4,150 held-out lineup-games by what the model said they would
+average:
+
+| model said | they actually did | n |
+|--:|--:|--:|
+| 30.4% | 29.9% | 692 |
+| 33.0% | 33.7% | 692 |
+| 34.6% | 34.5% | 691 |
+| 36.0% | 35.4% | 692 |
+| 37.6% | 36.7% | 691 |
+| 41.1% | 39.9% | 692 |
+
+Mean error 0.67 points. The model spreads lineups over 10.7 points and they
+actually spread over 10.0 — a ratio of 1.07, so team context is not being
+over-weighted. (The tempting shortcut here — compare the model's between-lineup
+spread with the raw spread of team-game hit rates, minus binomial noise — is
+wrong, and says the model is *under*-spread by a factor of three. Nine hitters
+facing the same pitcher on the same night share whatever that night turned out
+to be, and that shared luck is not predictable lineup quality. Bucketing by the
+prediction needs no such assumption.)
+
+Finally, do the one-sided cards deliver?
+
+| top three in a game | predicted | actual | all three hit | none hit |
+|---|--:|--:|--:|--:|
+| one side sweeps *(n=811)* | 44.9% | **42.8%** | 9.2% | **22.9%** |
+| split *(n=1,264)* | 43.6% | 42.1% | 7.7% | 19.7% |
+
+They do — a one-sided card is a slightly *better* set of picks than a split one,
+which is the answer to whether the clustering is real. The cost is in the last
+column: three hitters from one lineup go 0-for-3 **22.9%** of the time against
+19.7% for a split card, because they share a pitcher and a night. That is the
++0.043 same-lineup correlation from [TEAM-STACKS.md](TEAM-STACKS.md) showing up
+where it matters. The picks are right; they are just not three independent bets.
+
+Reproduce with `python3 research/mlb-tb2/team_concentration.py`.
+
+---
+
 ## What ships
 
 `/mlb/two-bases` opens on **the three most likely hitters in each game**, which
