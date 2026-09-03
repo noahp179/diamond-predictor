@@ -13,7 +13,6 @@
  * cached with a short TTL so new results flow in.
  */
 
-import { bucketise, type Bucket } from "./ledger-stats";
 import type { PredictedGame, TeamSide } from "./mlb-core";
 
 export type Sport = "nba" | "nfl";
@@ -629,155 +628,9 @@ export async function bestOddsSlate(
 }
 
 // -------------------------------------------------------------- track record
-
-export type TrackGame = {
-  date: string;
-  home: string; // abbr
-  away: string;
-  homeScore: number;
-  awayScore: number;
-  pickHome: boolean; // model favored home
-  pickProb: number; // confidence in the pick
-  correct: boolean;
-};
-
-export type SeasonMetrics = {
-  season: number;
-  seasonLabel: string;
-  n: number;
-  accuracy: number;
-  brier: number;
-  logLoss: number;
-};
-
-/** Which recent seasons to score for the track record: the most recent
- *  completed season and, if it has games, the in-progress one. */
-function trackSeasons(sport: Sport, today: string): number[] {
-  const cur = ratingSeason(sport, today);
-  const out: number[] = [];
-  // the current season (if underway) plus the two most recent completed
-  // seasons — a stable multi-season sample without an unbounded replay.
-  for (let s = cur; s >= cur - 2; s--) out.push(s);
-  return out.sort((a, b) => a - b);
-}
-
-/** Replay warmup + scored seasons, scoring every completed game the Elo model
- *  predicted point-in-time. */
-export async function trackRecord(
-  sport: Sport,
-  today: string,
-): Promise<{
-  overall: SeasonMetrics;
-  perSeason: SeasonMetrics[];
-  recent: TrackGame[];
-  running: { i: number; accuracy: number }[];
-  /**
-   * Accuracy by confidence bucket, over every scored game.
-   *
-   * A hit rate alone cannot tell you whether a 90% prediction means anything —
-   * a model can be right 62% of the time overall while its confident calls are
-   * no better than its coin flips. This splits the record by how sure the model
-   * was. Bucketed by the same helper as the soccer and tennis pages, so the
-   * bands mean the same thing everywhere on the site.
-   */
-  calibration: Bucket[];
-  seasonLabels: string[];
-}> {
-  const scored = trackSeasons(sport, today);
-  const firstScored = scored[0];
-  const warmupStart = firstScored - WARMUP_SEASONS;
-  const teams = await fetchTeams(sport);
-  const abbr = (id: string) => teams.get(id)?.abbr ?? id;
-
-  const elo = new Elo(ELO[sport]);
-  const perSeasonAcc = new Map<number, { n: number; correct: number; brier: number; ll: number }>();
-  const all: (TrackGame & { season: number })[] = [];
-
-  for (let s = warmupStart; s <= firstScored + (scored.length - 1); s++) {
-    if (s > warmupStart) elo.carrySeason();
-    const finals = await fetchSeasonFinals(sport, s);
-    for (const g of finals) {
-      if (scored.includes(s)) {
-        const pHome = elo.prob(g.home, g.away, g.neutral);
-        const result = g.hs > g.as ? 1 : 0;
-        const pickHome = pHome >= 0.5;
-        const correct = pickHome === (result === 1);
-        const bucket = perSeasonAcc.get(s) ?? { n: 0, correct: 0, brier: 0, ll: 0 };
-        bucket.n++;
-        bucket.correct += correct ? 1 : 0;
-        bucket.brier += (pHome - result) ** 2;
-        const pc = Math.min(1 - 1e-9, Math.max(1e-9, pHome));
-        bucket.ll += -(result * Math.log(pc) + (1 - result) * Math.log(1 - pc));
-        perSeasonAcc.set(s, bucket);
-        all.push({
-          season: s,
-          date: g.date,
-          home: abbr(g.home),
-          away: abbr(g.away),
-          homeScore: g.hs,
-          awayScore: g.as,
-          pickHome,
-          pickProb: pickConfidence(pHome),
-          correct,
-        });
-      }
-      elo.update(g.home, g.away, g.hs, g.as, g.neutral);
-    }
-  }
-
-  const mk = (
-    season: number,
-    b: { n: number; correct: number; brier: number; ll: number },
-  ): SeasonMetrics => ({
-    season,
-    seasonLabel:
-      sport === "nba" ? `${season - 1}-${String(season % 100).padStart(2, "0")}` : `${season}`,
-    n: b.n,
-    accuracy: b.n ? b.correct / b.n : 0,
-    brier: b.n ? b.brier / b.n : 0,
-    logLoss: b.n ? b.ll / b.n : 0,
-  });
-
-  const perSeason = [...perSeasonAcc.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([s, b]) => mk(s, b));
-
-  const totals = [...perSeasonAcc.values()].reduce(
-    (acc, b) => ({
-      n: acc.n + b.n,
-      correct: acc.correct + b.correct,
-      brier: acc.brier + b.brier,
-      ll: acc.ll + b.ll,
-    }),
-    { n: 0, correct: 0, brier: 0, ll: 0 },
-  );
-  const overall = mk(0, totals);
-  overall.seasonLabel = "All";
-
-  // running cumulative accuracy over the scored sequence (in date order),
-  // downsampled to ~60 points for a compact sparkline.
-  all.sort((a, b) => a.date.localeCompare(b.date));
-  const running: { i: number; accuracy: number }[] = [];
-  let cum = 0;
-  const step = Math.max(1, Math.floor(all.length / 60));
-  all.forEach((g, i) => {
-    cum += g.correct ? 1 : 0;
-    if (i % step === 0 || i === all.length - 1) running.push({ i: i + 1, accuracy: cum / (i + 1) });
-  });
-
-  const recent = all
-    .slice(-25)
-    .reverse()
-    .map(({ season: _s, ...g }) => g);
-
-  const calibration = bucketise(all.map((g) => ({ pickProb: g.pickProb, correct: g.correct })));
-
-  return {
-    overall,
-    perSeason,
-    recent,
-    running,
-    calibration,
-    seasonLabels: perSeason.map((p) => p.seasonLabel),
-  };
-}
+//
+// `trackRecord()` lived here: it replayed the last three seasons and scored
+// every completed game point-in-time, which is a legitimate backtest and was
+// never a track record. The NFL and NBA Track Record pages now read the forward
+// ledger (tracking.server.ts) like every other sport, so it has been removed
+// rather than left behind for something to start rendering again.

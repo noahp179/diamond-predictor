@@ -2,11 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { readLedger } from "./tracking.server";
-import { EMPTY_STATS, summarise } from "./ledger-stats";
-import { soccerHistory } from "./soccer.server";
-import { tennisHistory } from "./tennis.server";
-import { isLeagueSlug, LEAGUES, type LeagueSlug } from "./soccer-leagues";
-import { isTourSlug, TOURS, type TourSlug } from "./tennis-tours";
+import { isLeagueSlug, LEAGUES } from "./soccer-leagues";
+import { isTourSlug, TOURS } from "./tennis-tours";
 import soccerModels from "./soccer-match-model.json";
 import tennisModels from "./tennis-match-model.json";
 
@@ -33,6 +30,11 @@ const TENNIS = tennisModels as unknown as Record<string, TennisModel>;
 export const MEANINGFUL_N = 100;
 
 function claimFor(sport: string, division: string) {
+  // NFL and NBA never had a held-out backtest to claim: their old Track Record
+  // pages replayed recent seasons and reported that as the record. There is no
+  // honest number to put in the "claimed" column, so the column stays empty
+  // rather than being filled with the replay it just replaced.
+  if (sport === "nfl" || sport === "nba") return null;
   if (sport === "soccer") {
     const m = SOCCER[division];
     if (!m) return null;
@@ -55,75 +57,39 @@ function claimFor(sport: string, division: string) {
   };
 }
 
-/** Both server functions normalise their input the same way. */
+/**
+ * Normalise the request.
+ *
+ * NFL and NBA have no divisions, so their division IS the sport — one ledger
+ * slice each. Soccer and tennis fall back to a default slug rather than
+ * trusting the URL, since an unknown division would otherwise read as an empty
+ * ledger and look identical to "nothing has settled".
+ */
 function resolve(data: { sport: string; division: string }) {
+  if (data.sport === "nfl" || data.sport === "nba") {
+    return { sport: data.sport, division: data.sport } as const;
+  }
   const sport = data.sport === "tennis" ? "tennis" : "soccer";
   const valid = sport === "soccer" ? isLeagueSlug(data.division) : isTourSlug(data.division);
   const division = valid ? data.division : sport === "soccer" ? "epl" : "atp";
   return { sport, division } as const;
 }
 
-/**
- * The model re-run over completed matches — a backtest, served separately.
- *
- * Separate from `getTrackLedger` on purpose. The ledger is a single indexed
- * query and returns in milliseconds; the replay walks a year of results and,
- * on a cold cache, has to fetch them first. Behind one call the whole page
- * would wait on the slow half. Behind two, the ledger and the honest "nothing
- * settled yet" render immediately and the replayed charts fill in after.
- *
- * The page must never present this as a forward record, and does not: it lives
- * under its own heading that says what it is.
- */
-export const getReplayedHistory = createServerFn({ method: "GET" })
-  .inputValidator(input)
-  .handler(async ({ data }) => {
-    const { sport, division } = resolve(data);
-    const today = new Date().toISOString().slice(0, 10);
-    try {
-      const calls =
-        sport === "soccer"
-          ? await soccerHistory(division as LeagueSlug, today)
-          : await tennisHistory(division as TourSlug, today);
-      const stats = summarise(calls);
-      return { sport, division, ...stats, claim: claimFor(sport, division) };
-    } catch (err) {
-      // A replay that cannot reach ESPN is a missing chart, not a broken page.
-      console.error(`[replay] ${sport} ${division}:`, err);
-      return { sport, division, ...EMPTY_STATS, claim: claimFor(sport, division) };
-    }
-  });
-
 export const getTrackLedger = createServerFn({ method: "GET" })
   .inputValidator(input)
   .handler(async ({ data }) => {
     const { sport, division } = resolve(data);
-    // Two reads, never one: forward rows and reconstructed rows answer
-    // different questions and a combined accuracy would mean nothing.
-    const [ledger, reconstructed] = await Promise.all([
-      readLedger(sport, division, "forward"),
-      readLedger(sport, division, "reconstructed"),
-    ]);
+    const ledger = await readLedger(sport, division, "forward");
     return {
       ...ledger,
-      /**
-       * The stored backtest: matches replayed from point-in-time ratings and
-       * written to the ledger by scripts/backfill-ledger.ts. Separate from the
-       * forward record above and never folded into it.
-       */
-      reconstructed: {
-        summary: reconstructed.summary,
-        calibration: reconstructed.calibration,
-        running: reconstructed.running,
-        daily: reconstructed.daily,
-        recent: reconstructed.recent,
-      },
       /** What the held-out backtest said to expect. Never mixed into the live numbers. */
       claim: claimFor(sport, division),
       meaningfulN: MEANINGFUL_N,
       divisions:
         sport === "soccer"
           ? LEAGUES.map((l) => ({ slug: l.slug, name: l.name }))
-          : TOURS.map((t) => ({ slug: t.slug, name: t.name })),
+          : sport === "tennis"
+            ? TOURS.map((t) => ({ slug: t.slug, name: t.name }))
+            : [],
     };
   });

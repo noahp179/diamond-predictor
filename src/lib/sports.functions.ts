@@ -1,14 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import {
-  bestOddsSlate,
-  predictSlate,
-  recommendedSlate,
-  seasonOf,
-  trackRecord,
-  type Sport,
-} from "./espn.server";
+import { bestOddsSlate, predictSlate, recommendedSlate, seasonOf, type Sport } from "./espn.server";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -146,33 +139,14 @@ export const getNflBestOdds = createServerFn({ method: "GET" })
 
 // --------------------------------------------------------------- Track Record
 
-async function buildTrackRecord(sport: Sport) {
-  const today = todayISO();
-  try {
-    const tr = await trackRecord(sport, today);
-    return { ...tr, source: "live" as const, note: null as string | null };
-  } catch (err) {
-    console.error(`[${sport}TrackRecord] failed:`, err);
-    return {
-      overall: { season: 0, seasonLabel: "All", n: 0, accuracy: 0, brier: 0, logLoss: 0 },
-      perSeason: [],
-      recent: [],
-      running: [],
-      calibration: [],
-      seasonLabels: [],
-      source: "error" as const,
-      note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
-    };
-  }
-}
-
-export const getNbaTrackRecord = createServerFn({ method: "GET" }).handler(async () =>
-  buildTrackRecord("nba"),
-);
-
-export const getNflTrackRecord = createServerFn({ method: "GET" }).handler(async () =>
-  buildTrackRecord("nfl"),
-);
+/**
+ * The NFL and NBA Track Record used to be served from here, by replaying the
+ * last three seasons and scoring them afterwards. That is a backtest, and
+ * presenting it on a page called Track Record was the problem it looked like a
+ * solution to. Both pages now read the forward ledger in tracking.server.ts —
+ * rows written the morning of a game and scored once it finished — via
+ * getTrackLedger, so there is nothing left to build here.
+ */
 
 // -------------------------------------------------------------- MLB Props
 

@@ -1,115 +1,47 @@
-# Getting the ledger to actually store results
+# Result tracking — how it works and how to check it
 
-Exactly what is needed, where each thing goes, and how to tell it worked.
+Every number on every Track Record page is a **forward result**: the model's
+prediction was written to the database before the event started, and scored
+after it finished. Nothing is replayed, reconstructed, or derived from a game
+whose outcome was already known.
 
-Nothing here needs to be sent to anyone. Every secret goes into a file or a
-dashboard you already control.
+That rule is why these pages start empty and fill slowly. It is the only
+property that makes them worth reading.
 
 ---
 
-## The situation
+## Current state
 
 | | status |
 |---|---|
-| `predictions` (MLB) | **working** — 4,884 rows, 2026-07-10 → 2026-09-01 |
-| `event_predictions` (soccer, tennis) | **does not exist** — nothing has ever been stored |
+| `predictions` (MLB) | recording since 2026-07-10 · 4,965 rows · 10 model versions |
+| `event_predictions` (soccer, tennis, NFL, NBA) | table created 2026-09-03 · recording forward from the next cron run |
+| Vercel cron | `cronSecretSet: true`, `writable: true`, `ledgerReady: true` |
 
-Two things have to be true before a single soccer or tennis result can be
-stored, and right now neither is:
-
-1. **The table has to exist.** It never has. Every write the tracking cycle
-   attempted was rejected.
-2. **Something has to run the write.** The Vercel cron fires `GET`; both hooks
-   only did their work on `POST`, so the scheduled job returned `200` and did
-   nothing. Fixed in the open PR, but it has to be merged and deployed.
+All three gates are green. The cron runs at 08:20 UTC daily and needs nothing
+further.
 
 ---
 
-## Step 1 — create the table
+## What runs, and when
 
-**What is needed:** the ability to run `CREATE TABLE` on the Supabase project.
+`vercel.json` schedules two jobs. Vercel Cron invokes them with **GET**, sending
+`Authorization: Bearer $CRON_SECRET`.
 
-A service-role key **cannot** do this. It authenticates against PostgREST,
-which exposes tables — not DDL. So it takes one of these two:
-
-### Option A — paste the SQL (nothing to install, nothing to configure)
-
-1. Open <https://supabase.com/dashboard/project/fmhtbaikwlcjzrlisesf/sql/new>
-2. Paste the entire contents of [`supabase/SETUP.sql`](supabase/SETUP.sql)
-3. Run it
-
-The file is both migrations concatenated and made re-runnable (`IF NOT EXISTS`
-everywhere, policies and triggers dropped first), so running it twice is
-harmless.
-
-### Option B — a connection string, so the script does it
-
-1. Supabase Dashboard → **Settings → Database → Connection string → URI**
-2. Add it to `.env` in this repo:
-   ```
-   SUPABASE_DB_URL=postgresql://postgres.fmhtbaikwlcjzrlisesf:<password>@…pooler.supabase.com:5432/postgres
-   ```
-3. ```bash
-   npx tsx scripts/provision-ledger.ts
-   ```
-
-Either way, confirm:
-
-```bash
-npx tsx scripts/check-ledger.ts
-# event_predictions … STATUS  empty — the table exists but holds no rows yet.
-```
-
----
-
-## Step 2 — fill it
-
-**What is needed:** `SUPABASE_SERVICE_ROLE_KEY` in `.env`. Per `CRON.md` this is
-already there, since the MLB pipeline has been running locally on it.
-
-```bash
-npx tsx scripts/backfill-ledger.ts --dry-run            # preview, writes nothing
-npx tsx scripts/backfill-ledger.ts --since 2025-09-03   # ~12,000 rows
-```
-
-Every row is written `provenance='reconstructed'` — a backtest, replayed from
-point-in-time ratings, stored beside the forward record and never averaged into
-it. `--since 2026-08-15` (the default) restricts it to the period since the
-sports actually shipped, which is ~740 matches.
-
----
-
-## Step 3 — keep it recording forward
-
-This is the part that produces the record actually worth having. Two ways, and
-doing both is fine — writes are idempotent.
-
-### Locally, immediately
-
-```bash
-scripts/run-tracking-local.sh
-```
-
-Then add it to the same crontab that runs the MLB pipeline:
-
-```cron
-20 8  * * *  <repo>/diamond-predictor/scripts/run-tracking-local.sh >> /tmp/diamond-tracking.log 2>&1
-55 23 * * *  <repo>/diamond-predictor/scripts/run-tracking-local.sh >> /tmp/diamond-tracking.log 2>&1
-```
-
-The morning run records fixtures before they start; the late run settles them.
-
-### On Vercel, so the local machine stops being load-bearing
-
-Merge the open PR, then confirm both of these exist in
-**Vercel → diamond-predictor → Settings → Environment Variables** (Production):
-
-| variable | why | if missing |
+| path | schedule (UTC) | what it does |
 |---|---|---|
-| `CRON_SECRET` | Vercel sends it as `Authorization: Bearer …`; the hook runs only when it matches | the cron's GET is unauthenticated → no-op |
-| `SUPABASE_SERVICE_ROLE_KEY` | the only credential that can write | every insert is silently dropped |
+| `/api/public/hooks/run-pipeline` | `0 8 * * *` | MLB: ingest, predict, settle, recompute metrics |
+| `/api/public/hooks/track-predictions` | `20 8 * * *` | soccer, tennis, NFL, NBA: record today + tomorrow, settle what finished |
 
-Verify without any secret — this endpoint is safe to open in a browser:
+Both also accept POST. Both are idempotent — a prediction conflicts on
+`(model_version, event_id)` and is dropped rather than overwritten, so a second
+run in a day cannot revise a call that was already written down.
+
+---
+
+## Checking it without any credentials
+
+This endpoint is safe to open in a browser:
 
 ```
 https://diamond-predictor-three.vercel.app/api/public/hooks/track-predictions
@@ -117,40 +49,97 @@ https://diamond-predictor-three.vercel.app/api/public/hooks/track-predictions
 
 ```json
 { "ok": true, "ran": false,
-  "cronSecretSet": true,      ← must be true
-  "writable": true,           ← must be true
-  "ledgerReady": true }       ← must be true after step 1
+  "cronSecretSet": true,   ← Vercel can authenticate its own cron
+  "writable": true,        ← SUPABASE_SERVICE_ROLE_KEY is present
+  "ledgerReady": true }    ← the table exists
 ```
 
-Any `false` there is the reason nothing is being stored.
+Any `false` is the reason nothing is being stored. Each of those three has
+already been the cause of total silence at some point:
+
+- `cronSecretSet: false` — the scheduled GET arrives unauthenticated and no-ops.
+- `writable: false` — every insert is dropped.
+- `ledgerReady: false` — the table does not exist; the writes go nowhere.
 
 ---
 
-## Step 4 — confirm
+## Checking what is actually stored
 
 ```bash
 npx tsx scripts/check-ledger.ts
 ```
 
 ```
-event_predictions  — the soccer & tennis ledger (forward + reconstructed)
-  STATUS  12762 rows
-    soccer/epl    reconstructed  n=  370  settled=  370  acc= 48.9%  2025-09-13 → 2026-08-31
-    tennis/atp    reconstructed  n= 3887  settled= 3887  acc= 64.1%  …
-    tennis/atp    forward        n=   14  settled=    0  acc=     —  2026-09-04 → 2026-09-04
+event_predictions  — the ledger
+  STATUS  59 rows
+    nfl/nfl       forward   n=  16  settled=   0  acc=     —  2026-09-04 → 2026-09-04
+    soccer/epl    forward   n=   1  settled=   0  acc=     —  2026-09-04 → 2026-09-04
+    tennis/atp    forward   n=  16  settled=  16  acc= 62.5%  2026-09-03 → 2026-09-03
 ```
 
-The `forward` rows are the ones that will matter in a few months. The
-`reconstructed` ones are scaffolding so the pages are not blank until then.
+Needs only `SUPABASE_URL` and `PUBLISHABLE_KEY` — the table is world-readable.
 
 ---
 
-## What I do not need
+## Running it by hand
 
-- Nobody needs to send me a service-role key or a database password. Steps 1–3
-  are all run by you, locally or in a dashboard.
-- If you *would* rather I ran them: add `SUPABASE_DB_URL` and
-  `SUPABASE_SERVICE_ROLE_KEY` to this Claude Code environment's variables
-  (the same place `SUPABASE_URL` and `PUBLISHABLE_KEY` are already set), and I
-  can do steps 1, 2 and 4 directly. Pasting them into chat would put them in
-  the transcript, so that is the wrong channel for them either way.
+Useful to seed the first day rather than waiting for 08:20 UTC. Needs
+`SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+
+```bash
+scripts/run-tracking-local.sh              # today
+scripts/run-tracking-local.sh 2026-09-04   # a specific date
+```
+
+It refuses to run if the table is missing, rather than writing into the void.
+
+If the Vercel cron ever stops again, the same two crontab lines that carry the
+MLB pipeline will carry this:
+
+```cron
+20 8  * * *  <repo>/diamond-predictor/scripts/run-tracking-local.sh >> /tmp/diamond-tracking.log 2>&1
+55 23 * * *  <repo>/diamond-predictor/scripts/run-tracking-local.sh >> /tmp/diamond-tracking.log 2>&1
+```
+
+Morning records fixtures before they start; the late run settles them.
+
+---
+
+## What was removed, and why
+
+**The replayed-history section** on the soccer and tennis Track Record pages.
+It re-ran the model over the last 365 days of finished matches. The arithmetic
+was honest — each match was priced before its result was folded into the
+ratings — but it was still a backtest, and a backtest on a page called Track
+Record invites exactly the misreading the page exists to prevent.
+
+**`scripts/backfill-ledger.ts`.** It wrote those replayed matches into the
+ledger as `provenance = 'reconstructed'`. Nothing displays reconstructed rows
+any more, so it wrote rows no one would ever see.
+
+**`trackRecord()` and `TrackRecordView`.** The NFL and NBA pages were built
+entirely on a replay of the last three seasons — a backtest wearing a track
+record's name, and the reason those two pages looked full while every other
+sport looked empty. They now read the same forward ledger as everything else,
+which means they start empty too. That is the honest state of an NFL forward
+record that began on 2026-09-03.
+
+The `provenance` column survives, and `readLedger` takes it as a **required**
+argument rather than an optional filter. There is no correct way to read
+forward and reconstructed rows together, and forcing every caller to choose is
+what stops them being averaged by accident later.
+
+---
+
+## Where a backtest is still shown, deliberately
+
+Two places on the soccer and tennis pages, both labelled, neither plotted as
+data:
+
+1. One row in the **Claimed against actual** table — what the held-out backtest
+   said to expect, beside what the ledger has recorded.
+2. A **dashed reference line** on the accuracy chart at that same number, so
+   "is it doing what it said?" is a visual question.
+
+NFL and NBA show neither: they never had a held-out backtest, so that column
+stays empty rather than being filled with the season replay it just replaced.
