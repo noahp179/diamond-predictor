@@ -4,6 +4,8 @@ import { z } from "zod";
 import { matchModelFor, soccerSlate } from "./soccer.server";
 import { propsModelFor, soccerProps } from "./soccer-props.server";
 import { LEAGUES, isLeagueSlug, type LeagueSlug } from "./soccer-leagues";
+import { withViewer } from "./viewer";
+import { canSeeProps, predictionAllowance, redact } from "./entitlements";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -21,15 +23,29 @@ function seasonLabel(season: number) {
 // -------------------------------------------------------------- match slate
 
 export const getSoccerSlate = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(input)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const league = slugOf(data?.league);
     const date = data?.date ?? todayISO();
+    const { tier } = context.viewer;
     try {
       const slate = await soccerSlate(league, date);
       const model = matchModelFor(league);
+      // Redaction happens HERE, before serialisation. A locked fixture leaves
+      // with its probabilities stripped, so they are not in the payload at all.
+      const gated = redact(
+        slate.matches,
+        tier,
+        (m) => (m.probs ? Math.max(m.probs.home, m.probs.draw, m.probs.away) : null),
+        (m) => ({ ...m, probs: null, ratingGap: null }),
+      );
       return {
         ...slate,
+        matches: gated.items,
+        tier,
+        lockedCount: gated.lockedCount,
+        allowance: gated.allowance,
         seasonLabel: seasonLabel(slate.season),
         backtest: model.backtest,
         priors: model.priors,
@@ -51,6 +67,9 @@ export const getSoccerSlate = createServerFn({ method: "GET" })
         priors: model.priors,
         name: model.name,
         note: "ESPN's soccer scoreboard is unreachable right now. Try refreshing in a moment.",
+        tier,
+        lockedCount: 0,
+        allowance: predictionAllowance(tier),
         source: "error" as const,
       };
     }
@@ -59,12 +78,33 @@ export const getSoccerSlate = createServerFn({ method: "GET" })
 // -------------------------------------------------------------------- props
 
 export const getSoccerProps = createServerFn({ method: "GET" })
+  .middleware([withViewer])
   .inputValidator(input)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const league = slugOf(data?.league);
     const date = data?.date ?? todayISO();
+    const { tier } = context.viewer;
+    // Props are premium, always. Nothing is fetched and nothing is returned —
+    // there is no partial version of this to leak.
+    if (!canSeeProps(tier)) {
+      return {
+        league,
+        date,
+        fixtures: [],
+        markets: [],
+        tier,
+        locked: true as const,
+        note: null,
+        source: "locked" as const,
+      };
+    }
     try {
-      return { ...(await soccerProps(league, date)), source: "live" as const };
+      return {
+        ...(await soccerProps(league, date)),
+        tier,
+        locked: false as const,
+        source: "live" as const,
+      };
     } catch (err) {
       console.error(`[soccerProps] ${league} ${date}:`, err);
       return {
@@ -73,6 +113,8 @@ export const getSoccerProps = createServerFn({ method: "GET" })
         fixtures: [],
         markets: [],
         note: "Could not build player form from ESPN just now. Try refreshing in a moment.",
+        tier,
+        locked: false as const,
         source: "error" as const,
       };
     }

@@ -10,6 +10,7 @@ import { pickProb } from "@/lib/mlb-blend";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import type { PredictedGame } from "@/lib/mlb-core";
 import { AppShell } from "@/components/AppShell";
+import { PremiumWall, UpgradePrompt } from "@/components/Locked";
 
 export const Route = createFileRoute("/mlb/recommended")({
   head: () => ({

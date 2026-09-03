@@ -7,6 +7,7 @@ import { SoccerShell } from "@/components/SoccerShell";
 import { StatBar, Stat, Note } from "@/components/SportShell";
 import { getSoccerSlate } from "@/lib/soccer.functions";
 import { leagueOf, type LeagueSlug } from "@/lib/soccer-leagues";
+import { Blurred, LockedNumber, UpgradePrompt } from "@/components/Locked";
 
 export const Route = createFileRoute("/soccer/$league/")({
   head: ({ params }) => {
@@ -85,6 +86,12 @@ function SoccerSlatePage() {
         </div>
       )}
       {!isLoading && data?.note && <Note>{data.note}</Note>}
+
+      {!isLoading && (data?.lockedCount ?? 0) > 0 && (
+        <div className="mb-6">
+          <UpgradePrompt tier={data!.tier} lockedCount={data!.lockedCount} what="fixtures" />
+        </div>
+      )}
 
       {!isLoading && matches.length > 0 && (
         <div className="grid gap-4">
@@ -174,7 +181,29 @@ function MatchCard({ match }: { match: Match }) {
         </div>
       </div>
 
-      {p ? (
+      {match.locked ? (
+        <>
+          {/* The numbers under this blur are not in the payload — the server
+              stripped them. This is what a withheld probability looks like. */}
+          <Blurred>
+            <div className="grid grid-cols-3 gap-px bg-border">
+              {[match.home.abbr, "Draw", match.away.abbr].map((label) => (
+                <div key={label} className="bg-card px-5 py-4">
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    {label}
+                  </div>
+                  <div className="mt-1">
+                    <LockedNumber />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Blurred>
+          <div className="border-t border-border/60 px-5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Locked · this fixture is outside today's free allowance
+          </div>
+        </>
+      ) : p ? (
         <>
           <div className="grid grid-cols-3 gap-px bg-border">
             <Outcome label={match.home.abbr} value={p.home} lead={pick === "H"} />

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 
+import { useViewer } from "@/lib/useViewer";
+import { TierBadge } from "@/components/Locked";
 import {
   divisionsOf,
   SPORTS,
@@ -135,6 +137,7 @@ export function AppShell({
 
 /** Brand plus the sport switcher — present on every page, including the hub. */
 function TopBar({ sport }: { sport?: SportKey }) {
+  const viewer = useViewer();
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 py-4">
       <Link to="/" className="font-display text-xl tracking-tight hover:text-primary">
@@ -160,6 +163,13 @@ function TopBar({ sport }: { sport?: SportKey }) {
           className="border border-border bg-secondary px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-widest text-foreground transition-colors hover:border-primary"
         >
           Teams
+        </Link>
+        <Link
+          to="/account"
+          className="flex items-center gap-2 border border-border bg-secondary px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-widest text-foreground transition-colors hover:border-primary"
+        >
+          {viewer.userId ? "Account" : "Sign in"}
+          <TierBadge tier={viewer.tier} />
         </Link>
       </nav>
     </div>
