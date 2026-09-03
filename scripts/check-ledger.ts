@@ -71,7 +71,7 @@ console.log(`\ndatabase: ${url.replace(/^https:\/\//, "").slice(0, 20)}…\n`);
 // ------------------------------------------------- the soccer/tennis ledger
 
 const ledger = await count("event_predictions");
-console.log("event_predictions  — the soccer & tennis forward ledger");
+console.log("event_predictions  — the soccer & tennis ledger (forward + reconstructed)");
 if (ledger === null) {
   console.log("  STATUS  missing — the table does not exist in this database.");
   console.log("  MEANING no soccer or tennis prediction has ever been stored, and none");
@@ -87,10 +87,13 @@ if (ledger === null) {
     event_date: string;
     settled_at: string | null;
     correct: boolean | null;
-  }>("event_predictions", "select=sport,division,event_date,settled_at,correct");
+    provenance: string | null;
+  }>("event_predictions", "select=sport,division,event_date,settled_at,correct,provenance");
+  // Split by provenance, never summed across it: a forward row and a
+  // reconstructed one are different kinds of evidence.
   const groups = new Map<string, typeof all>();
   for (const r of all) {
-    const k = `${r.sport}/${r.division}`;
+    const k = `${r.sport}/${r.division}  ${r.provenance ?? "forward"}`;
     groups.set(k, [...(groups.get(k) ?? []), r]);
   }
   for (const [k, g] of [...groups].sort()) {
@@ -100,7 +103,7 @@ if (ledger === null) {
       ? pct(settled.filter((r) => r.correct).length / settled.length)
       : "—";
     console.log(
-      `    ${k.padEnd(16)} n=${String(g.length).padStart(5)}  settled=${String(settled.length).padStart(5)}` +
+      `    ${k.padEnd(32)} n=${String(g.length).padStart(5)}  settled=${String(settled.length).padStart(5)}` +
         `  acc=${acc.padStart(6)}  ${dates[0]} → ${dates[dates.length - 1]}`,
     );
   }

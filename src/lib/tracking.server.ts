@@ -62,6 +62,7 @@ export type LedgerRow = {
   final_score: string | null;
   settled_at: string | null;
   predicted_at: string;
+  provenance?: "forward" | "reconstructed";
 };
 
 /**
@@ -380,6 +381,8 @@ export type LedgerView = {
   status: LedgerStatus;
   /** Whether this process could write to the ledger at all. */
   writable: boolean;
+  /** Which kind of row this view counted. Never a mix of the two. */
+  provenance: "forward" | "reconstructed";
   summary: LedgerSummary;
   /** Accuracy in probability bands — the calibration check that matters. */
   calibration: Bucket[];
@@ -398,7 +401,21 @@ export type LedgerView = {
   daily: { date: string; n: number; correct: number; accuracy: number; brier: number }[];
 };
 
-export async function readLedger(sport: string, division: string): Promise<LedgerView> {
+/**
+ * Read one slice of the ledger.
+ *
+ * `provenance` is a required decision rather than an optional filter, because
+ * there is no correct way to read both at once. Forward rows were written
+ * before their events and reconstructed rows were replayed afterwards; a single
+ * accuracy over the union of the two would be a number with no meaning, and the
+ * more rows the backfill adds the more thoroughly it would drown the real
+ * record. Callers ask for one or the other and the page labels what it got.
+ */
+export async function readLedger(
+  sport: string,
+  division: string,
+  provenance: "forward" | "reconstructed" = "forward",
+): Promise<LedgerView> {
   const modelVersion = sport === "soccer" ? SOCCER_MODEL_VERSION : TENNIS_MODEL_VERSION;
   const empty: LedgerView = {
     sport,
@@ -406,6 +423,7 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
     modelVersion,
     status: "ok",
     writable: canTrack(),
+    provenance,
     summary: {
       n: 0,
       correct: 0,
@@ -430,8 +448,15 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
       .eq("sport", sport)
       .eq("division", division)
       .eq("model_version", modelVersion)
+      // Rows written before the provenance column existed are forward rows:
+      // the backfill is the only thing that has ever written anything else.
+      .or(
+        provenance === "forward"
+          ? "provenance.eq.forward,provenance.is.null"
+          : "provenance.eq.reconstructed",
+      )
       .order("event_date", { ascending: false })
-      .limit(2000);
+      .limit(5000);
     if (error) {
       // PGRST205 is PostgREST for "no such table". Distinguishing it from every
       // other read failure is the whole point of the status field: this one is
@@ -509,6 +534,7 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
       modelVersion,
       status: "ok",
       writable: canTrack(),
+      provenance,
       summary: {
         n,
         correct,

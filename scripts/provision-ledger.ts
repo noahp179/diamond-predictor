@@ -25,7 +25,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const MIGRATION = "supabase/migrations/20260815120000_event_predictions.sql";
+const MIGRATIONS = [
+  "supabase/migrations/20260815120000_event_predictions.sql",
+  "supabase/migrations/20260903120000_prediction_provenance.sql",
+];
 
 const clean = (v: string | undefined) => (v ?? "").replace(/^"|"$/g, "").trim();
 const url = clean(process.env.SUPABASE_URL).replace(/\/$/, "");
@@ -52,7 +55,7 @@ async function exists(): Promise<boolean> {
   return res.status !== 404;
 }
 
-const sql = readFileSync(join(process.cwd(), MIGRATION), "utf8");
+const sql = MIGRATIONS.map((m) => readFileSync(join(process.cwd(), m), "utf8")).join("\n\n");
 
 console.log(`\nproject: ${ref}\n`);
 
@@ -70,20 +73,21 @@ if (dbUrl) {
   // run DDL. Applied through psql so there is no new dependency and no
   // hand-rolled SQL splitting, which is where this kind of script goes wrong.
   const { spawnSync } = await import("node:child_process");
-  console.log("SUPABASE_DB_URL is set — applying the migration with psql…\n");
-  const r = spawnSync("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-f", MIGRATION], {
-    stdio: "inherit",
-  });
-  if (r.status !== 0) {
-    console.error("\npsql failed. Apply it by hand with the SQL below.");
+  console.log("SUPABASE_DB_URL is set — applying the migrations with psql…\n");
+  for (const m of MIGRATIONS) {
+    const r = spawnSync("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-f", m], { stdio: "inherit" });
+    if (r.status !== 0) {
+      console.error(`\npsql failed on ${m}. Apply the SQL below by hand.`);
+      break;
+    }
   }
 } else {
   console.log("No SUPABASE_DB_URL set, so this script cannot create it for you.");
-  console.log("Two ways to finish:\n");
+  console.log("Two ways to finish (both migrations, in order):\n");
   console.log("  a) Add a connection string to .env and re-run this script:");
   console.log("       Dashboard → Settings → Database → Connection string (URI)");
   console.log("       SUPABASE_DB_URL=postgresql://…\n");
-  console.log(`  b) Paste the migration into the SQL editor:`);
+  console.log(`  b) Paste the SQL below into the SQL editor:`);
   console.log(`       https://supabase.com/dashboard/project/${ref}/sql/new\n`);
   console.log("─".repeat(72));
   console.log(sql.trim());
@@ -93,6 +97,8 @@ if (dbUrl) {
 console.log("\nverifying…");
 console.log(
   (await exists())
-    ? "  event_predictions is present. Next: scripts/run-tracking-local.sh\n"
+    ? "  event_predictions is present.\n" +
+        "  Next: npx tsx scripts/backfill-ledger.ts   (fill it from replayed history)\n" +
+        "        scripts/run-tracking-local.sh        (start recording forward)\n"
     : "  still not there — nothing was created.\n",
 );

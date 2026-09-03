@@ -68,7 +68,26 @@ export function LedgerView({
     queryFn: () => runReplay({ data: { sport, division } }),
     staleTime: 30 * 60_000,
   });
-  const r = replay?.summary;
+  /**
+   * The replayed section has two possible sources and prefers the stored one.
+   *
+   * Once scripts/backfill-ledger.ts has run, the reconstruction lives in the
+   * database as rows marked provenance='reconstructed', and reading them is
+   * both faster and the thing the page should show — it is the same arithmetic
+   * either way, but the stored version is auditable row by row. Until then the
+   * page computes the replay live so it is not blank.
+   */
+  const stored = data?.reconstructed;
+  const useStored = (stored?.summary.n ?? 0) > 0;
+  const shown = useStored
+    ? {
+        summary: stored!.summary,
+        calibration: stored!.calibration,
+        running: stored!.running,
+        daily: stored!.daily,
+      }
+    : replay;
+  const r = shown?.summary;
 
   const s = data?.summary;
   const claim = data?.claim;
@@ -292,15 +311,24 @@ export function LedgerView({
         </p>
         <h2 className="mt-2 font-display text-3xl">Replayed over the last year of results</h2>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          The same model, re-run over every completed match in the last 365 days, each one priced
-          using only the ratings that existed before it was played. That makes it a{" "}
-          <strong className="text-foreground">backtest</strong> — it is available immediately and
-          the sample is large, but it was produced after the fact, so it cannot prove the model was
-          not tuned to it. The live ledger above can. Both are here because each answers a question
-          the other cannot.
+          The same model, re-run over completed matches, each one priced using only the ratings that
+          existed before it was played. That makes it a{" "}
+          <strong className="text-foreground">backtest</strong> — the sample is large and it is
+          available immediately, but it was produced after the fact, so it cannot prove the model
+          was not tuned to the period it covers. The live ledger above can. Both are here because
+          each answers a question the other cannot.
         </p>
-        {replayLoading && <div className="mt-5 h-24 animate-pulse border border-border bg-card" />}
-        {!replayLoading && r && r.n > 0 && (
+        <p className="mt-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          {useStored
+            ? `Source: stored rows · provenance = reconstructed${
+                r?.firstDate ? ` · ${r.firstDate} → ${r.lastDate}` : ""
+              }`
+            : "Source: computed live · not yet backfilled into the ledger"}
+        </p>
+        {!useStored && replayLoading && (
+          <div className="mt-5 h-24 animate-pulse border border-border bg-card" />
+        )}
+        {r && r.n > 0 && (
           <StatBar>
             <Stat label="Matches replayed" value={r.n.toLocaleString()} />
             <Stat label="Replay accuracy" value={pct(r.accuracy)} />
@@ -308,7 +336,7 @@ export function LedgerView({
             <Stat label="Log loss ↓" value={num(r.logLoss)} />
           </StatBar>
         )}
-        {!replayLoading && (r?.n ?? 0) === 0 && (
+        {!replayLoading && !useStored && (r?.n ?? 0) === 0 && (
           <Note>
             The replay could not be built — the results feed was unreachable, or the league has not
             played inside the window. Nothing is being hidden; there is simply nothing to score.
@@ -323,7 +351,7 @@ export function LedgerView({
             subtitle="Every replayed call sorted into a confidence bucket: the bars are how many calls landed in each, the solid line is how often those calls were right, the dotted line is what the model claimed for them."
             footer="Read the bars first. A bucket the solid line drops out of is only interesting if the bar under it is tall — with thirty calls a ten-point gap is noise, with three thousand it is a finding. The rightmost buckets are usually the thinnest, because a model that is 90% sure is not 90% sure very often."
           >
-            <BucketAccuracy calibration={replay!.calibration} />
+            <BucketAccuracy calibration={shown!.calibration} />
           </ChartCard>
 
           <ChartCard
@@ -331,7 +359,7 @@ export function LedgerView({
             subtitle="The same buckets as a direct comparison — what the model said against what happened. Matching heights mean the percentage on a prediction card can be taken at face value."
             footer="Taller orange than blue means the model was under-confident in that bucket; the other way round means over-confident, which is the expensive direction. Call counts are in the tooltip."
           >
-            <CalibrationChart calibration={replay!.calibration} />
+            <CalibrationChart calibration={shown!.calibration} />
           </ChartCard>
 
           <ChartCard
@@ -340,7 +368,7 @@ export function LedgerView({
             footer="Left to right is chronological. A line that drifts away from the dashes late is a model that has aged — the sport moved and the ratings did not follow."
           >
             <AccuracyTrend
-              running={replay!.running}
+              running={shown!.running}
               claim={claim?.accuracy ?? null}
               meaningfulN={0}
               seriesName="replayed hit rate"
@@ -352,7 +380,7 @@ export function LedgerView({
             subtitle="How many matches the replay scored each month, with that month's hit rate on top — the shape of the sport's calendar, and whether the model held up across all of it."
             footer="Grouped by month rather than by day: a year has well over a hundred matchdays, and at that density the accuracy line is a sawtooth between 0% and 100% that hides the volume underneath it. A month is a sample; a matchday usually is not."
           >
-            <VolumeChart daily={replay!.daily} by="month" />
+            <VolumeChart daily={shown!.daily} by="month" />
           </ChartCard>
         </>
       )}

@@ -42,13 +42,42 @@ Verify what is actually stored, for every sport, in one command:
 npx tsx scripts/check-ledger.ts
 ```
 
-### Creating it, and starting to record without waiting on a deploy
+### Creating it, backfilling it, and starting to record
 
 ```bash
-npx tsx scripts/provision-ledger.ts     # creates the table, or prints the SQL + link
-scripts/run-tracking-local.sh           # records today's fixtures, settles finished ones
-npx tsx scripts/check-ledger.ts         # confirm rows landed
+npx tsx scripts/provision-ledger.ts                 # 1. create the table (+ provenance)
+npx tsx scripts/backfill-ledger.ts --dry-run        # 2. preview the reconstruction
+npx tsx scripts/backfill-ledger.ts --since 2025-09-03   #    …then write it
+scripts/run-tracking-local.sh                       # 3. start recording forward
+npx tsx scripts/check-ledger.ts                     # 4. confirm what landed
 ```
+
+#### Forward rows vs reconstructed rows
+
+The ledger holds two kinds of row and `provenance` says which:
+
+| | `forward` | `reconstructed` |
+|---|---|---|
+| written | the morning of the event | afterwards, by `backfill-ledger.ts` |
+| by | the cron / `run-tracking-local.sh` | replaying point-in-time ratings |
+| can be re-run until it looks good | **no** | yes |
+| what it proves | the model works | the arithmetic works |
+
+The reconstruction is not fudged — each match is priced by the replay observer,
+which fires *before* that match is folded into the ratings, so the probability
+is the one the model would have produced that morning. It is the same code path
+the Track Record page uses, so the stored rows and the chart cannot disagree.
+
+But it was computed today, by a model frozen on 2026-08-15, over matches whose
+results were already known. That is a backtest. Every read path filters on
+`provenance` and no page ever averages the two — a combined accuracy would be a
+number with no meaning, and the more rows the backfill adds the more thoroughly
+it would drown the real record.
+
+Window: `--since 2026-08-15` (the default, when the sports shipped) gives ~740
+matches. `--since 2025-09-03` gives ~12,000. Re-running is safe: inserts ignore
+conflicts on `(model_version, event_id)`, so a forward row is never overwritten
+by a reconstructed one.
 
 `provision-ledger` applies the migration itself when `SUPABASE_DB_URL` (a
 Postgres connection string) is in `.env`; a service-role key alone cannot run
