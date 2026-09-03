@@ -35,7 +35,9 @@ import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
 import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
 import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
 import { Route as NbaBestOddsRouteImport } from './routes/nba.best-odds'
+import { Route as MlbTwoBasesRouteImport } from './routes/mlb.two-bases'
 import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
+import { Route as MlbStacksRouteImport } from './routes/mlb.stacks'
 import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
 import { Route as MlbPropsRouteImport } from './routes/mlb.props'
 import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
@@ -179,9 +181,19 @@ const NbaBestOddsRoute = NbaBestOddsRouteImport.update({
   path: '/best-odds',
   getParentRoute: () => NbaRoute,
 } as any)
+const MlbTwoBasesRoute = MlbTwoBasesRouteImport.update({
+  id: '/two-bases',
+  path: '/two-bases',
+  getParentRoute: () => MlbRoute,
+} as any)
 const MlbTrackRecordRoute = MlbTrackRecordRouteImport.update({
   id: '/track-record',
   path: '/track-record',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbStacksRoute = MlbStacksRouteImport.update({
+  id: '/stacks',
+  path: '/stacks',
   getParentRoute: () => MlbRoute,
 } as any)
 const MlbRecommendedRoute = MlbRecommendedRouteImport.update({
@@ -263,7 +275,9 @@ export interface FileRoutesByFullPath {
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
+  '/mlb/stacks': typeof MlbStacksRoute
   '/mlb/track-record': typeof MlbTrackRecordRoute
+  '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
@@ -299,7 +313,9 @@ export interface FileRoutesByTo {
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
+  '/mlb/stacks': typeof MlbStacksRoute
   '/mlb/track-record': typeof MlbTrackRecordRoute
+  '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
@@ -339,7 +355,9 @@ export interface FileRoutesById {
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
+  '/mlb/stacks': typeof MlbStacksRoute
   '/mlb/track-record': typeof MlbTrackRecordRoute
+  '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
@@ -382,7 +400,9 @@ export interface FileRouteTypes {
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
+    | '/mlb/stacks'
     | '/mlb/track-record'
+    | '/mlb/two-bases'
     | '/nba/best-odds'
     | '/nba/recommended'
     | '/nba/track-record'
@@ -418,7 +438,9 @@ export interface FileRouteTypes {
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
+    | '/mlb/stacks'
     | '/mlb/track-record'
+    | '/mlb/two-bases'
     | '/nba/best-odds'
     | '/nba/recommended'
     | '/nba/track-record'
@@ -457,7 +479,9 @@ export interface FileRouteTypes {
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
+    | '/mlb/stacks'
     | '/mlb/track-record'
+    | '/mlb/two-bases'
     | '/nba/best-odds'
     | '/nba/recommended'
     | '/nba/track-record'
@@ -684,11 +708,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NbaBestOddsRouteImport
       parentRoute: typeof NbaRoute
     }
+    '/mlb/two-bases': {
+      id: '/mlb/two-bases'
+      path: '/two-bases'
+      fullPath: '/mlb/two-bases'
+      preLoaderRoute: typeof MlbTwoBasesRouteImport
+      parentRoute: typeof MlbRoute
+    }
     '/mlb/track-record': {
       id: '/mlb/track-record'
       path: '/track-record'
       fullPath: '/mlb/track-record'
       preLoaderRoute: typeof MlbTrackRecordRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/stacks': {
+      id: '/mlb/stacks'
+      path: '/stacks'
+      fullPath: '/mlb/stacks'
+      preLoaderRoute: typeof MlbStacksRouteImport
       parentRoute: typeof MlbRoute
     }
     '/mlb/recommended': {
@@ -782,7 +820,9 @@ interface MlbRouteChildren {
   MlbBestOddsRoute: typeof MlbBestOddsRoute
   MlbPropsRoute: typeof MlbPropsRoute
   MlbRecommendedRoute: typeof MlbRecommendedRoute
+  MlbStacksRoute: typeof MlbStacksRoute
   MlbTrackRecordRoute: typeof MlbTrackRecordRoute
+  MlbTwoBasesRoute: typeof MlbTwoBasesRoute
   MlbIndexRoute: typeof MlbIndexRoute
 }
 
@@ -790,7 +830,9 @@ const MlbRouteChildren: MlbRouteChildren = {
   MlbBestOddsRoute: MlbBestOddsRoute,
   MlbPropsRoute: MlbPropsRoute,
   MlbRecommendedRoute: MlbRecommendedRoute,
+  MlbStacksRoute: MlbStacksRoute,
   MlbTrackRecordRoute: MlbTrackRecordRoute,
+  MlbTwoBasesRoute: MlbTwoBasesRoute,
   MlbIndexRoute: MlbIndexRoute,
 }
 

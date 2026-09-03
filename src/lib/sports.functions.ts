@@ -206,6 +206,70 @@ export const getMlbProps = createServerFn({ method: "GET" })
     }
   });
 
+// --------------------------------------------------------------- MLB Stacks
+
+export const getMlbStacks = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayISO();
+    try {
+      const { stacksSlate } = await import("./mlb-stacks.server");
+      const { season, teams, backtest } = await stacksSlate(date);
+      return {
+        date,
+        teams,
+        backtest,
+        season,
+        seasonLabel: season ? `${season}` : "",
+        note: null as string | null,
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[mlbStacks] failed:`, err);
+      return {
+        date,
+        teams: [] as Awaited<ReturnType<typeof import("./mlb-stacks.server").stacksSlate>>["teams"],
+        backtest: null,
+        season: 0,
+        seasonLabel: "",
+        note: "MLB Stats API is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
+
+// ------------------------------------------------------------- MLB 2+ Bases
+
+export const getMlbTwoBases = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayISO();
+    try {
+      const { twoBaseSlate } = await import("./mlb-tb2.server");
+      const slate = await twoBaseSlate(date);
+      return {
+        ...slate,
+        seasonLabel: slate.season ? `${slate.season}` : "",
+        note: null as string | null,
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[mlbTwoBases] failed:`, err);
+      return {
+        date,
+        season: 0,
+        picks: [] as Awaited<ReturnType<typeof import("./mlb-tb2.server").twoBaseSlate>>["picks"],
+        byGame: [] as Awaited<ReturnType<typeof import("./mlb-tb2.server").twoBaseSlate>>["byGame"],
+        lineupsPosted: 0,
+        games: 0,
+        model: null,
+        seasonLabel: "",
+        note: "MLB Stats API is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
+
 // --------------------------------------------------------------- TD Scorers
 
 export const getNflTdScorers = createServerFn({ method: "GET" })

@@ -6,6 +6,16 @@ model never saw, and ship the winner into the app. Code lives in
 `research/mlb-props/`; the shipped models are `src/lib/mlb-props-model.json`,
 served live by `src/lib/mlb-props.server.ts` on the new **Player Props** tab.
 
+The 2+ total-bases market from this study is one half of
+[TEAM-STACKS.md](TEAM-STACKS.md), which asks what happens when a hitter's prop
+and his own team's run total go on the same slip — the two turn out to be 25%
+more correlated than independent pricing assumes.
+
+That same market gets a model of its own in [TWO-BASES.md](TWO-BASES.md) — the
+thirty-four features here plus a park index built for total bases, the
+opponent's bases allowed and a two-week form window, with every projection
+explained in a sentence.
+
 ---
 
 ## TL;DR

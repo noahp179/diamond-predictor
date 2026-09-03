@@ -786,3 +786,155 @@ export async function propsSlate(date: string): Promise<PropsSlate> {
 
   return { season, games, markets };
 }
+
+// ------------------------------------------------- feature rows for mlb-tb2
+/**
+ * One row per lineup starter, carrying the raw feature vector rather than a
+ * priced pick.
+ *
+ * The dedicated 2+ total-bases model (src/lib/mlb-tb2.server.ts) is built on
+ * top of this model's features plus a few of its own. Rather than reimplement
+ * the thirty-four numbers over there — where they would quietly drift out of
+ * step with the trainer — it asks for them here, from the same
+ * `batterFeatures` the Player Props board uses. The extra fifteen-day block
+ * comes along for the ride because it is computed from the same game logs.
+ *
+ * `base` is BATTER_FEATURES order, then own_tb2 and ownw_tb2.
+ * `form15` is [w15_tb_pa, w15_h_pa, w15_pa_pg, w15_g, own15_tb2].
+ */
+export type BatterRow = {
+  gamePk: number;
+  date: string;
+  startsAt: string;
+  venue: string;
+  park: number;
+  matchup: string;
+  playerId: number;
+  player: string;
+  teamId: number;
+  team: string;
+  opponentId: number;
+  opponent: string;
+  isHome: boolean;
+  slot: number;
+  lineupPosted: boolean;
+  opposingStarter: string | null;
+  base: number[];
+  form15: number[];
+};
+
+/** Shrinkage for the 15-day window — mirrors research/mlb-tb2/features_tb2.py. */
+const W15_DAYS = 15;
+
+export async function batterRows(date: string): Promise<{ season: number; rows: BatterRow[] }> {
+  const season = Number(date.slice(0, 10).slice(0, 4));
+  const slate = await fetchSlate(date);
+  if (slate.length === 0) return { season, rows: [] };
+
+  const orders = new Map<string, { ids: number[]; posted: boolean }>();
+  await Promise.all(
+    slate.flatMap((g) =>
+      (["home", "away"] as const).map(async (side) => {
+        const posted = g.lineups[side];
+        const ids = posted.length >= 9 ? posted : await fetchRecentOrder(g[side].id, date);
+        orders.set(`${g.gamePk}:${side}`, {
+          ids: ids.slice(0, 9),
+          posted: posted.length >= 9,
+        });
+      }),
+    ),
+  );
+
+  const batterIds = [...orders.values()].flatMap((o) => o.ids);
+  const pitcherIds = slate.flatMap((g) => [g.homeSp?.id, g.awaySp?.id].filter(Boolean) as number[]);
+  const [batLogs, pitLogs, prior, teams] = await Promise.all([
+    fetchLogs<BatLog>(batterIds, season, "hitting", date, parseBat),
+    fetchLogs<PitLog>(pitcherIds, season, "pitching", date, parsePit),
+    fetchPriorSeason(season - 1),
+    fetchTeamContext(season, date),
+  ]);
+
+  const spAgg = (id: number | undefined): SpAgg => {
+    if (!id) return null;
+    const logs = pitLogs.get(id)?.logs ?? [];
+    const s = sumLogs(logs, date, [...PIT_FIELDS_SUM]);
+    return s.g
+      ? { bf: s.tot.bf, k: s.tot.k, h: s.tot.h, bb: s.tot.bb, hr: s.tot.hr, gs: s.tot.gs }
+      : null;
+  };
+
+  const rows: BatterRow[] = [];
+  for (const g of slate) {
+    const park = parkOf(g.venue);
+    for (const side of ["home", "away"] as const) {
+      const isHome = side === "home";
+      const me = g[side];
+      const other = isHome ? g.away : g.home;
+      const oppSp = isHome ? g.awaySp : g.homeSp;
+      const sp = spAgg(oppSp?.id);
+      const order = orders.get(`${g.gamePk}:${side}`);
+      (order?.ids ?? []).forEach((pid, idx) => {
+        const rec = batLogs.get(pid);
+        if (!rec) return;
+        const base = batterFeatures(
+          rec.logs,
+          date,
+          prior.bat.get(pid),
+          idx + 1,
+          isHome,
+          park,
+          teams.get(me.id),
+          teams.get(other.id),
+          sp,
+        );
+        if (!base) return;
+        const all = sumLogs(rec.logs, date, [...BAT_FIELDS_SUM]);
+        const w = sumLogs(rec.logs, date, [...BAT_FIELDS_SUM], W15_DAYS);
+        const own = shrunk(
+          countHits(rec.logs, date, (l) => batHit(l, "tb2")),
+          all.g,
+          BATTER_PRIORS.tb2,
+          C.K_G,
+        );
+        const ownW = shrunk(
+          countHits(rec.logs, date, (l) => batHit(l, "tb2"), C.WINDOW_DAYS),
+          sumLogs(rec.logs, date, [...BAT_FIELDS_SUM], C.WINDOW_DAYS).g,
+          BATTER_PRIORS.tb2,
+          12,
+        );
+        rows.push({
+          gamePk: g.gamePk,
+          date: g.date,
+          startsAt: g.startsAt,
+          venue: g.venue,
+          park,
+          matchup: `${g.away.abbr} @ ${g.home.abbr}`,
+          playerId: pid,
+          player: rec.name,
+          teamId: me.id,
+          team: me.abbr,
+          opponentId: other.id,
+          opponent: other.abbr,
+          isHome,
+          slot: idx + 1,
+          lineupPosted: !!order?.posted,
+          opposingStarter: oppSp?.name ?? null,
+          base: [...base, own, ownW],
+          form15: [
+            shrunk(w.tot.tb, w.tot.pa, LG.tb_pa, 40),
+            shrunk(w.tot.h, w.tot.pa, LG.h_pa, 40),
+            w.g ? w.tot.pa / w.g : 3.9,
+            Math.min(w.g, W15_DAYS),
+            shrunk(
+              countHits(rec.logs, date, (l) => batHit(l, "tb2"), W15_DAYS),
+              w.g,
+              0.36,
+              6,
+            ),
+          ],
+        });
+      });
+    }
+  }
+  return { season, rows };
+}
