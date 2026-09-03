@@ -96,7 +96,33 @@ export function LedgerView({
     >
       {isLoading && <div className="h-40 animate-pulse border border-border bg-card" />}
 
-      {!isLoading && (s?.n ?? 0) === 0 && (
+      {/* An empty ledger has three quite different causes and they must not be
+          reported with the same sentence. This page previously said "the first
+          run happens on the next daily cycle" while the table it reads from did
+          not exist, so it promised, every day for weeks, data that nothing was
+          ever going to write. */}
+      {!isLoading && data?.status === "not-provisioned" && (
+        <Note>
+          <strong className="text-foreground">The ledger is not recording.</strong> Its table does
+          not exist in the database, so no prediction has ever been stored for {sport} and none will
+          be until the migration{" "}
+          <code className="font-mono text-[11px]">
+            supabase/migrations/20260815120000_event_predictions.sql
+          </code>{" "}
+          is applied. This is a setup step, not something that resolves by waiting — which is what
+          this page used to imply. The replayed section below is real and is not affected.
+        </Note>
+      )}
+
+      {!isLoading && data?.status === "unreadable" && (
+        <Note>
+          <strong className="text-foreground">The ledger could not be read.</strong> The table
+          exists but the request for it failed, so this section is blank for a reason that has
+          nothing to do with the model. The replayed section below is unaffected.
+        </Note>
+      )}
+
+      {!isLoading && data?.status === "ok" && (s?.n ?? 0) === 0 && (
         <Note>
           <strong className="text-foreground">Nothing settled yet.</strong> The ledger records
           predictions the morning of each event and scores them once the result is in, so it starts
@@ -194,7 +220,7 @@ export function LedgerView({
           With an empty ledger these were three stacked "nothing to plot yet"
           boxes, which is honest but says the same thing three times. One line
           says it once, and the replay below actually has something to show. */}
-      {!isLoading && (s?.n ?? 0) === 0 && (
+      {!isLoading && data?.status === "ok" && (s?.n ?? 0) === 0 && (
         <p className="mb-8 border border-dashed border-border px-5 py-4 text-sm text-muted-foreground">
           The live charts — hit rate as calls settle, calibration by confidence, and volume per day
           — appear here once the ledger has settled its first call.

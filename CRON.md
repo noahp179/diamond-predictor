@@ -1,8 +1,50 @@
-How# Daily Cron — 3 AM Auto-sync
+# Daily Cron — 3 AM Auto-sync
+
+## Why the cron "stopped writing" (found 2026-09-03)
+
+It never stopped running. **Vercel Cron invokes a scheduled path with `GET`**,
+and both hook handlers did their work on `POST` only — `GET` returned a friendly
+"use POST to run the pipeline" note. So every day, on schedule, Vercel fetched
+the endpoint, got a `200`, and nothing was written. A 200 is a success as far as
+the platform is concerned, so nothing ever alerted.
+
+Both hooks now run on an **authenticated `GET`** as well as `POST`. Vercel sends
+`Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set as
+an environment variable, so the scheduled call authenticates itself. An
+*un*authenticated GET still returns a status page, but one that says plainly
+that it did **not** run and whether the secret is even configured.
+
+Two things must be true in the Vercel project for the schedule to work:
+
+1. `CRON_SECRET` is set (otherwise the cron's GET is unauthenticated → no-op).
+2. `SUPABASE_SERVICE_ROLE_KEY` is set (otherwise every write is dropped).
+
+Check both at any time — no secret required:
+
+```bash
+curl -s https://<the-deployment>/api/public/hooks/track-predictions | jq
+# {"ok":true,"ran":false,"cronSecretSet":true,"writable":true,"ledgerReady":false,...}
+```
+
+## The soccer & tennis ledger is not provisioned
+
+`event_predictions` **does not exist in the database**. It has never existed, so
+no soccer or tennis prediction has ever been stored, and the tracking cron had
+nothing to write to even once the GET/POST bug above is fixed. Apply:
+
+```
+supabase/migrations/20260815120000_event_predictions.sql
+```
+
+Verify what is actually stored, for every sport, in one command:
+
+```bash
+npx tsx scripts/check-ledger.ts
+```
 
 ## Local operation (while the Vercel cron is down)
 
-The cron stopped writing on 2026-06-15. Until it's revived, the same pipeline
+Until the fix above is deployed and verified, the same pipeline
 can run from any machine with `SUPABASE_SERVICE_ROLE_KEY` in `.env`:
 
 ```bash

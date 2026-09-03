@@ -355,10 +355,31 @@ export type LedgerSummary = {
   lastDate: string | null;
 };
 
+/**
+ * Why the ledger is empty, when it is.
+ *
+ * "Nothing settled yet" and "the table this reads from does not exist" look
+ * identical on a page that only counts rows, and they could not be more
+ * different: one resolves itself by waiting, the other never does. The ledger
+ * sat empty for weeks because `event_predictions` had never been created and
+ * the read error was swallowed, so the page kept promising data on "the next
+ * daily cycle" that no cycle was ever going to write.
+ */
+export type LedgerStatus =
+  /** The table is there and was read. Zero rows means zero rows. */
+  | "ok"
+  /** The table does not exist — the migration has not been applied. */
+  | "not-provisioned"
+  /** It exists but could not be read: credentials, permissions, network. */
+  | "unreadable";
+
 export type LedgerView = {
   sport: string;
   division: string;
   modelVersion: string;
+  status: LedgerStatus;
+  /** Whether this process could write to the ledger at all. */
+  writable: boolean;
   summary: LedgerSummary;
   /** Accuracy in probability bands — the calibration check that matters. */
   calibration: Bucket[];
@@ -383,6 +404,8 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
     sport,
     division,
     modelVersion,
+    status: "ok",
+    writable: canTrack(),
     summary: {
       n: 0,
       correct: 0,
@@ -410,16 +433,24 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
       .order("event_date", { ascending: false })
       .limit(2000);
     if (error) {
-      // A missing table is the expected state before the migration runs; it is
-      // not an error worth shouting about, and the page handles an empty ledger.
-      console.error("[tracking] read failed:", error.message);
-      return empty;
+      // PGRST205 is PostgREST for "no such table". Distinguishing it from every
+      // other read failure is the whole point of the status field: this one is
+      // a deployment step nobody ran, and no amount of waiting fixes it.
+      const missing =
+        (error as { code?: string }).code === "PGRST205" ||
+        /Could not find the table/i.test(error.message ?? "");
+      console.error(
+        missing
+          ? "[tracking] event_predictions does not exist — apply supabase/migrations/20260815120000_event_predictions.sql"
+          : `[tracking] read failed: ${error.message}`,
+      );
+      return { ...empty, status: missing ? "not-provisioned" : "unreadable" };
     }
     const rows = (data ?? []) as LedgerRow[];
     const settled = rows.filter((r) => r.settled_at && r.result);
     const pending = rows.length - settled.length;
     if (settled.length === 0) {
-      return { ...empty, summary: { ...empty.summary, pending } };
+      return { ...empty, status: "ok", summary: { ...empty.summary, pending } };
     }
 
     const n = settled.length;
@@ -476,6 +507,8 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
       sport,
       division,
       modelVersion,
+      status: "ok",
+      writable: canTrack(),
       summary: {
         n,
         correct,
@@ -494,6 +527,6 @@ export async function readLedger(sport: string, division: string): Promise<Ledge
     };
   } catch (err) {
     console.error("[tracking] read threw:", err);
-    return empty;
+    return { ...empty, status: "unreadable" };
   }
 }
