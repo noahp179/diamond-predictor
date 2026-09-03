@@ -42,6 +42,31 @@ Verify what is actually stored, for every sport, in one command:
 npx tsx scripts/check-ledger.ts
 ```
 
+### Creating it, and starting to record without waiting on a deploy
+
+```bash
+npx tsx scripts/provision-ledger.ts     # creates the table, or prints the SQL + link
+scripts/run-tracking-local.sh           # records today's fixtures, settles finished ones
+npx tsx scripts/check-ledger.ts         # confirm rows landed
+```
+
+`provision-ledger` applies the migration itself when `SUPABASE_DB_URL` (a
+Postgres connection string) is in `.env`; a service-role key alone cannot run
+DDL, because it authenticates against PostgREST, which exposes tables rather
+than `CREATE TABLE`. Either way the script re-checks afterwards and says whether
+the table is actually there.
+
+`run-tracking-local.sh` is the soccer/tennis counterpart to
+`run-pipeline-local.sh` and takes the same two crontab lines. It refuses to run
+if the table is missing, rather than writing into the void — which is exactly
+how this went unnoticed.
+
+**Note on how far back the ledger can go: only forward.** Soccer and tennis
+shipped on 2026-08-15 and nothing was ever stored, so the ledger necessarily
+starts on the day it is first run. Backfilling it would mean writing rows dated
+before they were decided, which destroys the one property a forward record has.
+The Track Record pages show a labelled replay in the meantime.
+
 ## Local operation (while the Vercel cron is down)
 
 Until the fix above is deployed and verified, the same pipeline
