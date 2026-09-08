@@ -104,6 +104,12 @@ replicates [EDGE-HUNT.md](EDGE-HUNT.md), which found the same thing across all
 twelve batter markets. Handedness is the first thing anybody reaches for and it
 is the one block here that is measurably worse than nothing.
 
+Both of these were rebuilt properly and retested — the starter's own platoon
+split, the bullpen's, and how many plate appearances actually reach the pen — in
+[TWO-BASES-PITCHING-BACKTEST.md](TWO-BASES-PITCHING-BACKTEST.md). The answer does
+not change, and that file shows why: the signal is real and the shipped features
+already contain it.
+
 **The umpire index does nothing.** Home-plate umpires do differ — the index runs
 0.94 to 1.07 across 99 umpires — but the differences are small next to the noise
 in one hitter's four plate appearances.
