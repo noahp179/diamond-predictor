@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getMlbTwoBases } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getMlbTwoBases>>;
 type Pick = Result["picks"][number];
@@ -12,10 +13,6 @@ type Game = Result["byGame"][number];
 /** How many hitters each game card leads with. Three is a slate you can read;
  *  the rest of the lineup is one click away. */
 const PER_GAME = 3;
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -164,7 +161,7 @@ function GameCard({ game }: { game: Game }) {
 }
 
 export function MlbTwoBasesView() {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const [strongOnly, setStrongOnly] = useState(false);
   const [byGame, setByGame] = useState(true);
   const [limit, setLimit] = useState(24);

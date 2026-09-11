@@ -13,6 +13,7 @@
  * cached with a short TTL so new results flow in.
  */
 
+import { etDateOf } from "./date";
 import type { PredictedGame, TeamSide } from "./mlb-core";
 
 export type Sport = "nba" | "nfl";
@@ -124,7 +125,7 @@ async function fetchTeams(sport: Sport): Promise<Map<string, { abbr: string; nam
 
 /** A completed game used for the Elo replay. */
 type Final = {
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD, US Eastern (the day the league played it)
   home: string; // team id
   away: string;
   hs: number;
@@ -270,7 +271,9 @@ async function fetchSeasonFinals(sport: Sport, season: number): Promise<Final[]>
       if (seen.has(g.id)) continue;
       seen.add(g.id);
       finals.push({
-        date: g.date.slice(0, 10),
+        // ET, not UTC: a Sunday-night game is stamped 00:20Z Monday, and
+        // filing it under Monday hides it from Monday's point-in-time replay.
+        date: etDateOf(g.date),
         home: g.home.id,
         away: g.away.id,
         hs: g.homeScore,

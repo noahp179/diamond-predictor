@@ -4,14 +4,11 @@ import { useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getNflTdScorers } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getNflTdScorers>>;
 type Game = Result["games"][number];
 type Pick = Game["picks"][number];
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /**
  * Confidence tiers, set at the breakpoints the backtest actually found rather
@@ -76,6 +73,14 @@ function GameCard({ game }: { game: Game }) {
           </div>
         )}
       </div>
+      {game.carryover && (
+        <div
+          className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
+          title="Too few games this season to read usage, so the window is topped up with last season's most recent games. Confidence is discounted accordingly."
+        >
+          Usage carried over from last season
+        </div>
+      )}
       <div>
         {game.picks.slice(0, 3).map((p, i) => (
           <PickRow key={p.playerId} pick={p} rank={i + 1} />
@@ -86,7 +91,7 @@ function GameCard({ game }: { game: Game }) {
 }
 
 export function TdScorersView() {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const [solidOnly, setSolidOnly] = useState(false);
   const run = useServerFn(getNflTdScorers);
   const { data, isLoading, isError } = useQuery({
@@ -104,6 +109,9 @@ export function TdScorersView() {
     : allGames;
   const topPick = games[0]?.picks[0];
   const solidCount = allGames.filter((g) => (g.picks[0]?.confidence ?? 0) >= SOLID).length;
+  // Weeks 1-6 have little or no season-to-date usage, so the model reads last
+  // season's tail. Say so on the board rather than passing it off as current.
+  const carryover = allGames.some((g) => g.carryover);
 
   return (
     <SportShell
@@ -135,6 +143,7 @@ export function TdScorersView() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-border bg-card px-4 py-3">
           <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
             Backtested tiers · {TIERS.map((t) => `${t.label} ${t.hitRate}`).join(" · ")}
+            {carryover ? " · early season: usage partly carried over from last year" : ""}
           </div>
           <button
             type="button"

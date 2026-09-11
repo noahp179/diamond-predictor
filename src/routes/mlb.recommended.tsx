@@ -10,6 +10,7 @@ import { pickProb } from "@/lib/mlb-blend";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import type { PredictedGame } from "@/lib/mlb-core";
 import { AppShell } from "@/components/AppShell";
+import { todayET } from "@/lib/date";
 
 export const Route = createFileRoute("/mlb/recommended")({
   head: () => ({
@@ -25,17 +26,13 @@ export const Route = createFileRoute("/mlb/recommended")({
   component: ModelPage,
 });
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function pct(p: number) {
   return `${(p * 100).toFixed(1)}%`;
 }
 
 function ModelPage() {
   const fetchPicks = useServerFn(getRecommendedPicks);
-  const today = todayISO();
+  const today = todayET();
   const tomorrow = offsetDate(today, 1);
 
   const todayQuery = useQuery({

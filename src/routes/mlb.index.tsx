@@ -6,6 +6,7 @@ import { useState } from "react";
 import { getDailyGames, getMetrics } from "@/lib/mlb.functions";
 import { GameCard } from "@/components/GameCard";
 import { AppShell, StatBar, Stat } from "@/components/AppShell";
+import { todayET } from "@/lib/date";
 
 export const Route = createFileRoute("/mlb/")({
   head: () => ({
@@ -26,12 +27,8 @@ export const Route = createFileRoute("/mlb/")({
   component: Index,
 });
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function Index() {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const fetchGames = useServerFn(getDailyGames);
   const fetchMetrics = useServerFn(getMetrics);
   const { data, isLoading, isError, isFetching } = useQuery({
