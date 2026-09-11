@@ -1,0 +1,254 @@
+{
+ "rec3": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8240994641467633,
+  "aucAfter": 0.8240994641467633,
+  "loglossBefore": 0.5114974843813233,
+  "loglossAfter": 0.5114974843813233
+ },
+ "rec5": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8311357554743152,
+  "aucAfter": 0.8311357554743152,
+  "loglossBefore": 0.3589911238137363,
+  "loglossAfter": 0.3589911238137363
+ },
+ "rec7": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8600860674709536,
+  "aucAfter": 0.8600860674709536,
+  "loglossBefore": 0.18361880702153557,
+  "loglossAfter": 0.18361880702153557
+ },
+ "recy40": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8298047478918092,
+  "aucAfter": 0.8298047478918092,
+  "loglossBefore": 0.4346006418552541,
+  "loglossAfter": 0.4346006418552541
+ },
+ "recy60": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8350830616885664,
+  "aucAfter": 0.8350830616885664,
+  "loglossBefore": 0.3179248606906797,
+  "loglossAfter": 0.3179248606906797
+ },
+ "recy80": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8408526386136511,
+  "aucAfter": 0.8408526386136511,
+  "loglossBefore": 0.2132991123526372,
+  "loglossAfter": 0.2132991123526372
+ },
+ "rushy40": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.94073257973337,
+  "aucAfter": 0.94073257973337,
+  "loglossBefore": 0.2145589313855411,
+  "loglossAfter": 0.2145589313855411
+ },
+ "rushy60": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.9336849846130654,
+  "aucAfter": 0.9336849846130654,
+  "loglossBefore": 0.17010528170754768,
+  "loglossAfter": 0.17010528170754768
+ },
+ "rushy80": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.9327643509405956,
+  "aucAfter": 0.9327643509405956,
+  "loglossBefore": 0.11757379748320995,
+  "loglossAfter": 0.11757379748320995
+ },
+ "scrim60": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8048245289000698,
+  "aucAfter": 0.8048245289000698,
+  "loglossBefore": 0.4497345962655261,
+  "loglossAfter": 0.4497345962655261
+ },
+ "scrim90": {
+  "n": 3816,
+  "nMoved": 0,
+  "aucBefore": 0.8273347738822446,
+  "aucAfter": 0.8273347738822446,
+  "loglossBefore": 0.2878633828843917,
+  "loglossAfter": 0.2878633828843917
+ },
+ "_summary": {
+  "grid": [
+   {
+    "alpha": 0.0,
+    "cap": 1.25,
+    "loglossDelta": 0.0
+   },
+   {
+    "alpha": 0.25,
+    "cap": 1.25,
+    "loglossDelta": 0.00018548334749280364
+   },
+   {
+    "alpha": 0.25,
+    "cap": 1.5,
+    "loglossDelta": 0.0002799193980291964
+   },
+   {
+    "alpha": 0.25,
+    "cap": 1.75,
+    "loglossDelta": 0.00034780603495889286
+   },
+   {
+    "alpha": 0.25,
+    "cap": 2.5,
+    "loglossDelta": 0.0004005099790230252
+   },
+   {
+    "alpha": 0.5,
+    "cap": 1.25,
+    "loglossDelta": 0.0018051833172671135
+   },
+   {
+    "alpha": 0.5,
+    "cap": 1.5,
+    "loglossDelta": 0.0035164772274806065
+   },
+   {
+    "alpha": 0.5,
+    "cap": 1.75,
+    "loglossDelta": 0.00455157140564722
+   },
+   {
+    "alpha": 0.5,
+    "cap": 2.5,
+    "loglossDelta": 0.005839266593760803
+   },
+   {
+    "alpha": 0.75,
+    "cap": 1.25,
+    "loglossDelta": 0.005076042503163678
+   },
+   {
+    "alpha": 0.75,
+    "cap": 1.5,
+    "loglossDelta": 0.010442171295097887
+   },
+   {
+    "alpha": 0.75,
+    "cap": 1.75,
+    "loglossDelta": 0.013819967518336269
+   },
+   {
+    "alpha": 0.75,
+    "cap": 2.5,
+    "loglossDelta": 0.018502186564497248
+   },
+   {
+    "alpha": 1.0,
+    "cap": 1.25,
+    "loglossDelta": 0.010225538588379149
+   },
+   {
+    "alpha": 1.0,
+    "cap": 1.5,
+    "loglossDelta": 0.021843521208959604
+   },
+   {
+    "alpha": 1.0,
+    "cap": 1.75,
+    "loglossDelta": 0.029472040037540923
+   },
+   {
+    "alpha": 1.0,
+    "cap": 2.5,
+    "loglossDelta": 0.040840553972043565
+   }
+  ],
+  "chosen": {
+   "alpha": 0.0,
+   "cap": 1.25,
+   "loglossDelta": 0.0
+  },
+  "verdict": "do-not-ship",
+  "meanAucDelta": 0.0,
+  "meanLoglossDelta": 0.0,
+  "searchGamesAffected": 1019,
+  "searchGames": 1055,
+  "testGamesAffected": 271,
+  "testGames": 272,
+  "recentTeamGames": 3,
+  "deadPicks": {
+   "rec3": {
+    "shown": 1818,
+    "dead": 268,
+    "pct": 0.1474147414741474
+   },
+   "rec5": {
+    "shown": 1841,
+    "dead": 270,
+    "pct": 0.14665942422596415
+   },
+   "rec7": {
+    "shown": 1848,
+    "dead": 297,
+    "pct": 0.16071428571428573
+   },
+   "recy40": {
+    "shown": 1888,
+    "dead": 312,
+    "pct": 0.1652542372881356
+   },
+   "recy60": {
+    "shown": 1897,
+    "dead": 325,
+    "pct": 0.1713231418028466
+   },
+   "recy80": {
+    "shown": 1884,
+    "dead": 326,
+    "pct": 0.173036093418259
+   },
+   "rushy40": {
+    "shown": 2002,
+    "dead": 470,
+    "pct": 0.23476523476523475
+   },
+   "rushy60": {
+    "shown": 1990,
+    "dead": 454,
+    "pct": 0.22814070351758794
+   },
+   "rushy80": {
+    "shown": 2023,
+    "dead": 469,
+    "pct": 0.23183391003460208
+   },
+   "scrim60": {
+    "shown": 1825,
+    "dead": 255,
+    "pct": 0.13972602739726028
+   },
+   "scrim90": {
+    "shown": 1844,
+    "dead": 261,
+    "pct": 0.14154013015184383
+   }
+  },
+  "deadPicksTotal": {
+   "shown": 20860,
+   "dead": 3707,
+   "pct": 0.1777085330776606
+  }
+ }
+}

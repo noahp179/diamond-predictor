@@ -6,10 +6,9 @@
  * sample). Weights are frozen in td-model.json; this module rebuilds the same
  * season-to-date features live from ESPN box scores, then applies them.
  *
- * Data path (all public ESPN, cached; never touches Supabase):
- *   scoreboard(date)            → the slate
- *   teams/{id}/schedule         → each team's completed games this season
- *   summary?event=…             → per-game box scores (usage) + game total/spread
+ * Data path (all public ESPN, cached; never touches Supabase) goes through
+ * nfl-espn.server.ts, which is shared with the prop board — one cache and one
+ * request budget, so a Sunday does not fetch the same 285 KB box score twice.
  *
  * Season-to-date means every completed game strictly before the slate date, so
  * the features are always genuinely pre-game (no leakage), exactly as trained.
@@ -18,10 +17,17 @@
  * (see USAGE_WINDOW) and the picks say so rather than the board going blank.
  */
 import model from "./td-model.json";
-import { etDateOf, todayET } from "./date";
+import { todayET } from "./date";
+import {
+  fetchActiveRoster,
+  fetchGameContext,
+  fetchSummary,
+  trailingTeamGames,
+  type BoxPlayer,
+  type BoxTeam,
+} from "./nfl-espn.server";
 import { fetchScoreboard, seasonOf, type SlateGame } from "./espn.server";
 
-const NFL = "football/nfl";
 const C = model.constants;
 
 // ------------------------------------------------------------- inference
@@ -33,227 +39,6 @@ function infer(x: number[]): number {
   const raw = 1 / (1 + Math.exp(-z));
   const lg = Math.log(raw / (1 - raw));
   return 1 / (1 + Math.exp(-(model.platt_a * lg + model.platt_b)));
-}
-
-// --------------------------------------------------------------- fetching
-type Cached<T> = { at: number; v: T };
-const summaryCache = new Map<number, Cached<ParsedSummary | null>>();
-const scheduleCache = new Map<string, Cached<TeamGame[]>>();
-const rosterCache = new Map<string, Cached<Set<string> | null>>();
-const oddsCache = new Map<number, Cached<{ total: number; homeSpread: number } | null>>();
-const SUMMARY_TTL = 24 * 60 * 60 * 1000; // finals are immutable
-const SCHEDULE_TTL = 6 * 60 * 60 * 1000;
-const ROSTER_TTL = 12 * 60 * 60 * 1000;
-const ODDS_TTL = 30 * 60 * 1000;
-
-// A full Sunday slate asks for a box score per team per completed game — a few
-// hundred requests. Fired all at once ESPN throttles them and the board comes
-// back half-empty, which is indistinguishable from "the model has no picks".
-// Bound the in-flight requests instead; the whole slate still resolves in a
-// couple of seconds and every request actually lands.
-const MAX_INFLIGHT = 8;
-let inflight = 0;
-const waiting: (() => void)[] = [];
-
-function release() {
-  inflight--;
-  waiting.shift()?.();
-}
-
-function withLimit<T>(run: () => Promise<T>): Promise<T> {
-  if (inflight < MAX_INFLIGHT) {
-    inflight++;
-    return run().finally(release);
-  }
-  return new Promise<T>((resolve, reject) => {
-    waiting.push(() => {
-      inflight++;
-      run().then(resolve, reject).finally(release);
-    });
-  });
-}
-
-async function getJson(url: string, ms = 10000): Promise<unknown> {
-  return withLimit(async () => {
-    const res = await fetch(url, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(ms),
-    });
-    if (!res.ok) throw new Error(`ESPN ${res.status}: ${url}`);
-    return res.json();
-  });
-}
-
-type BoxPlayer = {
-  id: string;
-  name: string;
-  car: number;
-  tgt: number;
-  ry: number;
-  cy: number;
-  rtd: number;
-  ctd: number;
-};
-type BoxTeam = {
-  abbr: string;
-  isHome: boolean;
-  players: BoxPlayer[];
-  rushTd: number;
-  recTd: number;
-};
-type ParsedSummary = { date: string; teams: BoxTeam[] };
-
-const num = (v: unknown) => {
-  const n = Number(String(v ?? "").split("/")[0]);
-  return Number.isFinite(n) ? n : 0;
-};
-
-function parseSummary(d: any): ParsedSummary | null {
-  const comp = d?.header?.competitions?.[0];
-  const box = d?.boxscore?.players;
-  if (!comp || !Array.isArray(box)) return null;
-  const homeAbbr = comp.competitors?.find((c: any) => c.homeAway === "home")?.team?.abbreviation;
-  const teams: BoxTeam[] = [];
-  for (const tb of box) {
-    const abbr = tb?.team?.abbreviation;
-    if (!abbr) continue;
-    const byId = new Map<string, BoxPlayer>();
-    for (const cat of tb.statistics ?? []) {
-      const keys: string[] = cat.keys ?? [];
-      for (const a of cat.athletes ?? []) {
-        const id = a?.athlete?.id;
-        if (!id) continue;
-        const p = byId.get(id) ?? {
-          id,
-          name: a.athlete.displayName ?? "",
-          car: 0,
-          tgt: 0,
-          ry: 0,
-          cy: 0,
-          rtd: 0,
-          ctd: 0,
-        };
-        const s = Object.fromEntries(keys.map((k, i) => [k, a.stats?.[i]]));
-        if (cat.name === "rushing") {
-          p.car = num(s.rushingAttempts);
-          p.ry = num(s.rushingYards);
-          p.rtd = num(s.rushingTouchdowns);
-        } else if (cat.name === "receiving") {
-          p.tgt = num(s.receivingTargets);
-          p.cy = num(s.receivingYards);
-          p.ctd = num(s.receivingTouchdowns);
-        } else continue;
-        byId.set(id, p);
-      }
-    }
-    const players = [...byId.values()];
-    teams.push({
-      abbr,
-      isHome: abbr === homeAbbr,
-      players,
-      rushTd: players.reduce((s, p) => s + p.rtd, 0),
-      recTd: players.reduce((s, p) => s + p.ctd, 0),
-    });
-  }
-  // The league day, not the UTC day: a Sunday-night game is stamped 00:20Z
-  // Monday, and filing it under Monday hides it from Monday night's features.
-  return { date: etDateOf(String(comp.date ?? "")), teams };
-}
-
-async function fetchSummary(eventId: number): Promise<ParsedSummary | null> {
-  const c = summaryCache.get(eventId);
-  if (c && Date.now() - c.at < SUMMARY_TTL) return c.v;
-  let v: ParsedSummary | null = null;
-  try {
-    v = parseSummary(
-      await getJson(
-        `https://site.api.espn.com/apis/site/v2/sports/${NFL}/summary?event=${eventId}`,
-      ),
-    );
-  } catch (err) {
-    console.error(`[nfl-td summary] ${eventId}:`, err);
-  }
-  summaryCache.set(eventId, { at: Date.now(), v });
-  return v;
-}
-
-/** One completed regular-season game, on the league day it was played. */
-type TeamGame = { id: number; date: string };
-
-/** A team's completed regular-season games in `season`, oldest first. Carrying
- *  the date here means the window can be trimmed before any box score is
- *  fetched, instead of pulling all 17 and throwing most away. */
-async function fetchTeamGameLog(teamId: string, season: number): Promise<TeamGame[]> {
-  const key = `${teamId}:${season}`;
-  const c = scheduleCache.get(key);
-  if (c && Date.now() - c.at < SCHEDULE_TTL) return c.v;
-  let games: TeamGame[] = [];
-  try {
-    const d = (await getJson(
-      `https://site.api.espn.com/apis/site/v2/sports/${NFL}/teams/${teamId}/schedule?season=${season}&seasontype=2`,
-    )) as { events?: any[] };
-    games = (d.events ?? [])
-      .filter((e) => e?.competitions?.[0]?.status?.type?.completed)
-      .map((e) => ({ id: Number(e.id), date: etDateOf(String(e?.date ?? "")) }))
-      .filter((g) => Number.isFinite(g.id))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  } catch (err) {
-    console.error(`[nfl-td schedule] ${teamId} ${season}:`, err);
-  }
-  scheduleCache.set(key, { at: Date.now(), v: games });
-  return games;
-}
-
-/** Athlete ids on a team's active roster right now — offense, defense and
- *  special teams only, so injured-reserve, suspended and practice-squad players
- *  are left out. Returns null when ESPN doesn't answer, which means "don't
- *  filter" rather than "nobody is available". */
-async function fetchActiveRoster(teamId: string): Promise<Set<string> | null> {
-  const c = rosterCache.get(teamId);
-  if (c && Date.now() - c.at < ROSTER_TTL) return c.v;
-  let ids: Set<string> | null = null;
-  try {
-    const d = (await getJson(
-      `https://site.api.espn.com/apis/site/v2/sports/${NFL}/teams/${teamId}/roster`,
-    )) as { athletes?: { position?: string; items?: { id?: string }[] }[] };
-    const ACTIVE = new Set(["offense", "defense", "specialTeam"]);
-    const found = new Set<string>();
-    for (const group of d.athletes ?? []) {
-      if (!ACTIVE.has(String(group?.position))) continue;
-      for (const a of group.items ?? []) if (a?.id) found.add(String(a.id));
-    }
-    if (found.size > 0) ids = found;
-  } catch (err) {
-    console.error(`[nfl-td roster] ${teamId}:`, err);
-  }
-  rosterCache.set(teamId, { at: Date.now(), v: ids });
-  return ids;
-}
-
-/** Market total + home spread for a game. The game summary's `pickcenter`
- *  carries `overUnder` and the home `spread` for both upcoming and past games
- *  (the core odds feed empties out once a game is old), so read it from there. */
-async function fetchTotalSpread(
-  eventId: number,
-): Promise<{ total: number; homeSpread: number } | null> {
-  const c = oddsCache.get(eventId);
-  if (c && Date.now() - c.at < ODDS_TTL) return c.v;
-  let v: { total: number; homeSpread: number } | null = null;
-  try {
-    const d = (await getJson(
-      `https://site.api.espn.com/apis/site/v2/sports/${NFL}/summary?event=${eventId}`,
-    )) as { pickcenter?: { overUnder?: number; spread?: number }[] };
-    for (const it of d.pickcenter ?? []) {
-      if (typeof it.overUnder === "number" && typeof it.spread === "number") {
-        v = { total: it.overUnder, homeSpread: it.spread };
-        break;
-      }
-    }
-  } catch (err) {
-    console.error(`[nfl-td odds] ${eventId}:`, err);
-  }
-  oddsCache.set(eventId, { at: Date.now(), v });
-  return v;
 }
 
 // ------------------------------------------------------------ aggregation
@@ -323,16 +108,14 @@ async function aggregateTeam(
     dCtd: 0,
   };
 
-  // This season, strictly before the slate's own day — genuinely pre-game.
-  const current = (await fetchTeamGameLog(teamId, season)).filter((g) => g.date < beforeDate);
-  let log = current;
-  let carriedGames = 0;
-  if (current.length < USAGE_WINDOW) {
-    const prior = await fetchTeamGameLog(teamId, season - 1);
-    const tail = prior.slice(current.length - USAGE_WINDOW); // last N, oldest first
-    carriedGames = tail.length;
-    log = [...tail, ...current];
-  }
+  // The team's last USAGE_WINDOW completed games before the slate's own day,
+  // reaching into last season when this one is still too young to fill it.
+  const { games: log, carried: carriedGames } = await trailingTeamGames(
+    teamId,
+    season,
+    beforeDate,
+    USAGE_WINDOW,
+  );
 
   const summaries = await Promise.all(log.map((g) => fetchSummary(g.id)));
   for (let i = 0; i < summaries.length; i++) {
@@ -474,11 +257,12 @@ export async function tdScorersSlate(
       const [homeRoster, awayRoster] = liveSeason
         ? await Promise.all([fetchActiveRoster(g.home.id), fetchActiveRoster(g.away.id)])
         : [null, null];
-      const [homeAgg, awayAgg, odds] = await Promise.all([
+      const [homeAgg, awayAgg, ctx] = await Promise.all([
         aggregateTeam(g.home.abbr, g.home.id, season, date, homeRoster),
         aggregateTeam(g.away.abbr, g.away.id, season, date, awayRoster),
-        fetchTotalSpread(g.id),
+        fetchGameContext(g.id),
       ]);
+      const odds = ctx.odds;
       const total = odds?.total ?? 45;
       const homeSpread = odds?.homeSpread ?? 0;
       const homeImplied = total / 2 - homeSpread / 2; // home margin = -spread
