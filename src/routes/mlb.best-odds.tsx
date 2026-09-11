@@ -7,6 +7,7 @@ import { getBestOddsPicks, type GameWithOdds } from "@/lib/mlb.functions";
 import { AppShell, StatBar, Stat } from "@/components/AppShell";
 import { offsetDate, slateComplete } from "@/lib/mlb-features";
 import { pickProb, MARKET_BLEND_WEIGHT } from "@/lib/mlb-blend";
+import { todayET } from "@/lib/date";
 
 export const Route = createFileRoute("/mlb/best-odds")({
   head: () => ({
@@ -21,10 +22,6 @@ export const Route = createFileRoute("/mlb/best-odds")({
   }),
   component: BestOddsPage,
 });
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function pct(p: number) {
   return `${(p * 100).toFixed(1)}%`;
@@ -78,7 +75,7 @@ function pickConfidence(entry: GameWithOdds, mode: Mode): number | null {
 function BestOddsPage() {
   const [mode, setMode] = useState<Mode>("confidence");
   const fetchPicks = useServerFn(getBestOddsPicks);
-  const today = todayISO();
+  const today = todayET();
   const tomorrow = offsetDate(today, 1);
 
   const todayQuery = useQuery({

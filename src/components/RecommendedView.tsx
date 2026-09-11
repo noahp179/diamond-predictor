@@ -5,13 +5,10 @@ import { useState } from "react";
 import { GameCard } from "@/components/GameCard";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import type { getNbaRecommended } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getNbaRecommended>>;
 type Fn = (opts: { data: { date: string } }) => Promise<Result>;
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function conf(p: { homeWinProb: number; awayWinProb: number }) {
   return Math.max(p.homeWinProb, p.awayWinProb);
@@ -24,7 +21,7 @@ export function RecommendedView({
   sport: "nfl" | "nba";
   fetchRecommended: Fn;
 }) {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const run = useServerFn(fetchRecommended as unknown as typeof getNbaRecommended);
   const { data, isLoading, isError } = useQuery({
     queryKey: [sport, "recommended", date],

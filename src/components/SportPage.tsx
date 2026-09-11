@@ -5,13 +5,10 @@ import { useState } from "react";
 import { GameCard } from "@/components/GameCard";
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
 import type { getNbaSlate } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type SlateResult = Awaited<ReturnType<typeof getNbaSlate>>;
 type SlateFn = (opts: { data: { date: string } }) => Promise<SlateResult>;
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function SportPage({
   sport,
@@ -24,7 +21,7 @@ export function SportPage({
   blurb: string;
   fetchSlate: SlateFn;
 }) {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const run = useServerFn(fetchSlate as unknown as typeof getNbaSlate);
   const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: [sport, date],

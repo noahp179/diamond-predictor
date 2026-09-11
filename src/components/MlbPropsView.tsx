@@ -5,14 +5,11 @@ import { useMemo, useState } from "react";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { boardPicks } from "@/lib/props-board";
 import { getMlbProps } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getMlbProps>>;
 type Game = Result["games"][number];
 type Pick = Game["picks"][number];
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const signed = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(Math.round(x * 100))}`;
@@ -88,7 +85,7 @@ function GameCard({ game, market }: { game: Game; market: string }) {
 }
 
 export function MlbPropsView() {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const [market, setMarket] = useState("all");
   const [strongOnly, setStrongOnly] = useState(false);
   const run = useServerFn(getMlbProps);

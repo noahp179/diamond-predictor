@@ -4,14 +4,11 @@ import { useMemo, useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getMlbStacks } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getMlbStacks>>;
 type Team = Result["teams"][number];
 type Card = Team["cards"][number];
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -131,7 +128,7 @@ function TeamCard({ team }: { team: Team }) {
 }
 
 export function MlbStacksView() {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   const [strongOnly, setStrongOnly] = useState(false);
   const run = useServerFn(getMlbStacks);
   const { data, isLoading, isError } = useQuery({

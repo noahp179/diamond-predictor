@@ -13,6 +13,7 @@
  * cached with a short TTL so new results flow in.
  */
 
+import { etDateOf } from "./date";
 import type { PredictedGame, TeamSide } from "./mlb-core";
 
 export type Sport = "nba" | "nfl";
@@ -124,7 +125,7 @@ async function fetchTeams(sport: Sport): Promise<Map<string, { abbr: string; nam
 
 /** A completed game used for the Elo replay. */
 type Final = {
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD, US Eastern (the day the league played it)
   home: string; // team id
   away: string;
   hs: number;
@@ -270,7 +271,9 @@ async function fetchSeasonFinals(sport: Sport, season: number): Promise<Final[]>
       if (seen.has(g.id)) continue;
       seen.add(g.id);
       finals.push({
-        date: g.date.slice(0, 10),
+        // ET, not UTC: a Sunday-night game is stamped 00:20Z Monday, and
+        // filing it under Monday hides it from Monday's point-in-time replay.
+        date: etDateOf(g.date),
         home: g.home.id,
         away: g.away.id,
         hs: g.homeScore,
@@ -509,6 +512,17 @@ function coreOddsUrl(sport: Sport, eventId: number): string {
   return `https://sports.core.api.espn.com/v2/sports/${seg}/leagues/${league}/events/${eventId}/competitions/${eventId}/odds`;
 }
 
+/** Once a game kicks off ESPN adds an in-play book alongside the pre-game one
+ *  ("DraftKings" and "DraftKings - Live Odds"), and by the fourth quarter they
+ *  disagree completely — a 24-7 game reads -910 live against +180 pre-game. The
+ *  card's Elo prediction is strictly point-in-time, so pairing it with an
+ *  in-play number would put a pre-game pick next to a mid-game confidence and
+ *  call both "the market". Only the pre-game line belongs here; relying on the
+ *  feed listing it first is not the same as saying so. */
+function isLiveProvider(name: string | undefined): boolean {
+  return /\blive\b|\bin[- ]?play\b/i.test(name ?? "");
+}
+
 function parseMoneyLine(side: unknown): number | null {
   if (!side || typeof side !== "object") return null;
   const s = side as {
@@ -537,8 +551,10 @@ async function fetchOneEventOdds(sport: Sport, eventId: number): Promise<GameOdd
       const json = (await res.json()) as {
         items?: { provider?: { name?: string }; homeTeamOdds?: unknown; awayTeamOdds?: unknown }[];
       };
-      // Prefer the first provider that quotes both moneylines.
+      // Prefer the first provider that quotes both moneylines — but only a
+      // pre-game one.
       for (const item of json.items ?? []) {
+        if (isLiveProvider(item.provider?.name)) continue;
         const homeML = parseMoneyLine(item.homeTeamOdds);
         const awayML = parseMoneyLine(item.awayTeamOdds);
         if (homeML == null || awayML == null) continue;

@@ -13,8 +13,12 @@
  *
  * Season-to-date means every completed game strictly before the slate date, so
  * the features are always genuinely pre-game (no leakage), exactly as trained.
+ * Early in the season there is no season-to-date yet — Week 1 has literally
+ * none — so the usage window is topped up with last season's most recent games
+ * (see USAGE_WINDOW) and the picks say so rather than the board going blank.
  */
 import model from "./td-model.json";
+import { etDateOf, todayET } from "./date";
 import { fetchScoreboard, seasonOf, type SlateGame } from "./espn.server";
 
 const NFL = "football/nfl";
@@ -34,19 +38,50 @@ function infer(x: number[]): number {
 // --------------------------------------------------------------- fetching
 type Cached<T> = { at: number; v: T };
 const summaryCache = new Map<number, Cached<ParsedSummary | null>>();
-const scheduleCache = new Map<string, Cached<number[]>>();
+const scheduleCache = new Map<string, Cached<TeamGame[]>>();
+const rosterCache = new Map<string, Cached<Set<string> | null>>();
 const oddsCache = new Map<number, Cached<{ total: number; homeSpread: number } | null>>();
 const SUMMARY_TTL = 24 * 60 * 60 * 1000; // finals are immutable
 const SCHEDULE_TTL = 6 * 60 * 60 * 1000;
+const ROSTER_TTL = 12 * 60 * 60 * 1000;
 const ODDS_TTL = 30 * 60 * 1000;
 
-async function getJson(url: string, ms = 10000): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(ms),
+// A full Sunday slate asks for a box score per team per completed game — a few
+// hundred requests. Fired all at once ESPN throttles them and the board comes
+// back half-empty, which is indistinguishable from "the model has no picks".
+// Bound the in-flight requests instead; the whole slate still resolves in a
+// couple of seconds and every request actually lands.
+const MAX_INFLIGHT = 8;
+let inflight = 0;
+const waiting: (() => void)[] = [];
+
+function release() {
+  inflight--;
+  waiting.shift()?.();
+}
+
+function withLimit<T>(run: () => Promise<T>): Promise<T> {
+  if (inflight < MAX_INFLIGHT) {
+    inflight++;
+    return run().finally(release);
+  }
+  return new Promise<T>((resolve, reject) => {
+    waiting.push(() => {
+      inflight++;
+      run().then(resolve, reject).finally(release);
+    });
   });
-  if (!res.ok) throw new Error(`ESPN ${res.status}: ${url}`);
-  return res.json();
+}
+
+async function getJson(url: string, ms = 10000): Promise<unknown> {
+  return withLimit(async () => {
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(ms),
+    });
+    if (!res.ok) throw new Error(`ESPN ${res.status}: ${url}`);
+    return res.json();
+  });
 }
 
 type BoxPlayer = {
@@ -120,7 +155,9 @@ function parseSummary(d: any): ParsedSummary | null {
       recTd: players.reduce((s, p) => s + p.ctd, 0),
     });
   }
-  return { date: (comp.date ?? "").slice(0, 10), teams };
+  // The league day, not the UTC day: a Sunday-night game is stamped 00:20Z
+  // Monday, and filing it under Monday hides it from Monday night's features.
+  return { date: etDateOf(String(comp.date ?? "")), teams };
 }
 
 async function fetchSummary(eventId: number): Promise<ParsedSummary | null> {
@@ -140,24 +177,56 @@ async function fetchSummary(eventId: number): Promise<ParsedSummary | null> {
   return v;
 }
 
-/** Completed regular-season game ids for a team this season. */
-async function fetchTeamCompletedIds(teamId: string, season: number): Promise<number[]> {
+/** One completed regular-season game, on the league day it was played. */
+type TeamGame = { id: number; date: string };
+
+/** A team's completed regular-season games in `season`, oldest first. Carrying
+ *  the date here means the window can be trimmed before any box score is
+ *  fetched, instead of pulling all 17 and throwing most away. */
+async function fetchTeamGameLog(teamId: string, season: number): Promise<TeamGame[]> {
   const key = `${teamId}:${season}`;
   const c = scheduleCache.get(key);
   if (c && Date.now() - c.at < SCHEDULE_TTL) return c.v;
-  let ids: number[] = [];
+  let games: TeamGame[] = [];
   try {
     const d = (await getJson(
       `https://site.api.espn.com/apis/site/v2/sports/${NFL}/teams/${teamId}/schedule?season=${season}&seasontype=2`,
     )) as { events?: any[] };
-    ids = (d.events ?? [])
+    games = (d.events ?? [])
       .filter((e) => e?.competitions?.[0]?.status?.type?.completed)
-      .map((e) => Number(e.id))
-      .filter((n) => Number.isFinite(n));
+      .map((e) => ({ id: Number(e.id), date: etDateOf(String(e?.date ?? "")) }))
+      .filter((g) => Number.isFinite(g.id))
+      .sort((a, b) => a.date.localeCompare(b.date));
   } catch (err) {
-    console.error(`[nfl-td schedule] ${teamId}:`, err);
+    console.error(`[nfl-td schedule] ${teamId} ${season}:`, err);
   }
-  scheduleCache.set(key, { at: Date.now(), v: ids });
+  scheduleCache.set(key, { at: Date.now(), v: games });
+  return games;
+}
+
+/** Athlete ids on a team's active roster right now — offense, defense and
+ *  special teams only, so injured-reserve, suspended and practice-squad players
+ *  are left out. Returns null when ESPN doesn't answer, which means "don't
+ *  filter" rather than "nobody is available". */
+async function fetchActiveRoster(teamId: string): Promise<Set<string> | null> {
+  const c = rosterCache.get(teamId);
+  if (c && Date.now() - c.at < ROSTER_TTL) return c.v;
+  let ids: Set<string> | null = null;
+  try {
+    const d = (await getJson(
+      `https://site.api.espn.com/apis/site/v2/sports/${NFL}/teams/${teamId}/roster`,
+    )) as { athletes?: { position?: string; items?: { id?: string }[] }[] };
+    const ACTIVE = new Set(["offense", "defense", "specialTeam"]);
+    const found = new Set<string>();
+    for (const group of d.athletes ?? []) {
+      if (!ACTIVE.has(String(group?.position))) continue;
+      for (const a of group.items ?? []) if (a?.id) found.add(String(a.id));
+    }
+    if (found.size > 0) ids = found;
+  } catch (err) {
+    console.error(`[nfl-td roster] ${teamId}:`, err);
+  }
+  rosterCache.set(teamId, { at: Date.now(), v: ids });
   return ids;
 }
 
@@ -188,10 +257,24 @@ async function fetchTotalSpread(
 }
 
 // ------------------------------------------------------------ aggregation
+
+/**
+ * Games of usage the features need behind them. Season-to-date is what the
+ * model was trained on, but in Week 1 season-to-date is empty and every team
+ * would be skipped — which is exactly why the board rendered "No games to
+ * project" on opening night. Below this many games this season, the window is
+ * topped up with last season's most recent games. The top-up shrinks by one
+ * per week and is gone by Week 7, so the model is back on pure season-to-date
+ * as soon as there is enough of it.
+ */
+const USAGE_WINDOW = 6;
+
 type PlayerAgg = {
   id: string;
   name: string;
   gp: number;
+  /** Of `gp`, how many came from last season. */
+  cgp: number;
   car: number;
   tgt: number;
   ry: number;
@@ -203,6 +286,8 @@ type PlayerAgg = {
 type TeamAgg = {
   players: Map<string, PlayerAgg>;
   gp: number;
+  /** Of `gp`, how many were carried over from last season. */
+  carried: number;
   car: number;
   tgt: number;
   rtd: number;
@@ -212,16 +297,24 @@ type TeamAgg = {
 };
 
 /** Season-to-date usage + team offense/defense, from this team's completed
- *  games strictly before `beforeDate`. */
+ *  games strictly before `beforeDate`, topped up with last season's tail when
+ *  this season is still too thin to read (see USAGE_WINDOW).
+ *
+ *  `roster` gates which players earn a *pick*: a player who is no longer on the
+ *  roster — released, traded, on IR — can't score, and last season's box scores
+ *  are full of them. Team totals still count everyone, because carry and target
+ *  share are shares of what the offense actually did. */
 async function aggregateTeam(
   teamAbbr: string,
   teamId: string,
   season: number,
   beforeDate: string,
+  roster: Set<string> | null,
 ): Promise<TeamAgg> {
   const agg: TeamAgg = {
     players: new Map(),
     gp: 0,
+    carried: 0,
     car: 0,
     tgt: 0,
     rtd: 0,
@@ -229,14 +322,28 @@ async function aggregateTeam(
     dRtd: 0,
     dCtd: 0,
   };
-  const ids = await fetchTeamCompletedIds(teamId, season);
-  const summaries = await Promise.all(ids.map(fetchSummary));
-  for (const s of summaries) {
+
+  // This season, strictly before the slate's own day — genuinely pre-game.
+  const current = (await fetchTeamGameLog(teamId, season)).filter((g) => g.date < beforeDate);
+  let log = current;
+  let carriedGames = 0;
+  if (current.length < USAGE_WINDOW) {
+    const prior = await fetchTeamGameLog(teamId, season - 1);
+    const tail = prior.slice(current.length - USAGE_WINDOW); // last N, oldest first
+    carriedGames = tail.length;
+    log = [...tail, ...current];
+  }
+
+  const summaries = await Promise.all(log.map((g) => fetchSummary(g.id)));
+  for (let i = 0; i < summaries.length; i++) {
+    const s = summaries[i];
     if (!s || s.date >= beforeDate) continue;
+    const fromLastSeason = i < carriedGames;
     const mine = s.teams.find((t) => t.abbr === teamAbbr);
     const opp = s.teams.find((t) => t.abbr !== teamAbbr);
     if (!mine) continue;
     agg.gp += 1;
+    if (fromLastSeason) agg.carried += 1;
     agg.rtd += mine.rushTd;
     agg.ctd += mine.recTd;
     if (opp) {
@@ -244,12 +351,15 @@ async function aggregateTeam(
       agg.dCtd += opp.recTd;
     }
     for (const p of mine.players) {
+      // Team denominators count the whole offense, departed players included.
       agg.car += p.car;
       agg.tgt += p.tgt;
+      if (roster && !roster.has(p.id)) continue; // not available to score now
       const a = agg.players.get(p.id) ?? {
         id: p.id,
         name: p.name,
         gp: 0,
+        cgp: 0,
         car: 0,
         tgt: 0,
         ry: 0,
@@ -259,6 +369,7 @@ async function aggregateTeam(
         scg: 0,
       };
       a.gp += 1;
+      if (fromLastSeason) a.cgp += 1;
       a.car += p.car;
       a.tgt += p.tgt;
       a.ry += p.ry;
@@ -312,6 +423,10 @@ export type TdPick = {
   team: string;
   prob: number; // P(scores an anytime TD), 0..1
   confidence: number; // 0..100 (trust that this is a top scorer)
+  /** Games of usage behind the pick, and how many of those are last season's.
+   *  Non-zero `carried` is the honest caveat on an early-season number. */
+  games: number;
+  carried: number;
 };
 export type TdGame = {
   gameId: number;
@@ -320,15 +435,24 @@ export type TdGame = {
   away: string;
   matchup: string;
   total: number | null;
+  /** True when either side's usage is still partly last season's (Weeks 1-6). */
+  carryover: boolean;
   picks: TdPick[]; // top scorers across both teams, most likely first
 };
 
+/** Last season's usage is real evidence, but a changed scheme and a changed
+ *  depth chart make it weaker than a game played this year. It counts, at a
+ *  discount, toward the maturity term — so a Week 1 pick built entirely on
+ *  carryover tops out around "Solid" rather than claiming "Strong". */
+const CARRYOVER_CREDIT = 0.5;
+
 function confidenceFor(
-  pick: { prob: number; gp: number; touches: number },
+  pick: { prob: number; gp: number; cgp: number; touches: number },
   secondProb: number,
 ): number {
   const sep = Math.min(1, Math.max(0, (pick.prob - secondProb) / (pick.prob + 1e-9) / 0.5));
-  const maturity = Math.min(1, pick.gp / 6);
+  const fresh = pick.gp - pick.cgp;
+  const maturity = Math.min(1, (fresh + CARRYOVER_CREDIT * pick.cgp) / 6);
   const volume = Math.min(1, pick.touches / 18);
   return Math.round(100 * (0.45 * sep + 0.3 * maturity + 0.25 * volume));
 }
@@ -341,11 +465,18 @@ export async function tdScorersSlate(
   const slate = await fetchScoreboard("nfl", date);
   if (season == null || slate.length === 0) return { season, games: [] };
 
+  // The roster endpoint only knows who is on the team *now*, so it can only
+  // speak for the live season. Looking back at an old slate, don't filter.
+  const liveSeason = seasonOf("nfl", todayET()) === season;
+
   const games = await Promise.all(
     slate.map(async (g: SlateGame): Promise<TdGame | null> => {
+      const [homeRoster, awayRoster] = liveSeason
+        ? await Promise.all([fetchActiveRoster(g.home.id), fetchActiveRoster(g.away.id)])
+        : [null, null];
       const [homeAgg, awayAgg, odds] = await Promise.all([
-        aggregateTeam(g.home.abbr, g.home.id, season, date),
-        aggregateTeam(g.away.abbr, g.away.id, season, date),
+        aggregateTeam(g.home.abbr, g.home.id, season, date, homeRoster),
+        aggregateTeam(g.away.abbr, g.away.id, season, date, awayRoster),
         fetchTotalSpread(g.id),
       ]);
       const total = odds?.total ?? 45;
@@ -353,7 +484,7 @@ export async function tdScorersSlate(
       const homeImplied = total / 2 - homeSpread / 2; // home margin = -spread
       const awayImplied = total / 2 + homeSpread / 2;
 
-      const cand: { pick: TdPick; gp: number; touches: number }[] = [];
+      const cand: { pick: TdPick; gp: number; cgp: number; touches: number }[] = [];
       const sides: [TeamAgg, TeamAgg, boolean, string, number, number][] = [
         [homeAgg, awayAgg, true, g.home.abbr, homeImplied, -homeSpread],
         [awayAgg, homeAgg, false, g.away.abbr, awayImplied, homeSpread],
@@ -365,8 +496,17 @@ export async function tdScorersSlate(
           const x = featureVector(p, team, oppDef, isHome, implied, total, margin);
           const prob = infer(x);
           cand.push({
-            pick: { playerId: p.id, player: p.name, team: abbr, prob, confidence: 0 },
+            pick: {
+              playerId: p.id,
+              player: p.name,
+              team: abbr,
+              prob,
+              confidence: 0,
+              games: p.gp,
+              carried: p.cgp,
+            },
             gp: p.gp,
+            cgp: p.cgp,
             touches: (p.car + p.tgt) / p.gp,
           });
         }
@@ -377,7 +517,7 @@ export async function tdScorersSlate(
       const picks = cand.slice(0, 4).map((c, i) => ({
         ...c.pick,
         confidence: confidenceFor(
-          { prob: c.pick.prob, gp: c.gp, touches: c.touches },
+          { prob: c.pick.prob, gp: c.gp, cgp: c.cgp, touches: c.touches },
           i === 0 ? secondProb : cand[0].pick.prob,
         ),
       }));
@@ -388,6 +528,7 @@ export async function tdScorersSlate(
         away: g.away.abbr,
         matchup: `${g.away.abbr} @ ${g.home.abbr}`,
         total: odds?.total ?? null,
+        carryover: homeAgg.carried > 0 || awayAgg.carried > 0,
         picks,
       };
     }),

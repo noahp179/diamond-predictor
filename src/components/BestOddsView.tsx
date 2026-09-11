@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import type { getNbaBestOdds } from "@/lib/sports.functions";
+import { todayET } from "@/lib/date";
 
 type Tab = "confidence" | "blend" | "market";
 
@@ -24,9 +25,6 @@ type Result = Awaited<ReturnType<typeof getNbaBestOdds>>;
 type Row = Result["rows"][number];
 type Fn = (opts: { data: { date: string } }) => Promise<Result>;
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 function pct(n: number) {
   return `${Math.round(n * 100)}%`;
 }
@@ -41,7 +39,7 @@ export function BestOddsView({
   sport: "nfl" | "nba";
   fetchBestOdds: Fn;
 }) {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayET());
   // "confidence" leads: the model's surest outcomes, payout ignored. The other
   // two tabs still need a posted line.
   const [tab, setTab] = useState<Tab>("confidence");

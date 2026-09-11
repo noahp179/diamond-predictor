@@ -1,11 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { todayET } from "./date";
 import { bestOddsSlate, predictSlate, recommendedSlate, seasonOf, type Sport } from "./espn.server";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function seasonLabel(sport: Sport, season: number): string {
   return sport === "nba" ? `${season - 1}-${String(season % 100).padStart(2, "0")}` : `${season}`;
@@ -50,11 +47,11 @@ async function buildSlate(sport: Sport, date: string) {
 
 export const getNbaSlate = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildSlate("nba", data?.date ?? todayISO()));
+  .handler(async ({ data }) => buildSlate("nba", data?.date ?? todayET()));
 
 export const getNflSlate = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildSlate("nfl", data?.date ?? todayISO()));
+  .handler(async ({ data }) => buildSlate("nfl", data?.date ?? todayET()));
 
 // ---------------------------------------------------------------- Recommended
 
@@ -86,11 +83,11 @@ async function buildRecommended(sport: Sport, date: string) {
 
 export const getNbaRecommended = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildRecommended("nba", data?.date ?? todayISO()));
+  .handler(async ({ data }) => buildRecommended("nba", data?.date ?? todayET()));
 
 export const getNflRecommended = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildRecommended("nfl", data?.date ?? todayISO()));
+  .handler(async ({ data }) => buildRecommended("nfl", data?.date ?? todayET()));
 
 // ------------------------------------------------------------------ Best Odds
 
@@ -131,11 +128,11 @@ async function buildBestOdds(sport: Sport, date: string) {
 
 export const getNbaBestOdds = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildBestOdds("nba", data?.date ?? todayISO()));
+  .handler(async ({ data }) => buildBestOdds("nba", data?.date ?? todayET()));
 
 export const getNflBestOdds = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildBestOdds("nfl", data?.date ?? todayISO()));
+  .handler(async ({ data }) => buildBestOdds("nfl", data?.date ?? todayET()));
 
 // --------------------------------------------------------------- Track Record
 
@@ -153,7 +150,7 @@ export const getNflBestOdds = createServerFn({ method: "GET" })
 export const getMlbProps = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     try {
       const { propsSlate } = await import("./mlb-props.server");
       const { season, games, markets } = await propsSlate(date);
@@ -185,7 +182,7 @@ export const getMlbProps = createServerFn({ method: "GET" })
 export const getMlbStacks = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     try {
       const { stacksSlate } = await import("./mlb-stacks.server");
       const { season, teams, backtest } = await stacksSlate(date);
@@ -217,7 +214,7 @@ export const getMlbStacks = createServerFn({ method: "GET" })
 export const getMlbTwoBases = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     try {
       const { twoBaseSlate } = await import("./mlb-tb2.server");
       const slate = await twoBaseSlate(date);
@@ -249,7 +246,7 @@ export const getMlbTwoBases = createServerFn({ method: "GET" })
 export const getNflTdScorers = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     try {
       const { tdScorersSlate } = await import("./nfl-td.server");
       const { season, games } = await tdScorersSlate(date);

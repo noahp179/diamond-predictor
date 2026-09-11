@@ -20,12 +20,9 @@ import {
   MODEL_VERSION_ELO,
   MODEL_LABELS,
 } from "./mlb-models";
+import { todayET } from "./date";
 
 export type { PredictedGame } from "./mlb-core";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /**
  * Overlay live sim-elo-v2 win probabilities onto baseline PredictedGame
@@ -337,7 +334,7 @@ export const getDailyGames = createServerFn({ method: "GET" })
     await runPipelineIfDue().catch((err) =>
       console.error("[getDailyGames] runPipelineIfDue failed:", err),
     );
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     const { games, source } = await loadGamesForDate(date);
     const withConf = await attachPickConfidence(date, games).catch((err) => {
       console.error("[getDailyGames] attachPickConfidence failed:", err);
@@ -792,7 +789,7 @@ function confidenceOf(g: PredictedGame): number {
 export const getRecommendedPicks = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     const { games: raw, source } = await loadGamesForDate(date);
     const games = await attachPickConfidence(date, raw).catch(() => raw);
     const picks = [...games].sort((a, b) => confidenceOf(b) - confidenceOf(a)).slice(0, 3);
@@ -824,7 +821,7 @@ export interface GameWithOdds {
 export const getBestOddsPicks = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayISO();
+    const date = data?.date ?? todayET();
     const { games, source } = await loadGamesForDate(date);
     if (games.length === 0) {
       return {
@@ -946,7 +943,7 @@ export const runBacktest = createServerFn({ method: "POST" })
     const { offsetDate } = await import("./mlb-features");
 
     const days = Math.min(data?.days ?? 7, 14); // cap at 14 for performance
-    const today = todayISO();
+    const today = todayET();
     const endDate = offsetDate(today, -1);
     const startDate = offsetDate(endDate, -(days - 1));
 
