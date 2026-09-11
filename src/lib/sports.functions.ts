@@ -241,6 +241,40 @@ export const getMlbTwoBases = createServerFn({ method: "GET" })
     }
   });
 
+// --------------------------------------------------------------- NFL Props
+
+export const getNflProps = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayET();
+    try {
+      const { propsSlate } = await import("./nfl-props.server");
+      const { season, games, markets } = await propsSlate(date);
+      return {
+        date,
+        games,
+        markets,
+        season,
+        seasonLabel: season ? `${season}` : "",
+        note: offseasonNote("nfl", date),
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[nflProps] failed:`, err);
+      return {
+        date,
+        games: [] as Awaited<ReturnType<typeof import("./nfl-props.server").propsSlate>>["games"],
+        markets: [] as Awaited<
+          ReturnType<typeof import("./nfl-props.server").propsSlate>
+        >["markets"],
+        season: 0,
+        seasonLabel: "",
+        note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
+
 // --------------------------------------------------------------- TD Scorers
 
 export const getNflTdScorers = createServerFn({ method: "GET" })
