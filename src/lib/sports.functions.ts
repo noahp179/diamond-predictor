@@ -12,9 +12,11 @@ function seasonLabel(sport: Sport, season: number): string {
  *  the sport returns; null in-season. */
 function offseasonNote(sport: Sport, date: string): string | null {
   if (seasonOf(sport, date) !== null) return null;
-  return sport === "nba"
-    ? "NBA is between seasons — the regular season tips off in late October. Power ratings below carry over from last season; the daily slate returns then."
-    : "The NFL is between seasons — Week 1 kicks off in early September. Power ratings below carry over from last season; the daily slate returns then.";
+  if (sport === "nba")
+    return "NBA is between seasons — the regular season tips off in late October. Power ratings below carry over from last season; the daily slate returns then.";
+  if (sport === "cfb")
+    return "College football is between seasons — Week 1 kicks off in late August. Power ratings below carry over from last season; the slate returns then.";
+  return "The NFL is between seasons — Week 1 kicks off in early September. Power ratings below carry over from last season; the daily slate returns then.";
 }
 
 async function buildSlate(sport: Sport, date: string) {
@@ -53,6 +55,10 @@ export const getNflSlate = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => buildSlate("nfl", data?.date ?? todayET()));
 
+export const getCfbSlate = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => buildSlate("cfb", data?.date ?? todayET()));
+
 // ---------------------------------------------------------------- Recommended
 
 async function buildRecommended(sport: Sport, date: string) {
@@ -88,6 +94,10 @@ export const getNbaRecommended = createServerFn({ method: "GET" })
 export const getNflRecommended = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => buildRecommended("nfl", data?.date ?? todayET()));
+
+export const getCfbRecommended = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => buildRecommended("cfb", data?.date ?? todayET()));
 
 // ------------------------------------------------------------------ Best Odds
 
@@ -133,6 +143,10 @@ export const getNbaBestOdds = createServerFn({ method: "GET" })
 export const getNflBestOdds = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => buildBestOdds("nfl", data?.date ?? todayET()));
+
+export const getCfbBestOdds = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => buildBestOdds("cfb", data?.date ?? todayET()));
 
 // --------------------------------------------------------------- Track Record
 
@@ -242,6 +256,44 @@ export const getMlbTwoBases = createServerFn({ method: "GET" })
   });
 
 // --------------------------------------------------------------- TD Scorers
+
+/**
+ * College touchdown picks.
+ *
+ * Unlike the NFL board this one chooses how many picks a game gets — one, or
+ * two when the second clears the bar the backtest set. See cfb-td.server.ts.
+ */
+export const getCfbTdScorers = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string().optional() }).optional())
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayET();
+    try {
+      const { cfbTdSlate, CFB_TD_BACKTEST } = await import("./cfb-td.server");
+      const { season, games, staleFeatures } = await cfbTdSlate(date);
+      return {
+        date,
+        games,
+        season: season ?? 0,
+        seasonLabel: season ? `${season}` : "",
+        staleFeatures,
+        backtest: CFB_TD_BACKTEST,
+        note: offseasonNote("cfb", date),
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[cfbTdScorers] failed:`, err);
+      return {
+        date,
+        games: [] as Awaited<ReturnType<typeof import("./cfb-td.server").cfbTdSlate>>["games"],
+        season: 0,
+        seasonLabel: "",
+        staleFeatures: false,
+        backtest: null,
+        note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
 
 export const getNflTdScorers = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import type { SportKey, ViewKey } from "@/lib/nav";
+import { sportPhrase, type SportKey, type ViewKey } from "@/lib/nav";
 
 /**
  * Thin adapter kept so the NFL/NBA/MLB view pages did not all need rewriting
@@ -45,7 +45,7 @@ export function SportShell({
       statBar={statBar}
       footerNote={
         footerNote ??
-        `Data · ESPN · margin-of-victory Elo · Not affiliated with the ${sport.toUpperCase()}`
+        `Data · ESPN · margin-of-victory Elo · Not affiliated with ${sportPhrase(sport)}`
       }
     >
       {children}

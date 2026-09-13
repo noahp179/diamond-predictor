@@ -27,7 +27,7 @@
 import { LEAGUES, type LeagueSlug } from "./soccer-leagues";
 import { TOURS, type TourSlug } from "./tennis-tours";
 
-export type SportKey = "mlb" | "nfl" | "nba" | "soccer" | "tennis";
+export type SportKey = "mlb" | "nfl" | "cfb" | "nba" | "soccer" | "tennis";
 
 /**
  * A "division" is the extra level some sports carry: soccer's five leagues,
@@ -65,6 +65,10 @@ export type SportNav = {
   label: string;
   /** One line for the hub card — what this section actually gives you. */
   blurb: string;
+  /** The sport's name as it reads mid-sentence. "the NFL doesn't play every
+   *  day" works; "the CFB doesn't" does not, and college football is the one
+   *  section whose short label is not also its name. */
+  phrase: string;
   /** Landing route for the sport. */
   href: string;
   /** True when the sport is split into competitions or tours. */
@@ -75,6 +79,7 @@ export const SPORTS: SportNav[] = [
   {
     key: "mlb",
     label: "MLB",
+    phrase: "MLB",
     blurb:
       "Win probabilities, the day's parlay, player props, 2+ base projections and correlated team stacks.",
     href: "/mlb",
@@ -83,13 +88,24 @@ export const SPORTS: SportNav[] = [
   {
     key: "nfl",
     label: "NFL",
+    phrase: "the NFL",
     blurb: "Margin-of-victory Elo across the slate, plus touchdown scorers.",
     href: "/nfl",
     leagued: false,
   },
   {
+    key: "cfb",
+    label: "CFB",
+    phrase: "college football",
+    blurb:
+      "FBS win probabilities from a college-tuned Elo, plus one or two touchdown scorers a game.",
+    href: "/cfb",
+    leagued: false,
+  },
+  {
     key: "nba",
     label: "NBA",
+    phrase: "the NBA",
     blurb: "Margin-of-victory Elo across the slate, with the market alongside.",
     href: "/nba",
     leagued: false,
@@ -97,6 +113,7 @@ export const SPORTS: SportNav[] = [
   {
     key: "soccer",
     label: "Soccer",
+    phrase: "soccer",
     blurb: "Europe's big five — each league its own model, calibration and backtest.",
     href: "/soccer",
     leagued: true,
@@ -104,6 +121,7 @@ export const SPORTS: SportNav[] = [
   {
     key: "tennis",
     label: "Tennis",
+    phrase: "tennis",
     blurb: "ATP and WTA singles, from a rating replay of the last two years of tour.",
     href: "/tennis",
     leagued: true,
@@ -114,6 +132,11 @@ const SPORT_BY_KEY = new Map(SPORTS.map((s) => [s.key, s]));
 
 export function sportOf(key: string): SportNav | undefined {
   return SPORT_BY_KEY.get(key as SportKey);
+}
+
+/** The sport's name as it reads mid-sentence — see SportNav.phrase. */
+export function sportPhrase(key: SportKey): string {
+  return SPORT_BY_KEY.get(key)?.phrase ?? key.toUpperCase();
 }
 
 /** Labels are shared; which views exist is per sport. */
@@ -132,6 +155,7 @@ const LABELS: Record<ViewKey, string> = {
 const VIEWS: Record<SportKey, ViewKey[]> = {
   mlb: ["slate", "recommended", "bestOdds", "props", "twoBases", "stacks", "trackRecord"],
   nfl: ["slate", "recommended", "bestOdds", "tdScorers", "trackRecord"],
+  cfb: ["slate", "recommended", "bestOdds", "tdScorers", "trackRecord"],
   nba: ["slate", "recommended", "bestOdds", "trackRecord"],
   soccer: ["slate", "props", "model", "trackRecord"],
   tennis: ["slate", "model", "trackRecord"],

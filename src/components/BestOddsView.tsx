@@ -32,11 +32,17 @@ function fmtMl(ml: number) {
   return ml > 0 ? `+${ml}` : `${ml}`;
 }
 
+/** A point spread as a book writes it: -7.5, +3, PK. */
+function fmtSpread(n: number): string {
+  if (n === 0) return "PK";
+  return `${n > 0 ? "+" : ""}${n}`;
+}
+
 export function BestOddsView({
   sport,
   fetchBestOdds,
 }: {
-  sport: "nfl" | "nba";
+  sport: "nfl" | "nba" | "cfb";
   fetchBestOdds: Fn;
 }) {
   const [date, setDate] = useState(todayET());
@@ -51,7 +57,7 @@ export function BestOddsView({
     refetchInterval: 5 * 60_000,
   });
 
-  const label = sport.toUpperCase();
+  const label = sport === "cfb" ? "College Football" : sport.toUpperCase();
   const picks =
     (tab === "confidence"
       ? data?.confidencePicks
@@ -159,7 +165,14 @@ function OddsCard({ row, tab }: { row: Row; tab: Tab }) {
           </div>
           <div className="mt-1 font-display text-4xl">{pickSide.abbreviation}</div>
           <div className="mt-1 font-mono text-xs text-muted-foreground">
-            {odds && pickMl != null ? `${fmtMl(pickMl)} · ${odds.provider}` : "no line posted"}
+            {odds && pickMl != null
+              ? `${fmtMl(pickMl)} · ${odds.provider}`
+              : odds && odds.homeSpread != null
+                ? // College books take the moneyline down on lopsided games and
+                  // post only a spread. That is a line, so say so — and show
+                  // the spread from the picked side's point of view.
+                  `${fmtSpread(pickHome ? odds.homeSpread : -odds.homeSpread)} · ${odds.provider}`
+                : "no line posted"}
           </div>
         </div>
         <div className="text-right">
