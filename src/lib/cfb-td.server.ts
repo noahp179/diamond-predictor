@@ -349,6 +349,9 @@ export type CfbTdPick = {
 export type CfbTdGame = {
   gameId: number;
   date: string;
+  /** True once the game has kicked off. The ledger only records picks made
+   *  before that — a "prediction" written at half time is not one. */
+  started: boolean;
   home: string;
   away: string;
   matchup: string;
@@ -485,6 +488,7 @@ export async function cfbTdSlate(date: string): Promise<{
     return {
       gameId: g.id,
       date: g.date,
+      started: g.state !== "pre",
       home: g.home.abbr,
       away: g.away.abbr,
       matchup: `${g.away.abbr} @ ${g.home.abbr}`,

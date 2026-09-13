@@ -156,3 +156,47 @@ for (const t of ["games", "game_odds", "daily_metrics", "profiles"]) {
   console.log(`  ${t.padEnd(16)} ${n === null ? "missing" : `${n} rows`}`);
 }
 console.log();
+
+// -------------------------------------------------- the player-pick ledger
+
+console.log("\nplayer_predictions — the touchdown-scorer ledger (CFB + NFL)");
+const props = await count("player_predictions");
+if (props === null) {
+  console.log("  STATUS  missing — the table does not exist in this database.");
+  console.log("  MEANING no touchdown pick has ever been stored, and none will be");
+  console.log("          until the migration is applied:");
+  console.log("            supabase/migrations/20260913120000_player_predictions.sql");
+  console.log("          (or paste supabase/SETUP.sql, which now includes it)");
+} else if (props === 0) {
+  console.log("  STATUS  empty — the table exists but holds no rows yet.");
+  console.log("  MEANING the next daily run will start writing. Picks are only recorded");
+  console.log("          before kickoff, so a day with no upcoming games writes nothing.");
+} else {
+  console.log(`  STATUS  ${props} rows`);
+  const all = await rows<{
+    sport: string;
+    market: string;
+    event_date: string;
+    pick_rank: number;
+    scored: boolean | null;
+    settled_at: string | null;
+  }>("player_predictions", "select=sport,market,event_date,pick_rank,scored,settled_at");
+  const bySport = new Map<string, typeof all>();
+  for (const r of all) bySport.set(r.sport, [...(bySport.get(r.sport) ?? []), r]);
+  for (const [sport, rs] of [...bySport].sort()) {
+    const done = rs.filter((r) => r.settled_at && r.scored != null);
+    const hits = done.filter((r) => r.scored).length;
+    const dates = rs.map((r) => r.event_date).sort();
+    const lead = done.filter((r) => r.pick_rank === 1);
+    const leadHits = lead.filter((r) => r.scored).length;
+    console.log(
+      `  ${sport.padEnd(5)} ${String(rs.length).padStart(5)} picks  ` +
+        `${String(done.length).padStart(5)} settled  ` +
+        `${done.length ? pct(hits / done.length) : "—"} scored  ` +
+        `(lead pick ${lead.length ? pct(leadHits / lead.length) : "—"})  ` +
+        `${dates[0]} → ${dates[dates.length - 1]}`,
+    );
+  }
+  const pending = all.filter((r) => !r.settled_at).length;
+  if (pending) console.log(`  ${pending} pick(s) still waiting on a result.`);
+}
