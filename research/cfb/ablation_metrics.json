@@ -1,0 +1,80 @@
+[
+ {
+  "label": "full (box-score features)",
+  "auc": 0.6918916210612923,
+  "pick_hit": 0.5423216444981862,
+  "game_hit": 0.6513274336283186,
+  "picks_per_game": 1.463716814159292,
+  "features": [
+   "carry_share",
+   "rec_share",
+   "cpg",
+   "rpg",
+   "rush_ypg",
+   "rec_ypg",
+   "rush_td_rate",
+   "rec_td_rate",
+   "anytime_rate",
+   "gp",
+   "team_rush_tdpg",
+   "team_rec_tdpg",
+   "opp_rush_td_allowed_pg",
+   "opp_rec_td_allowed_pg",
+   "is_home",
+   "proj_team_pts",
+   "proj_total",
+   "elo_margin"
+  ]
+ },
+ {
+  "label": "without opponent TDs allowed",
+  "auc": 0.6918335019873183,
+  "pick_hit": 0.5463355542095699,
+  "game_hit": 0.6557522123893805,
+  "picks_per_game": 1.461061946902655,
+  "features": [
+   "carry_share",
+   "rec_share",
+   "cpg",
+   "rpg",
+   "rush_ypg",
+   "rec_ypg",
+   "rush_td_rate",
+   "rec_td_rate",
+   "anytime_rate",
+   "gp",
+   "team_rush_tdpg",
+   "team_rec_tdpg",
+   "is_home",
+   "proj_team_pts",
+   "proj_total",
+   "elo_margin"
+  ]
+ },
+ {
+  "label": "without them, proj_total doubled",
+  "auc": 0.6918405264678086,
+  "pick_hit": 0.5463355542095699,
+  "game_hit": 0.6557522123893805,
+  "picks_per_game": 1.461061946902655,
+  "features": [
+   "carry_share",
+   "rec_share",
+   "cpg",
+   "rpg",
+   "rush_ypg",
+   "rec_ypg",
+   "rush_td_rate",
+   "rec_td_rate",
+   "anytime_rate",
+   "gp",
+   "team_rush_tdpg",
+   "team_rec_tdpg",
+   "is_home",
+   "proj_team_pts",
+   "proj_total",
+   "elo_margin",
+   "proj_total"
+  ]
+ }
+]
