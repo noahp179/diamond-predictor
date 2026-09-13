@@ -6,6 +6,7 @@ import { GameCard } from "@/components/GameCard";
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
 import type { getNbaSlate } from "@/lib/sports.functions";
 import { todayET } from "@/lib/date";
+import { sportPhrase } from "@/lib/nav";
 
 type SlateResult = Awaited<ReturnType<typeof getNbaSlate>>;
 type SlateFn = (opts: { data: { date: string } }) => Promise<SlateResult>;
@@ -16,7 +17,7 @@ export function SportPage({
   blurb,
   fetchSlate,
 }: {
-  sport: "nfl" | "nba";
+  sport: "nfl" | "nba" | "cfb";
   eyebrow: string;
   blurb: string;
   fetchSlate: SlateFn;
@@ -34,7 +35,8 @@ export function SportPage({
   const power = data?.power ?? [];
   const settled = games.filter((g) => g.correct != null);
   const correct = settled.filter((g) => g.correct).length;
-  const label = sport.toUpperCase();
+  const label = sport === "cfb" ? "College Football" : sport.toUpperCase();
+  const phrase = sportPhrase(sport);
 
   return (
     <AppShell
@@ -45,7 +47,7 @@ export function SportPage({
       blurb={blurb}
       date={date}
       onDateChange={setDate}
-      footerNote={`Data · ESPN scoreboard · margin-of-victory Elo · Not affiliated with the ${label}`}
+      footerNote={`Data · ESPN scoreboard · margin-of-victory Elo · Not affiliated with ${phrase}`}
       statBar={
         <StatBar>
           <Stat label="Games" value={`${games.length}`} />
@@ -90,7 +92,7 @@ export function SportPage({
         <div className="mb-8 border border-border bg-card p-10 text-center">
           <div className="font-display text-3xl">No games scheduled</div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">
-            Pick another date — the {label} doesn't play every day.
+            Pick another date — {phrase} doesn't play every day.
           </p>
         </div>
       )}

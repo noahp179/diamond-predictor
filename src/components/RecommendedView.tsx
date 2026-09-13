@@ -6,6 +6,7 @@ import { GameCard } from "@/components/GameCard";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import type { getNbaRecommended } from "@/lib/sports.functions";
 import { todayET } from "@/lib/date";
+import { sportPhrase } from "@/lib/nav";
 
 type Result = Awaited<ReturnType<typeof getNbaRecommended>>;
 type Fn = (opts: { data: { date: string } }) => Promise<Result>;
@@ -18,7 +19,7 @@ export function RecommendedView({
   sport,
   fetchRecommended,
 }: {
-  sport: "nfl" | "nba";
+  sport: "nfl" | "nba" | "cfb";
   fetchRecommended: Fn;
 }) {
   const [date, setDate] = useState(todayET());
@@ -33,7 +34,8 @@ export function RecommendedView({
   const picks = data?.picks ?? [];
   const hero = picks[0];
   const runners = picks.slice(1);
-  const label = sport.toUpperCase();
+  const label = sport === "cfb" ? "College Football" : sport.toUpperCase();
+  const phrase = sportPhrase(sport);
 
   return (
     <SportShell
@@ -88,7 +90,7 @@ export function RecommendedView({
         <div className="border border-border bg-card p-10 text-center">
           <div className="font-display text-3xl">No games to rank</div>
           <p className="mt-2 font-mono text-sm text-muted-foreground">
-            Pick another date — the {label} doesn't play every day.
+            Pick another date — {phrase} doesn't play every day.
           </p>
         </div>
       )}

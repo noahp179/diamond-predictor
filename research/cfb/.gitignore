@@ -1,0 +1,4 @@
+# Regenerable artifacts (rebuild with fetch_espn.py)
+__pycache__/
+data/
+*.log

@@ -46,6 +46,7 @@ export const TENNIS_MODEL_VERSION = "tennis-logistic-no-h2h-v1";
  */
 export const NFL_MODEL_VERSION = "nfl-elo-market-v1";
 export const NBA_MODEL_VERSION = "nba-elo-market-v1";
+export const CFB_MODEL_VERSION = "cfb-elo-market-v1";
 
 export type Outcome = "a" | "draw" | "b";
 
@@ -54,6 +55,7 @@ export function modelVersionFor(sport: string): string {
   if (sport === "soccer") return SOCCER_MODEL_VERSION;
   if (sport === "tennis") return TENNIS_MODEL_VERSION;
   if (sport === "nfl") return NFL_MODEL_VERSION;
+  if (sport === "cfb") return CFB_MODEL_VERSION;
   return NBA_MODEL_VERSION;
 }
 
@@ -254,8 +256,11 @@ export async function snapshotTennis(date: string): Promise<number> {
  * version of this worth storing. A game already in progress or finished is
  * skipped: a "prediction" made after first pitch is not one.
  */
-export async function snapshotTeamSport(sport: "nfl" | "nba", date: string): Promise<number> {
-  const version = sport === "nfl" ? NFL_MODEL_VERSION : NBA_MODEL_VERSION;
+export async function snapshotTeamSport(
+  sport: "nfl" | "nba" | "cfb",
+  date: string,
+): Promise<number> {
+  const version = modelVersionFor(sport);
   try {
     const { games } = await predictSlate(sport, date);
     const rows = games
@@ -355,7 +360,7 @@ export async function settlePending(throughDate: string, lookbackDays = 21) {
         }
       } else {
         // NFL and NBA. "a" is always the home side, matching the snapshot.
-        const { games } = await predictSlate(sport as "nfl" | "nba", date);
+        const { games } = await predictSlate(sport as "nfl" | "nba" | "cfb", date);
         for (const g of games) {
           if (!g.winner) continue;
           outcomes.set(String(g.gameId), {
@@ -407,8 +412,11 @@ export async function runTrackingCycle(today: string) {
   const tennis = (await snapshotTennis(today)) + (await snapshotTennis(next));
   const nfl = (await snapshotTeamSport("nfl", today)) + (await snapshotTeamSport("nfl", next));
   const nba = (await snapshotTeamSport("nba", today)) + (await snapshotTeamSport("nba", next));
+  // College football plays almost entirely on Saturdays, so most days this
+  // records nothing and that is the correct outcome, not a failure.
+  const cfb = (await snapshotTeamSport("cfb", today)) + (await snapshotTeamSport("cfb", next));
   const settled = await settlePending(today);
-  return { today, recorded: { soccer, tennis, nfl, nba }, ...settled };
+  return { today, recorded: { soccer, tennis, nfl, nba, cfb }, ...settled };
 }
 
 // -------------------------------------------------------------------- read

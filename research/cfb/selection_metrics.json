@@ -1,0 +1,172 @@
+{
+ "test_seasons": [
+  2025,
+  2026
+ ],
+ "games": 1130,
+ "by_rank": {
+  "1": {
+   "hit": 0.5628318584070796,
+   "n": 1130
+  },
+  "2": {
+   "hit": 0.42743362831858406,
+   "n": 1130
+  },
+  "3": {
+   "hit": 0.4008849557522124,
+   "n": 1130
+  },
+  "4": {
+   "hit": 0.3566371681415929,
+   "n": 1130
+  }
+ },
+ "rules": [
+  {
+   "rule": "second pick when p2 >= 0.22",
+   "kind": "absolute",
+   "threshold": 0.22,
+   "two_pick_games": 1123,
+   "two_pick_share": 0.9938053097345133,
+   "pick2_hit": 0.42920747996438113,
+   "all_picks_hit": 0.49622725255215266,
+   "picks_per_game": 1.9938053097345132
+  },
+  {
+   "rule": "second pick when p2 >= 0.25",
+   "kind": "absolute",
+   "threshold": 0.25,
+   "two_pick_games": 1109,
+   "two_pick_share": 0.9814159292035398,
+   "pick2_hit": 0.42831379621280435,
+   "all_picks_hit": 0.49620366234926305,
+   "picks_per_game": 1.9814159292035398
+  },
+  {
+   "rule": "second pick when p2 >= 0.28",
+   "kind": "absolute",
+   "threshold": 0.28,
+   "two_pick_games": 1072,
+   "two_pick_share": 0.9486725663716814,
+   "pick2_hit": 0.4337686567164179,
+   "all_picks_hit": 0.5,
+   "picks_per_game": 1.9486725663716815
+  },
+  {
+   "rule": "second pick when p2 >= 0.30",
+   "kind": "absolute",
+   "threshold": 0.3,
+   "two_pick_games": 1032,
+   "two_pick_share": 0.9132743362831859,
+   "pick2_hit": 0.438953488372093,
+   "all_picks_hit": 0.503700277520814,
+   "picks_per_game": 1.9132743362831859
+  },
+  {
+   "rule": "second pick when p2 >= 0.32",
+   "kind": "absolute",
+   "threshold": 0.32,
+   "two_pick_games": 984,
+   "two_pick_share": 0.8707964601769912,
+   "pick2_hit": 0.4451219512195122,
+   "all_picks_hit": 0.5080416272469253,
+   "picks_per_game": 1.870796460176991
+  },
+  {
+   "rule": "second pick when p2 >= 0.35",
+   "kind": "absolute",
+   "threshold": 0.35,
+   "two_pick_games": 877,
+   "two_pick_share": 0.7761061946902655,
+   "pick2_hit": 0.4526795895096921,
+   "all_picks_hit": 0.5146985550572994,
+   "picks_per_game": 1.7761061946902654
+  },
+  {
+   "rule": "second pick when p2 >= 0.38",
+   "kind": "absolute",
+   "threshold": 0.38,
+   "two_pick_games": 773,
+   "two_pick_share": 0.684070796460177,
+   "pick2_hit": 0.4644243208279431,
+   "all_picks_hit": 0.5228586442459274,
+   "picks_per_game": 1.684070796460177
+  },
+  {
+   "rule": "second pick when p2 >= 0.40",
+   "kind": "absolute",
+   "threshold": 0.4,
+   "two_pick_games": 694,
+   "two_pick_share": 0.6141592920353982,
+   "pick2_hit": 0.47406340057636887,
+   "all_picks_hit": 0.5290570175438597,
+   "picks_per_game": 1.6141592920353982
+  },
+  {
+   "rule": "second pick when p2 >= 0.45",
+   "kind": "absolute",
+   "threshold": 0.45,
+   "two_pick_games": 521,
+   "two_pick_share": 0.46106194690265484,
+   "pick2_hit": 0.510556621880998,
+   "all_picks_hit": 0.5463355542095699,
+   "picks_per_game": 1.461061946902655
+  },
+  {
+   "rule": "second pick when p2/p1 >= 0.70",
+   "kind": "ratio",
+   "threshold": 0.7,
+   "two_pick_games": 915,
+   "two_pick_share": 0.8097345132743363,
+   "pick2_hit": 0.44371584699453553,
+   "all_picks_hit": 0.5095354523227383,
+   "picks_per_game": 1.8097345132743363
+  },
+  {
+   "rule": "second pick when p2/p1 >= 0.75",
+   "kind": "ratio",
+   "threshold": 0.75,
+   "two_pick_games": 810,
+   "two_pick_share": 0.7168141592920354,
+   "pick2_hit": 0.44814814814814813,
+   "all_picks_hit": 0.5149484536082474,
+   "picks_per_game": 1.7168141592920354
+  },
+  {
+   "rule": "second pick when p2/p1 >= 0.80",
+   "kind": "ratio",
+   "threshold": 0.8,
+   "two_pick_games": 684,
+   "two_pick_share": 0.6053097345132743,
+   "pick2_hit": 0.4444444444444444,
+   "all_picks_hit": 0.5181918412348401,
+   "picks_per_game": 1.6053097345132743
+  },
+  {
+   "rule": "second pick when p2/p1 >= 0.85",
+   "kind": "ratio",
+   "threshold": 0.85,
+   "two_pick_games": 537,
+   "two_pick_share": 0.47522123893805307,
+   "pick2_hit": 0.44320297951582865,
+   "all_picks_hit": 0.5242951409718056,
+   "picks_per_game": 1.475221238938053
+  },
+  {
+   "rule": "second pick when p2/p1 >= 0.90",
+   "kind": "ratio",
+   "threshold": 0.9,
+   "two_pick_games": 383,
+   "two_pick_share": 0.33893805309734515,
+   "pick2_hit": 0.43342036553524804,
+   "all_picks_hit": 0.5300727032385988,
+   "picks_per_game": 1.3389380530973451
+  }
+ ],
+ "fixed": {
+  "1": 0.5628318584070796,
+  "2": 0.49513274336283186,
+  "3": 0.46371681415929206
+ }
+}

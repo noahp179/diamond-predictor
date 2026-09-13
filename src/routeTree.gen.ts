@@ -18,6 +18,7 @@ import { Route as NbaRouteImport } from './routes/nba'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as MlbRouteImport } from './routes/mlb'
 import { Route as HistoryRouteImport } from './routes/history'
+import { Route as CfbRouteImport } from './routes/cfb'
 import { Route as BestOddsRouteImport } from './routes/best-odds'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -26,6 +27,7 @@ import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
 import { Route as NflIndexRouteImport } from './routes/nfl.index'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
 import { Route as MlbIndexRouteImport } from './routes/mlb.index'
+import { Route as CfbIndexRouteImport } from './routes/cfb.index'
 import { Route as TennisTourRouteImport } from './routes/tennis.$tour'
 import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
@@ -41,6 +43,10 @@ import { Route as MlbStacksRouteImport } from './routes/mlb.stacks'
 import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
 import { Route as MlbPropsRouteImport } from './routes/mlb.props'
 import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
+import { Route as CfbTrackRecordRouteImport } from './routes/cfb.track-record'
+import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
+import { Route as CfbRecommendedRouteImport } from './routes/cfb.recommended'
+import { Route as CfbBestOddsRouteImport } from './routes/cfb.best-odds'
 import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
 import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
 import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
@@ -96,6 +102,11 @@ const HistoryRoute = HistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CfbRoute = CfbRouteImport.update({
+  id: '/cfb',
+  path: '/cfb',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BestOddsRoute = BestOddsRouteImport.update({
   id: '/best-odds',
   path: '/best-odds',
@@ -135,6 +146,11 @@ const MlbIndexRoute = MlbIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => MlbRoute,
+} as any)
+const CfbIndexRoute = CfbIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CfbRoute,
 } as any)
 const TennisTourRoute = TennisTourRouteImport.update({
   id: '/$tour',
@@ -211,6 +227,26 @@ const MlbBestOddsRoute = MlbBestOddsRouteImport.update({
   path: '/best-odds',
   getParentRoute: () => MlbRoute,
 } as any)
+const CfbTrackRecordRoute = CfbTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbTdScorersRoute = CfbTdScorersRouteImport.update({
+  id: '/td-scorers',
+  path: '/td-scorers',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbRecommendedRoute = CfbRecommendedRouteImport.update({
+  id: '/recommended',
+  path: '/recommended',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbBestOddsRoute = CfbBestOddsRouteImport.update({
+  id: '/best-odds',
+  path: '/best-odds',
+  getParentRoute: () => CfbRoute,
+} as any)
 const TennisTourIndexRoute = TennisTourIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -263,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/best-odds': typeof BestOddsRoute
+  '/cfb': typeof CfbRouteWithChildren
   '/history': typeof HistoryRoute
   '/mlb': typeof MlbRouteWithChildren
   '/model': typeof ModelRoute
@@ -272,6 +309,10 @@ export interface FileRoutesByFullPath {
   '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
   '/tennis': typeof TennisRouteWithChildren
+  '/cfb/best-odds': typeof CfbBestOddsRoute
+  '/cfb/recommended': typeof CfbRecommendedRoute
+  '/cfb/td-scorers': typeof CfbTdScorersRoute
+  '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
@@ -287,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/nfl/track-record': typeof NflTrackRecordRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/tennis/$tour': typeof TennisTourRouteWithChildren
+  '/cfb/': typeof CfbIndexRoute
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
@@ -310,6 +352,10 @@ export interface FileRoutesByTo {
   '/model': typeof ModelRoute
   '/props': typeof PropsRoute
   '/teams': typeof TeamsRoute
+  '/cfb/best-odds': typeof CfbBestOddsRoute
+  '/cfb/recommended': typeof CfbRecommendedRoute
+  '/cfb/td-scorers': typeof CfbTdScorersRoute
+  '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
@@ -323,6 +369,7 @@ export interface FileRoutesByTo {
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/cfb': typeof CfbIndexRoute
   '/mlb': typeof MlbIndexRoute
   '/nba': typeof NbaIndexRoute
   '/nfl': typeof NflIndexRoute
@@ -343,6 +390,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/best-odds': typeof BestOddsRoute
+  '/cfb': typeof CfbRouteWithChildren
   '/history': typeof HistoryRoute
   '/mlb': typeof MlbRouteWithChildren
   '/model': typeof ModelRoute
@@ -352,6 +400,10 @@ export interface FileRoutesById {
   '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
   '/tennis': typeof TennisRouteWithChildren
+  '/cfb/best-odds': typeof CfbBestOddsRoute
+  '/cfb/recommended': typeof CfbRecommendedRoute
+  '/cfb/td-scorers': typeof CfbTdScorersRoute
+  '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
@@ -367,6 +419,7 @@ export interface FileRoutesById {
   '/nfl/track-record': typeof NflTrackRecordRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/tennis/$tour': typeof TennisTourRouteWithChildren
+  '/cfb/': typeof CfbIndexRoute
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
@@ -388,6 +441,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/best-odds'
+    | '/cfb'
     | '/history'
     | '/mlb'
     | '/model'
@@ -397,6 +451,10 @@ export interface FileRouteTypes {
     | '/soccer'
     | '/teams'
     | '/tennis'
+    | '/cfb/best-odds'
+    | '/cfb/recommended'
+    | '/cfb/td-scorers'
+    | '/cfb/track-record'
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
@@ -412,6 +470,7 @@ export interface FileRouteTypes {
     | '/nfl/track-record'
     | '/soccer/$league'
     | '/tennis/$tour'
+    | '/cfb/'
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
@@ -435,6 +494,10 @@ export interface FileRouteTypes {
     | '/model'
     | '/props'
     | '/teams'
+    | '/cfb/best-odds'
+    | '/cfb/recommended'
+    | '/cfb/td-scorers'
+    | '/cfb/track-record'
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
@@ -448,6 +511,7 @@ export interface FileRouteTypes {
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/cfb'
     | '/mlb'
     | '/nba'
     | '/nfl'
@@ -467,6 +531,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/best-odds'
+    | '/cfb'
     | '/history'
     | '/mlb'
     | '/model'
@@ -476,6 +541,10 @@ export interface FileRouteTypes {
     | '/soccer'
     | '/teams'
     | '/tennis'
+    | '/cfb/best-odds'
+    | '/cfb/recommended'
+    | '/cfb/td-scorers'
+    | '/cfb/track-record'
     | '/mlb/best-odds'
     | '/mlb/props'
     | '/mlb/recommended'
@@ -491,6 +560,7 @@ export interface FileRouteTypes {
     | '/nfl/track-record'
     | '/soccer/$league'
     | '/tennis/$tour'
+    | '/cfb/'
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
@@ -511,6 +581,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   BestOddsRoute: typeof BestOddsRoute
+  CfbRoute: typeof CfbRouteWithChildren
   HistoryRoute: typeof HistoryRoute
   MlbRoute: typeof MlbRouteWithChildren
   ModelRoute: typeof ModelRoute
@@ -589,6 +660,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cfb': {
+      id: '/cfb'
+      path: '/cfb'
+      fullPath: '/cfb'
+      preLoaderRoute: typeof CfbRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/best-odds': {
       id: '/best-odds'
       path: '/best-odds'
@@ -644,6 +722,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/mlb/'
       preLoaderRoute: typeof MlbIndexRouteImport
       parentRoute: typeof MlbRoute
+    }
+    '/cfb/': {
+      id: '/cfb/'
+      path: '/'
+      fullPath: '/cfb/'
+      preLoaderRoute: typeof CfbIndexRouteImport
+      parentRoute: typeof CfbRoute
     }
     '/tennis/$tour': {
       id: '/tennis/$tour'
@@ -750,6 +835,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MlbBestOddsRouteImport
       parentRoute: typeof MlbRoute
     }
+    '/cfb/track-record': {
+      id: '/cfb/track-record'
+      path: '/track-record'
+      fullPath: '/cfb/track-record'
+      preLoaderRoute: typeof CfbTrackRecordRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/td-scorers': {
+      id: '/cfb/td-scorers'
+      path: '/td-scorers'
+      fullPath: '/cfb/td-scorers'
+      preLoaderRoute: typeof CfbTdScorersRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/recommended': {
+      id: '/cfb/recommended'
+      path: '/recommended'
+      fullPath: '/cfb/recommended'
+      preLoaderRoute: typeof CfbRecommendedRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/best-odds': {
+      id: '/cfb/best-odds'
+      path: '/best-odds'
+      fullPath: '/cfb/best-odds'
+      preLoaderRoute: typeof CfbBestOddsRouteImport
+      parentRoute: typeof CfbRoute
+    }
     '/tennis/$tour/': {
       id: '/tennis/$tour/'
       path: '/'
@@ -815,6 +928,24 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface CfbRouteChildren {
+  CfbBestOddsRoute: typeof CfbBestOddsRoute
+  CfbRecommendedRoute: typeof CfbRecommendedRoute
+  CfbTdScorersRoute: typeof CfbTdScorersRoute
+  CfbTrackRecordRoute: typeof CfbTrackRecordRoute
+  CfbIndexRoute: typeof CfbIndexRoute
+}
+
+const CfbRouteChildren: CfbRouteChildren = {
+  CfbBestOddsRoute: CfbBestOddsRoute,
+  CfbRecommendedRoute: CfbRecommendedRoute,
+  CfbTdScorersRoute: CfbTdScorersRoute,
+  CfbTrackRecordRoute: CfbTrackRecordRoute,
+  CfbIndexRoute: CfbIndexRoute,
+}
+
+const CfbRouteWithChildren = CfbRoute._addFileChildren(CfbRouteChildren)
 
 interface MlbRouteChildren {
   MlbBestOddsRoute: typeof MlbBestOddsRoute
@@ -936,6 +1067,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   BestOddsRoute: BestOddsRoute,
+  CfbRoute: CfbRouteWithChildren,
   HistoryRoute: HistoryRoute,
   MlbRoute: MlbRouteWithChildren,
   ModelRoute: ModelRoute,
