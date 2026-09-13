@@ -77,17 +77,27 @@ https://diamond-predictor-three.vercel.app/api/public/hooks/track-predictions
 
 ```json
 { "ok": true, "ran": false,
-  "cronSecretSet": true,   ← Vercel can authenticate its own cron
-  "writable": true,        ← SUPABASE_SERVICE_ROLE_KEY is present
-  "ledgerReady": true }    ← the table exists
+  "cronSecretSet": true,     ← Vercel can authenticate its own cron
+  "writable": true,          ← SUPABASE_SERVICE_ROLE_KEY is present
+  "ledgerReady": true,       ← event_predictions exists
+  "tdLedgerReady": true,     ← player_predictions exists
+  "tdLedgerStatus": { "cfb": "ok", "nfl": "ok" },
+  "tdPicksRecorded": 0,      ← touchdown picks written so far
+  "tdPicksSettled": 0 }      ← of those, scored against a box score
 ```
 
-Any `false` is the reason nothing is being stored. Each of those three has
-already been the cause of total silence at some point:
+Any `false` is the reason nothing is being stored. Each of these has already
+been the cause of total silence at some point:
 
 - `cronSecretSet: false` — the scheduled GET arrives unauthenticated and no-ops.
 - `writable: false` — every insert is dropped.
-- `ledgerReady: false` — the table does not exist; the writes go nowhere.
+- `ledgerReady: false` — `event_predictions` does not exist; the writes go nowhere.
+- `tdLedgerReady: false` — `player_predictions` does not exist; same.
+
+`tdPicksRecorded` is the one to watch after that. Both flags can be `true` while
+nothing is being written — that was exactly the state the team-sport ledger sat
+in for months — so a count that stays at zero across a Saturday is the signal
+that something upstream is wrong, not that the sport was quiet.
 
 ---
 
