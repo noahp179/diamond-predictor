@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { canTrack, readLedger, runTrackingCycle } from "@/lib/tracking.server";
+import { readTdLedger } from "@/lib/td-ledger.server";
 
 /**
  * Records today's and tomorrow's predictions for every sport the ledger covers
@@ -42,17 +43,35 @@ function verifyCronSecret(request: Request): Response | null {
  * a way this job has silently failed: no secret means Vercel's cron arrives
  * unauthenticated, no service-role key means every insert is dropped, and
  * `ledgerReady: false` means the table does not exist so the writes go nowhere.
+ *
+ * There are two tables now, and this reported on only one of them for as long
+ * as the second existed. A gate that is not checked here is a gate nobody
+ * checks, because this endpoint is the documented way to check them all without
+ * credentials — so the touchdown ledger gets its own line, and its row count
+ * alongside, since "the table exists" and "the cron is filling it" are also
+ * different questions.
  */
 async function diagnose(): Promise<Response> {
-  const probe = await readLedger("tennis", "atp");
+  const [events, cfbTd, nflTd] = await Promise.all([
+    readLedger("tennis", "atp"),
+    readTdLedger("cfb"),
+    readTdLedger("nfl"),
+  ]);
+  const picks = cfbTd.summary.n + cfbTd.summary.pending + nflTd.summary.n + nflTd.summary.pending;
   return Response.json({
     ok: true,
     ran: false,
     why: "No valid CRON_SECRET on this request, so nothing was written.",
     cronSecretSet: Boolean(process.env.CRON_SECRET),
     writable: canTrack(),
-    ledgerReady: probe.status === "ok",
-    ledgerStatus: probe.status,
+    // event_predictions — match outcomes
+    ledgerReady: events.status === "ok",
+    ledgerStatus: events.status,
+    // player_predictions — touchdown scorers
+    tdLedgerReady: cfbTd.status === "ok" && nflTd.status === "ok",
+    tdLedgerStatus: { cfb: cfbTd.status, nfl: nflTd.status },
+    tdPicksRecorded: picks,
+    tdPicksSettled: cfbTd.summary.n + nflTd.summary.n,
     today: new Date().toISOString().slice(0, 10),
   });
 }
