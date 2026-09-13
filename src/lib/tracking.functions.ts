@@ -93,3 +93,16 @@ export const getTrackLedger = createServerFn({ method: "GET" })
             : [],
     };
   });
+
+/**
+ * The live touchdown record: picks written before kickoff, scored from the box
+ * score afterwards. Served next to the backtest's claim rather than in place of
+ * it — a page that quietly falls back to the backtest when the ledger is empty
+ * would be worse than one with no record at all.
+ */
+export const getTdLedger = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ sport: z.enum(["cfb", "nfl"]) }))
+  .handler(async ({ data }) => {
+    const { readTdLedger } = await import("./td-ledger.server");
+    return readTdLedger(data.sport);
+  });

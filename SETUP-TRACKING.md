@@ -15,11 +15,39 @@ property that makes them worth reading.
 | | status |
 |---|---|
 | `predictions` (MLB) | recording since 2026-07-10 · 4,965 rows · 10 model versions |
-| `event_predictions` (soccer, tennis, NFL, NBA) | table created 2026-09-03 · recording forward from the next cron run |
+| `event_predictions` (soccer, tennis, NFL, NBA, college football) | table created 2026-09-03 · see the note below before trusting the NFL/NBA rows |
+| `player_predictions` (touchdown scorers) | **needs creating** — apply `supabase/SETUP.sql`, which now includes it |
 | Vercel cron | `cronSecretSet: true`, `writable: true`, `ledgerReady: true` |
 
-All three gates are green. The cron runs at 08:20 UTC daily and needs nothing
-further.
+The cron runs at 08:20 UTC daily. One thing is outstanding: the touchdown ledger
+table does not exist yet. Until it does, the "Did they score?" section on both
+touchdown boards says so explicitly rather than showing an empty record, because
+those are different states and only one of them is fixable by waiting.
+
+### The team-sport rows were never actually written
+
+`snapshotTeamSport` only records games that have not kicked off, which is right,
+but it tested that by asking whether the game had a score yet:
+
+```
+.filter((g) => g.winner == null && g.homeScore == null)
+```
+
+ESPN serves a **scheduled** game with `score: "0"`, not an empty string — in
+every sport. So `homeScore` was `0` rather than `null` for exactly the games
+this was meant to keep, the condition was never true, and the filter matched
+nothing. The NFL and NBA ledgers have therefore been writing zero rows since the
+day they were wired up, and the college football one inherited it on the day it
+shipped. Nothing errored; the table simply stayed empty, which is
+indistinguishable from a quiet week.
+
+Fixed on 2026-09-13: `toSlateGame` now reads ESPN's own lifecycle state and
+leaves the score `null` before kickoff, and the filter tests `state === "pre"`.
+`bun scripts/test-td-ledger.ts` asserts both directions — a finished slate
+contributes nothing, an upcoming one is fully recordable — against live ESPN.
+
+The same placeholder was also rendering "0–0" on every game card that had not
+kicked off yet.
 
 ---
 

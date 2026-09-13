@@ -51,6 +51,14 @@ export interface PredictedGame {
   winner?: "home" | "away" | null;
   correct?: boolean | null;
   /**
+   * Where the game is in its lifecycle, when the feed says so. The tracking
+   * ledger needs "has this started" to be answerable without inferring it from
+   * a score — ESPN serves a scheduled game with score "0", so the score cannot
+   * answer it. Optional because the MLB pipeline builds this type from its own
+   * feed and does not set it.
+   */
+  state?: "pre" | "in" | "post";
+  /**
    * Optional secondary models' win probabilities for the same game, shown as
    * extra probability bars beneath the primary (v1) number on the card. Carries
    * v2 (sim-recent-v1) and v3 (sim-recent-v2, the tiered-bullpen model), in

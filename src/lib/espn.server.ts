@@ -196,6 +196,9 @@ export type SlateGame = {
   homeScore: number | null;
   awayScore: number | null;
   winner: "home" | "away" | null;
+  /** ESPN's own lifecycle for the game: scheduled, in progress, finished. The
+   *  authoritative answer to "has this kicked off", which the score is not. */
+  state: "pre" | "in" | "post";
   /** Posted total and home spread, when the scoreboard carries them.
    *
    *  These ride along because the scoreboard already has them. Reading a total
@@ -234,9 +237,24 @@ function toSlateGame(ev: EspnEvent): SlateGame | null {
   const home = comp.competitors.find((c) => c.homeAway === "home");
   const away = comp.competitors.find((c) => c.homeAway === "away");
   if (!home || !away) return null;
-  const hs = home.score != null && home.score !== "" ? Number(home.score) : null;
-  const as = away.score != null && away.score !== "" ? Number(away.score) : null;
   const completed = ev.status.type.completed === true || ev.status.type.state === "post";
+  const state: "pre" | "in" | "post" =
+    ev.status.type.state === "post" || completed
+      ? "post"
+      : ev.status.type.state === "in"
+        ? "in"
+        : "pre";
+  // A scheduled game is served with score "0", not an empty string — in every
+  // sport. Reading that as a score meant an upcoming game was indistinguishable
+  // from a 0-0 one, which rendered "0–0" on every card that had not kicked off
+  // and, worse, made the tracking cron's "only record games that have not
+  // started" filter (`homeScore == null`) unsatisfiable: it silently recorded
+  // nothing, for any sport, for as long as it has existed. Before kickoff there
+  // is no score, so there is no number here.
+  const parse = (v: string | undefined) =>
+    state !== "pre" && v != null && v !== "" ? Number(v) : null;
+  const hs = parse(home.score);
+  const as = parse(away.score);
   let winner: "home" | "away" | null = null;
   if (completed && hs != null && as != null && hs !== as) winner = hs > as ? "home" : "away";
   const posted = comp.odds?.[0];
@@ -252,6 +270,7 @@ function toSlateGame(ev: EspnEvent): SlateGame | null {
     homeScore: hs,
     awayScore: as,
     winner,
+    state,
     total: typeof posted?.overUnder === "number" ? posted.overUnder : null,
     homeSpread: typeof posted?.spread === "number" ? posted.spread : null,
   };
@@ -564,6 +583,7 @@ export async function predictSlate(
       homeScore: g.homeScore,
       awayScore: g.awayScore,
       winner: g.winner,
+      state: g.state,
       correct,
       rationale: [
         `${SPORT_LABEL[sport]} margin-of-victory Elo, replayed point-in-time (${gamesReplayed.toLocaleString()} games through ${date}).`,

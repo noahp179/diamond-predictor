@@ -318,9 +318,52 @@ number, zero extra requests, 37s → 3s.
   Everything in this document is a *backtest*, which is a different claim, and
   the two are deliberately not shown in the same place.
 
+The touchdown board now keeps a forward record of its own — see below — so the
+numbers above will eventually have something to be checked against.
+
 ---
 
-## 6. Reproducing it
+## 6. Checking the picks afterwards
+
+Every number in section 3 is a backtest. The board also records what it
+actually said: each pick is written to `player_predictions` before kickoff and
+settled from the box score once the game finishes, which produces the one kind
+of number a backtest cannot be — unrepeatable.
+
+**Settled on athlete id, never on name.** The pick and the box score both come
+from ESPN keyed by athlete id, so settlement is a lookup. That matters more in
+college than anywhere: rosters carry brothers and juniors sharing a surname, and
+ESPN spells names differently across feeds often enough that name-matching would
+mis-score some fraction of rows forever, in whichever direction nobody checked.
+Verified on a real slate with `bun scripts/test-td-settle.ts` — 20 of 20 picks
+resolved, none missing.
+
+**A hit is a rushing or receiving touchdown**, which is exactly the event the
+model was fitted to predict. A punt return counts at a sportsbook and
+deliberately does not count here: scoring the ledger on a broader event than the
+model predicts would flatter it for free.
+
+**A player with no box-score line is a miss, not a gap.** He was active enough
+to be picked and recorded no carry or catch. Leaving those unsettled would quietly
+drop the board's worst calls out of its own record.
+
+The page shows the live record beside the backtest's claim, never instead of it,
+and says plainly that fewer than 150 settled picks cannot separate a good model
+from a lucky one.
+
+### One bug this turned up
+
+The ledger's "only record games that have not started" filter tested
+`homeScore == null`. ESPN serves a *scheduled* game with `score: "0"` — in every
+sport — so that condition was never true and the filter matched nothing. The
+NFL and NBA game-outcome ledgers have therefore never been able to record a row,
+for as long as they have existed, and the college one inherited it on the day it
+shipped. It reads ESPN's own lifecycle state now. The same placeholder was also
+rendering "0–0" on every upcoming game card.
+
+---
+
+## 7. Reproducing it
 
 ```bash
 cd research/cfb
@@ -339,3 +382,12 @@ file. `bun scripts/test-cfb-td.ts` replays them through the TypeScript port and
 fails if the two disagree — a mis-ordered coefficient still produces a
 plausible-looking probability, so this is what catches it. It currently agrees
 to 5.6e-17.
+
+Three live checks, none needing a database:
+
+```bash
+bun scripts/test-cfb-td.ts      # TS model vs the Python fit
+bun scripts/test-cfb-smoke.ts   # the whole board against live ESPN
+bun scripts/test-td-ledger.ts   # what the ledger will and will not record
+bun scripts/test-td-settle.ts   # picked players resolved in real box scores
+```

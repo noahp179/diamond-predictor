@@ -264,7 +264,12 @@ export async function snapshotTeamSport(
   try {
     const { games } = await predictSlate(sport, date);
     const rows = games
-      .filter((g) => g.winner == null && g.homeScore == null)
+      // Only games that have not kicked off: a "prediction" made after the
+      // first snap is not one. This reads the scoreboard's own lifecycle rather
+      // than the score, because ESPN serves a scheduled game with score "0" —
+      // see toSlateGame. Checking the score here meant this filter matched
+      // nothing at all, in every sport, so the ledger was never written to.
+      .filter((g) => g.state === "pre")
       .map((g) => {
         const probs = { a: g.homeWinProb, draw: null, b: g.awayWinProb };
         const pick = pickOf(probs);
@@ -415,8 +420,21 @@ export async function runTrackingCycle(today: string) {
   // College football plays almost entirely on Saturdays, so most days this
   // records nothing and that is the correct outcome, not a failure.
   const cfb = (await snapshotTeamSport("cfb", today)) + (await snapshotTeamSport("cfb", next));
+
+  // Player picks live in their own table and settle from box scores rather than
+  // from a slate, so they get their own writer and settler.
+  const { snapshotTdPicks, settleTdPicks } = await import("./td-ledger.server");
+  const tdCfb = (await snapshotTdPicks("cfb", today)) + (await snapshotTdPicks("cfb", next));
+  const tdNfl = (await snapshotTdPicks("nfl", today)) + (await snapshotTdPicks("nfl", next));
+  const tdSettled = await settleTdPicks(today);
+
   const settled = await settlePending(today);
-  return { today, recorded: { soccer, tennis, nfl, nba, cfb }, ...settled };
+  return {
+    today,
+    recorded: { soccer, tennis, nfl, nba, cfb, tdCfb, tdNfl },
+    ...settled,
+    touchdowns: tdSettled,
+  };
 }
 
 // -------------------------------------------------------------------- read

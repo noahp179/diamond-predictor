@@ -5,6 +5,7 @@ import { useState } from "react";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getNflTdScorers } from "@/lib/sports.functions";
 import { todayET } from "@/lib/date";
+import { TdRecord } from "@/components/TdRecord";
 
 type Result = Awaited<ReturnType<typeof getNflTdScorers>>;
 type Game = Result["games"][number];
@@ -187,6 +188,8 @@ export function TdScorersView() {
           </p>
         </div>
       )}
+
+      <TdRecord sport="nfl" />
     </SportShell>
   );
 }
