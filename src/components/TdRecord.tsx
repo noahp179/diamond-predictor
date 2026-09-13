@@ -25,12 +25,12 @@ export function TdRecord({ sport }: { sport: "cfb" | "nfl" }) {
     staleTime: 5 * 60_000,
   });
 
-  if (isLoading) return <div className="mt-10 h-40 animate-pulse border border-border bg-card" />;
-  if (!data) return null;
+  const s = data?.summary;
+  const thin = s != null && s.n < MEANINGFUL_N;
 
-  const s = data.summary;
-  const thin = s.n < MEANINGFUL_N;
-
+  // The heading renders before the data does. A section that materializes late
+  // reads as a glitch, and it is also the difference between this existing in
+  // the server-rendered page at all and only ever appearing after a round trip.
   return (
     <section className="mt-12">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -40,7 +40,9 @@ export function TdRecord({ sport }: { sport: "cfb" | "nfl" }) {
         </span>
       </div>
 
-      {data.status === "not-provisioned" ? (
+      {isLoading || !data || !s ? (
+        <div className="h-32 animate-pulse border border-border bg-card" />
+      ) : data.status === "not-provisioned" ? (
         <div className="border border-border bg-card p-6 font-mono text-sm text-muted-foreground">
           The ledger table does not exist yet, so nothing is being recorded — this is not an empty
           record, it is no record. Apply <span className="text-foreground">supabase/SETUP.sql</span>{" "}
