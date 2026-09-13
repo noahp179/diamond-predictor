@@ -42,6 +42,11 @@ export function TdRecord({ sport }: { sport: "cfb" | "nfl" }) {
 
       {isLoading || !data || !s ? (
         <div className="h-32 animate-pulse border border-border bg-card" />
+      ) : data.status === "unreadable" ? (
+        <div className="border border-destructive/40 bg-destructive/10 p-6 font-mono text-sm text-destructive-foreground">
+          The record could not be read just now. This is not an empty record — the picks may well be
+          there. Try refreshing.
+        </div>
       ) : data.status === "not-provisioned" ? (
         <div className="border border-border bg-card p-6 font-mono text-sm text-muted-foreground">
           The ledger table does not exist yet, so nothing is being recorded — this is not an empty

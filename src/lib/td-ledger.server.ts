@@ -331,9 +331,17 @@ export type TdLedgerGroup = { label: string; n: number; hits: number; hitRate: n
 export type TdLedgerView = {
   sport: TdSport;
   modelVersion: string;
-  /** 'ok' | 'not-provisioned' — the table not existing is a different thing
-   *  from having no rows yet, and the page has to be able to say which. */
-  status: "ok" | "not-provisioned";
+  /**
+   * Three states, because two of them look identical on an empty page and only
+   * one is fixed by waiting:
+   *
+   *   ok              the table is readable. Zero rows means zero picks so far.
+   *   not-provisioned the table does not exist. Nothing is being recorded and
+   *                   nothing will be until the migration is applied.
+   *   unreadable      the read failed for some other reason. Not "no picks" —
+   *                   we do not know what is in there.
+   */
+  status: "ok" | "not-provisioned" | "unreadable";
   writable: boolean;
   claim: { leadHit: number; anyHit: number; source: string };
   summary: {
@@ -407,11 +415,20 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       .order("event_date", { ascending: false })
       .limit(2000);
     if (error) {
-      // 42P01 is "relation does not exist" — the table was never created, which
-      // the page must not report as "no picks yet".
-      const missing = /does not exist|schema cache/i.test(error.message);
-      if (!missing) console.error(`[td-ledger] read ${sport}:`, error.message);
-      return { ...empty, status: missing ? "not-provisioned" : "ok" };
+      // PGRST205 is PostgREST for "no such table". Telling it apart from every
+      // other read failure is the whole point of the status field: this one is
+      // a deployment step nobody ran, and no amount of waiting fixes it. The
+      // rest are unknown, and reporting them as "no picks yet" would be the
+      // same reassuring lie the event ledger used to tell.
+      const missing =
+        (error as { code?: string }).code === "PGRST205" ||
+        /Could not find the table/i.test(error.message ?? "");
+      console.error(
+        missing
+          ? "[td-ledger] player_predictions does not exist — apply supabase/migrations/20260913120000_player_predictions.sql"
+          : `[td-ledger] read ${sport} failed: ${error.message}`,
+      );
+      return { ...empty, status: missing ? "not-provisioned" : "unreadable" };
     }
     const rows = (data ?? []) as {
       event_id: string;
