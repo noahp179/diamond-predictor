@@ -37,13 +37,22 @@
  * being projected. Rather than quietly show a number built from the answer,
  * `staleFeatures` marks those slates and the page says so.
  */
-import model from "./cfb-td-model.json";
-import { explain } from "./td-reasons";
+import {
+  assertForestFeatures,
+  FOREST_CONSTANTS,
+  FOREST_FEATURES,
+  FOREST_HOLDOUT,
+  FOREST_IMPORTANCES,
+  FOREST_SECOND_PICK_MIN,
+  FOREST_TIERS,
+  inferForest,
+} from "./cfb-td-forest";
+import { explainByImportance } from "./td-reasons";
 import { todayET } from "./date";
 import { fetchScoreboard, homeEdge, teamFormAsOf, type SlateGame } from "./espn.server";
 
 const CFB = "football/college-football";
-const C = model.constants;
+const C = FOREST_CONSTANTS;
 
 /**
  * Games of usage a team needs before its numbers mean anything. Below this the
@@ -62,22 +71,19 @@ const USAGE_WINDOW = C.USAGE_WINDOW;
 const ELO_PER_POINT = 25;
 
 // ------------------------------------------------------------- inference
+//
+// A calibrated extra-trees ensemble, evaluated in cfb-td-forest.ts. It replaced
+// a logistic regression on 2026-09-17 after CFB-BAKEOFF.md ran 24 algorithms
+// and it was the only one whose edge survived a bootstrap over whole Saturdays:
+// 58.1% of games called correctly against 56.3%, and better calibrated than the
+// model it replaced once Platt-scaled.
+//
+// `inferForest` takes RAW feature values and standardizes internally, so
+// featureVector below stays on the natural scale.
 
-/** Standardize → logistic. Mirrors final.py; the self-test below proves it. */
-function infer(x: number[]): number {
-  let z = model.intercept;
-  for (let i = 0; i < model.coef.length; i++)
-    z += model.coef[i] * ((x[i] - model.mean[i]) / model.std[i]);
-  return 1 / (1 + Math.exp(-z));
-}
-
-/** Replays the vectors frozen in the model file and checks this port agrees
- *  with the Python that fitted it. Called by scripts/test-cfb-td.ts. */
-export function selfTest(): { ok: boolean; worst: number } {
-  let worst = 0;
-  for (const t of model.selftest) worst = Math.max(worst, Math.abs(infer(t.x) - t.p));
-  return { ok: worst < 1e-6, worst };
-}
+/** Self-test lives with the model. Re-exported so the older test script name
+ *  keeps working. */
+export { forestSelfTest as selfTest } from "./cfb-td-forest";
 
 // --------------------------------------------------------------- fetching
 
@@ -324,7 +330,8 @@ const FEATURE_ORDER = [
  *  apart. Silently misaligned features still produce plausible probabilities,
  *  which is the worst possible failure mode for a page like this. */
 function assertFeatureOrder() {
-  const a = model.features.join(",");
+  assertForestFeatures(FEATURE_ORDER);
+  const a = FOREST_FEATURES.join(",");
   const b = FEATURE_ORDER.join(",");
   if (a !== b) throw new Error(`cfb-td feature order drift:\n  model: ${a}\n  code:  ${b}`);
 }
@@ -369,7 +376,7 @@ export type CfbTdGame = {
   picks: CfbTdPick[];
 };
 
-const TIERS = model.tiers;
+const TIERS = FOREST_TIERS;
 
 function tierFor(p: number): { label: string; hit: number } {
   for (const t of TIERS) if (p >= t.min) return { label: t.label, hit: t.hit };
@@ -389,7 +396,7 @@ function tierFor(p: number): { label: string; hit: number } {
 function choosePicks<T extends { prob: number }>(ranked: T[]): T[] {
   if (ranked.length === 0) return [];
   const out = [ranked[0]];
-  if (ranked.length > 1 && ranked[1].prob >= model.second_pick_min) out.push(ranked[1]);
+  if (ranked.length > 1 && ranked[1].prob >= FOREST_SECOND_PICK_MIN) out.push(ranked[1]);
   return out;
 }
 
@@ -475,9 +482,9 @@ export async function cfbTdSlate(date: string): Promise<{
       for (const p of usage.players) {
         if (p.car + p.rec < 1) continue;
         const x = featureVector(p, usage, gp, isHome, projPts, projTotal, margin);
-        const prob = infer(x);
+        const prob = inferForest(x);
         const t = tierFor(prob);
-        const { reasons, against } = explain(model, x, {
+        const { reasons, against } = explainByImportance(FOREST_FEATURES, FOREST_IMPORTANCES, x, {
           games: gp,
           team: abbr,
           opponent: isHome ? g.away.abbr : g.home.abbr,
@@ -519,4 +526,4 @@ export async function cfbTdSlate(date: string): Promise<{
 
 /** The headline backtest numbers, so the page can quote them without a second
  *  source of truth drifting away from the model file. */
-export const CFB_TD_BACKTEST = model.holdout;
+export const CFB_TD_BACKTEST = FOREST_HOLDOUT;

@@ -111,10 +111,10 @@ export function CfbTdScorersView() {
       current="tdScorers"
       eyebrow="Diamond Edge · College Football"
       title="Touchdown Scorers"
-      blurb="One or two names a game — the model decides how many. A second pick only appears when it is worth showing, which on the held-out 2025 and 2026 seasons meant 1.46 picks a game, 54.6% of shown picks scoring, and 65.6% of games with at least one hit. No betting lines anywhere in it: ESPN does not keep historical college odds, so a market feature could never have been backtested."
+      blurb="One or two names a game — the model decides how many. A second pick only appears when it is worth showing, which on the held-out 2025 and 2026 seasons meant 1.54 picks a game, 54.4% of shown picks scoring, and 67.6% of games with at least one hit. The model is a calibrated extra-trees ensemble, picked out of 24 candidates on held-out accuracy. No betting lines anywhere in it: ESPN does not keep historical college odds, so a market feature could never have been backtested."
       date={date}
       onDateChange={setDate}
-      footerNote="Data · ESPN · logistic model on season usage · Not affiliated with college football or the NCAA"
+      footerNote="Data · ESPN · calibrated extra-trees on season usage · Not affiliated with college football or the NCAA"
       statBar={
         <StatBar>
           <Stat label="Games" value={`${games.length}`} />

@@ -32,13 +32,13 @@
  */
 import { supabaseAdmin as _admin } from "@/integrations/supabase/client.server";
 import { supabase } from "@/integrations/supabase/client";
-import cfbModel from "./cfb-td-model.json";
+import cfbModel from "./cfb-td-forest.json";
 
 export type TdSport = "cfb" | "nfl";
 
 /** Bumped when a model changes in a way that makes old rows incomparable. */
 export const TD_MODEL_VERSION: Record<TdSport, string> = {
-  cfb: "cfb-td-logistic-v1",
+  cfb: "cfb-td-extratrees-v1",
   nfl: "nfl-td-logistic-v1",
 };
 
@@ -60,7 +60,7 @@ const ESPN_PATH: Record<TdSport, string> = {
  */
 export const TD_CLAIM: Record<TdSport, { leadHit: number; anyHit: number; source: string }> = {
   cfb: {
-    leadHit: 0.563,
+    leadHit: 0.581,
     anyHit: cfbModel.holdout.pick_hit_rate,
     source: "held out on 2025–26, CFB-ANALYSIS.md",
   },

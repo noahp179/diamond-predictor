@@ -14,31 +14,37 @@ versions are `src/lib/espn.server.ts` (outcomes) and
 
 **Game outcomes** — margin-of-victory Elo, tuned for college.
 
-| Metric | Model | Baseline | Read |
-|---|---|---|---|
-| **Accuracy** | **76.0%** | 67.4% (always take the home team) | +8.6 pts over the only baseline that needs no model |
-| Accuracy, FBS vs FBS only | 71.5% | — | The easy FBS-over-FCS games flatter the headline; this is the honest subset |
-| Log loss | 0.4793 | 0.6931 (coin flip) | |
-| Brier | 0.1587 | 0.25 | |
-| Calibration | a stated 85% wins 89% | — | Slightly *under*-confident, which is the safe direction |
+| Metric                    | Model                 | Baseline                          | Read                                                                        |
+| ------------------------- | --------------------- | --------------------------------- | --------------------------------------------------------------------------- |
+| **Accuracy**              | **76.0%**             | 67.4% (always take the home team) | +8.6 pts over the only baseline that needs no model                         |
+| Accuracy, FBS vs FBS only | 71.5%                 | —                                 | The easy FBS-over-FCS games flatter the headline; this is the honest subset |
+| Log loss                  | 0.4793                | 0.6931 (coin flip)                |                                                                             |
+| Brier                     | 0.1587                | 0.25                              |                                                                             |
+| Calibration               | a stated 85% wins 89% | —                                 | Slightly _under_-confident, which is the safe direction                     |
 
 Held out on 2025 and 2026-to-date: **1,143 games**, with K, home-field and
 season-carry chosen on 2021–24 and never refitted.
 
 **Touchdown scorers** — logistic regression on season usage, no betting lines.
 
-| Metric | Result | Read |
-|---|---|---|
-| **Picks per game** | **1.46** | The model chooses one or two; it is not a fixed slot count |
-| **Shown picks that scored** | **54.6%** | Against 49.5% for a fixed two-per-game board |
-| **Games where a pick scored** | **65.6%** | Two in three cards had a hit |
-| Lead pick | 56.3% | |
-| Second pick, when shown | 51.1% | Nearly as good as a lead pick — which is the bar it has to clear |
-| In two-pick games | 81.6% at least one, 30.9% both | |
-| ROC AUC | 0.6918 | 0.6902 in 2025, 0.7015 in 2026 |
-| Calibration | 43.0% predicted → 45.7% actual; 75.6% → 77.1% | Honest at both ends |
+| Metric                        | Result                                        | Read                                                             |
+| ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------- |
+| **Picks per game**            | **1.46**                                      | The model chooses one or two; it is not a fixed slot count       |
+| **Shown picks that scored**   | **54.6%**                                     | Against 49.5% for a fixed two-per-game board                     |
+| **Games where a pick scored** | **65.6%**                                     | Two in three cards had a hit                                     |
+| Lead pick                     | 56.3%                                         |                                                                  |
+| Second pick, when shown       | 51.1%                                         | Nearly as good as a lead pick — which is the bar it has to clear |
+| In two-pick games             | 81.6% at least one, 30.9% both                |                                                                  |
+| ROC AUC                       | 0.6918                                        | 0.6902 in 2025, 0.7015 in 2026                                   |
+| Calibration                   | 43.0% predicted → 45.7% actual; 75.6% → 77.1% | Honest at both ends                                              |
 
 Held out on **1,130 games** across 2025 and 2026-to-date, fitted on 2021–24.
+
+> **These are the original logistic model's figures.** The board has run a
+> calibrated extra-trees ensemble since 2026-09-17 — 58.1% top-1,
+> 54.4% of shown picks scoring and 67.6% of games with a hit.
+> §5 records the switch and everything re-measured with it; CFB-BAKEOFF.md is
+> the 24-algorithm comparison behind it.
 
 The live board agrees with the backtest where they can be compared directly: on
 the 2026-09-19 slate it produced **1.31 picks a game**, against **1.33** for
@@ -101,14 +107,14 @@ team is worth. 138 teams carry ratings of their own.
 The engine is the same margin-of-victory Elo the NFL and NBA pages run. Only
 three constants differ, and they were grid-searched on 2021–24 by log loss:
 
-| | K | Home field | Season carry |
-|---|---|---|---|
-| NFL | 20 | 55 | 0.50 |
-| NBA | 8 | 80 | 0.75 |
-| **College** | **40** | **55** | **0.60** |
+|             | K      | Home field | Season carry |
+| ----------- | ------ | ---------- | ------------ |
+| NFL         | 20     | 55         | 0.50         |
+| NBA         | 8      | 80         | 0.75         |
+| **College** | **40** | **55**     | **0.60**     |
 
 K is double the NFL's because college teams play twelve games, not seventeen, so
-each result has to carry more. Carry is *higher* than the NFL's, which is the
+each result has to carry more. Carry is _higher_ than the NFL's, which is the
 result that surprised me until it didn't: pro rosters are levelled by the draft
 and the cap, college programs are not. Alabama is good next year because Alabama
 was good this year.
@@ -119,13 +125,13 @@ so the exact values matter less than being in the right neighbourhood.
 
 **Held out on 2025–26** (settings fixed beforehand):
 
-| Stated confidence | n | Predicted | Actual |
-|---|---|---|---|
-| 50–60% | 252 | 54.7% | 55.2% |
-| 60–70% | 240 | 64.7% | 66.3% |
-| 70–80% | 224 | 74.7% | 76.8% |
-| 80–90% | 188 | 85.2% | 88.8% |
-| 90–100% | 239 | 95.1% | 97.1% |
+| Stated confidence | n   | Predicted | Actual |
+| ----------------- | --- | --------- | ------ |
+| 50–60%            | 252 | 54.7%     | 55.2%  |
+| 60–70%            | 240 | 64.7%     | 66.3%  |
+| 70–80%            | 224 | 74.7%     | 76.8%  |
+| 80–90%            | 188 | 85.2%     | 88.8%  |
+| 90–100%           | 239 | 95.1%     | 97.1%  |
 
 Every band is slightly under-confident — the model wins a little more often than
 it claims. By season: 74.0% in 2025 (958 games), 86.5% in 2026 (185 games, all
@@ -191,13 +197,13 @@ matters, but volume already counted once."
 
 Both held-out seasons, same fit, same features:
 
-| Model | 2025 AUC | 2025 top-1 | 2026 AUC | 2026 top-1 |
-|---|---|---|---|---|
-| Rank by `anytime_rate` alone | 0.6592 | 54.6% | 0.6165 | 53.9% |
-| Rank by carry share alone | 0.5912 | 49.5% | 0.5734 | 41.0% |
-| **Logistic** | **0.6902** | **55.6%** | **0.7015** | **60.1%** |
-| Logistic + Platt | 0.6900 | 55.8% | 0.7025 | 59.6% |
-| Gradient boosting | 0.6987 | 56.7% | 0.7092 | 55.1% |
+| Model                        | 2025 AUC   | 2025 top-1 | 2026 AUC   | 2026 top-1 |
+| ---------------------------- | ---------- | ---------- | ---------- | ---------- |
+| Rank by `anytime_rate` alone | 0.6592     | 54.6%      | 0.6165     | 53.9%      |
+| Rank by carry share alone    | 0.5912     | 49.5%      | 0.5734     | 41.0%      |
+| **Logistic**                 | **0.6902** | **55.6%**  | **0.7015** | **60.1%**  |
+| Logistic + Platt             | 0.6900     | 55.8%      | 0.7025     | 59.6%      |
+| Gradient boosting            | 0.6987     | 56.7%      | 0.7092     | 55.1%      |
 
 Gradient boosting wins on AUC in both seasons and **loses on the metric that
 matters** — 56.7% against 55.6% in 2025, but 55.1% against 60.1% in 2026. AUC
@@ -214,15 +220,15 @@ The board shows the lead pick always, and a second **only when the model gives
 it at least 0.45**. That threshold is where the backtest says a second name
 stops diluting the card:
 
-| Second pick's own probability | Hit rate | Share of games |
-|---|---|---|
-| below 0.30 | 30.6% | 9% |
-| 0.30–0.35 | 36.1% | 14% |
-| 0.35–0.40 | 37.2% | 16% |
-| 0.40–0.45 | 36.4% | 15% |
-| **0.45–0.50** | **46.7%** | 17% |
-| 0.50–0.55 | 52.5% | 12% |
-| 0.55+ | 54.6% | 16% |
+| Second pick's own probability | Hit rate  | Share of games |
+| ----------------------------- | --------- | -------------- |
+| below 0.30                    | 30.6%     | 9%             |
+| 0.30–0.35                     | 36.1%     | 14%            |
+| 0.35–0.40                     | 37.2%     | 16%            |
+| 0.40–0.45                     | 36.4%     | 15%            |
+| **0.45–0.50**                 | **46.7%** | 17%            |
+| 0.50–0.55                     | 52.5%     | 12%            |
+| 0.55+                         | 54.6%     | 16%            |
 
 The step at 0.45 is a real one — ten points, and nothing below it separates at
 all (36–37% across three consecutive bands). That is what makes it a threshold
@@ -234,19 +240,19 @@ sample is small and entirely early-season, when three games of usage is all
 anyone has; September is where the board shows fewest second picks for exactly
 that reason. Worth watching rather than worth re-tuning on 57 games.
 
-A rule based on *closeness* to the lead pick was tested first and **does not
+A rule based on _closeness_ to the lead pick was tested first and **does not
 work**. Pick-2 hit rate by `p2/p1`: 35.8% below 0.70, then 44.2%, 45.8%, 38.3%,
 48.2% — not monotonic and not usable. How close the second name is to the first
 tells you nothing about whether it scores. Only its own probability does.
 
 What that buys, against fixed boards:
 
-| Board | Picks/game | Shown picks that scored |
-|---|---|---|
-| Always 1 | 1.00 | 56.3% |
-| **Model chooses (1 or 2)** | **1.46** | **54.6%** |
-| Always 2 | 2.00 | 49.5% |
-| Always 3 | 3.00 | 46.4% |
+| Board                      | Picks/game | Shown picks that scored |
+| -------------------------- | ---------- | ----------------------- |
+| Always 1                   | 1.00       | 56.3%                   |
+| **Model chooses (1 or 2)** | **1.46**   | **54.6%**               |
+| Always 2                   | 2.00       | 49.5%                   |
+| Always 3                   | 3.00       | 46.4%                   |
 
 Nearly half again as many picks as a one-pick board, at 5.1 points better
 quality than a two-pick one. The lead-pick-only board is still the highest
@@ -258,20 +264,20 @@ much coverage is worth giving up for it.
 Set where the held-out hit rate actually steps, and carried in the model file so
 the page cannot quote a number that has drifted:
 
-| Tier | Probability | Held-out hit | 2025 | 2026 | Share of picks |
-|---|---|---|---|---|---|
-| **Strong** | ≥ 0.62 | **68.8%** | 68.1% | 75.0% | 25% |
-| **Solid** | 0.50–0.62 | 54.0% | 53.5% | 57.5% | 39% |
-| **Lean** | < 0.50 | 45.7% | 45.2% | 47.8% | 36% |
+| Tier       | Probability | Held-out hit | 2025  | 2026  | Share of picks |
+| ---------- | ----------- | ------------ | ----- | ----- | -------------- |
+| **Strong** | ≥ 0.62      | **68.8%**    | 68.1% | 75.0% | 25%            |
+| **Solid**  | 0.50–0.62   | 54.0%        | 53.5% | 57.5% | 39%            |
+| **Lean**   | < 0.50      | 45.7%        | 45.2% | 47.8% | 36%            |
 
 Calibration across the shown picks:
 
-| Predicted | n | Actual |
-|---|---|---|
-| 43.0% | 599 | 45.7% |
-| 54.8% | 562 | 52.8% |
-| 64.5% | 337 | 63.2% |
-| 75.6% | 153 | 77.1% |
+| Predicted | n   | Actual |
+| --------- | --- | ------ |
+| 43.0%     | 599 | 45.7%  |
+| 54.8%     | 562 | 52.8%  |
+| 64.5%     | 337 | 63.2%  |
+| 75.6%     | 153 | 77.1%  |
 
 ---
 
@@ -298,7 +304,84 @@ number, zero extra requests, 37s → 3s.
 
 ---
 
-## 5. What this does not do
+## 5. The model changed on 2026-09-17
+
+Sections 3 and 7 above describe the L2 logistic regression the board shipped
+with. It now runs a **calibrated extra-trees ensemble** instead, and the numbers
+in those sections are the old model's. The current ones:
+
+|                         | logistic (was) | extra trees (now) |
+| ----------------------- | -------------- | ----------------- |
+| top-1 per game          | 56.3%          | **58.1%**         |
+| calibration error       | 0.0166         | **0.0096**        |
+| log loss                | 0.5119         | **0.5069**        |
+| AUC                     | 0.6918         | 0.6980            |
+| picks per game          | 1.46           | 1.54              |
+| shown picks that scored | 54.6%          | 54.4%             |
+| games with a hit        | 65.6%          | **67.6%**         |
+| model file              | 4KB            | 8.8MB             |
+
+**Why it changed.** CFB-BAKEOFF.md ran 24 algorithms and extra trees was the
+only one whose edge survived a bootstrap resampling whole Saturdays rather than
+games: +1.9 points of top-1, 95% interval [+0.5, +3.3], McNemar p = 0.042, and
+10 of 10 seeds beat the logistic. 200 trees rather than 300 because the eight-
+seed means are 57.94% and 58.00% — indistinguishable — at two thirds the size.
+
+**Why it is Platt-scaled.** A forest predicts by averaging, and averaging
+compresses. Raw, its probabilities topped out at 0.69 where the logistic
+reached 0.98, which made it badly under-confident exactly where the board
+lives: raw lead picks stated 48.3% and hit 58.1%, and a five-leg parlay built
+from them stated 9.9% when six of sixteen slips had won. Platt is strictly
+monotone, so the ranking — the whole reason for the switch — is untouched and
+the top-1 figure is identical before and after. It also does not quantise,
+unlike isotonic (§6 of the bakeoff). Calibrated, the forest beats the logistic
+on top-1, calibration and log loss simultaneously.
+
+**Everything downstream was re-measured**, in one pass from one fit
+(`research/cfb/export_forest.py`), because tier edges, the second-pick bar and
+the parlay's correlation factors were all fitted to the logistic's probability
+distribution:
+
+|                       | logistic            | extra trees         |
+| --------------------- | ------------------- | ------------------- |
+| Strong tier           | p ≥ 0.62 → 68.8%    | p ≥ 0.573 → 63.8%   |
+| Solid tier            | p ≥ 0.50 → 54.0%    | p ≥ 0.496 → 53.0%   |
+| Lean tier             | below → 45.7%       | below → 44.0%       |
+| same-team pair factor | 0.989               | 0.842               |
+| opposed pair factor   | 0.782               | 0.758               |
+| 5-leg parlay          | 24.6% (1 in 4)      | 19.1% (1 in 5)      |
+| 20-leg parlay         | 0.071% (1 in 1,415) | 0.042% (1 in 2,391) |
+
+Two of those are worth a note. The correlation **control** — pairs from
+different games, which should multiply to exactly their product — moved from
+0.964 to **0.990**. That is the calibration working: independent legs now
+multiply almost exactly right. Against that control the same-team penalty is
+real where it used to be nothing (0.842 against 0.989), while the opposed
+penalty barely moved.
+
+And the second-pick bar stayed at 0.45, but for a weaker reason than before.
+Under the logistic there was a ten-point step in the pick-2 hit rate at exactly
+that value. Under the forest the curve is smooth — 44.4% at a 0.25 bar rising
+to 51.0% at 0.55 — so there is no breakpoint to find and 0.45 is an explicit
+trade-off: a second pick in about half of games, hitting roughly twice the 24%
+base rate.
+
+**Two things the switch cost.** The model file went from 4KB to 8.8MB (200
+trees, 530,890 nodes, stored as base64 typed arrays rather than nested objects
+— as JSON objects it would be over 30MB). And the per-leg reasoning is now
+ranked by the forest's _global_ feature importances rather than by a per-pick
+coefficient attribution, because a tree ensemble cannot say how much this
+player's carry share moved this probability without SHAP-scale machinery. The
+individual numbers on the card are still his; the claim is just weaker, which
+is why it is a separate function (`explainByImportance`) rather than a flag.
+
+**The ledger restarted.** Forward rows are written under
+`cfb-td-extratrees-v1`; the handful recorded under `cfb-td-logistic-v1` belong
+to a different model and are not averaged with them.
+
+---
+
+## 6. What this does not do
 
 - **No anytime-touchdown market comparison.** There are no historical college
   props to compare against, so there is no claim here about beating a price.
@@ -307,7 +390,7 @@ number, zero extra requests, 37s → 3s.
   return is a touchdown to a sportsbook and is invisible here.
 - **Past dates on the TD board are not point-in-time.** Season-to-date usage is
   "as of now", which for an upcoming game is exactly right — a team's season so
-  far *is* everything before its next game — but for a slate already played it
+  far _is_ everything before its next game — but for a slate already played it
   includes the games being projected. The page says so on those dates rather
   than showing a number that quietly knew the answer.
 - **Week 1 leans on last season.** A team with fewer than five games borrows the
@@ -315,7 +398,7 @@ number, zero extra requests, 37s → 3s.
   Week 5. Roster turnover makes that weaker evidence in college than in the NFL.
 - **The Track Record page starts empty.** It reads the forward ledger — rows
   written the morning of a game and scored afterwards — like every other sport.
-  Everything in this document is a *backtest*, which is a different claim, and
+  Everything in this document is a _backtest_, which is a different claim, and
   the two are deliberately not shown in the same place.
 
 The touchdown board now keeps a forward record of its own — see below — so the
@@ -323,7 +406,7 @@ numbers above will eventually have something to be checked against.
 
 ---
 
-## 6. Checking the picks afterwards
+## 7. Checking the picks afterwards
 
 Every number in section 3 is a backtest. The board also records what it
 actually said: each pick is written to `player_predictions` before kickoff and
@@ -354,7 +437,7 @@ from a lucky one.
 ### One bug this turned up
 
 The ledger's "only record games that have not started" filter tested
-`homeScore == null`. ESPN serves a *scheduled* game with `score: "0"` — in every
+`homeScore == null`. ESPN serves a _scheduled_ game with `score: "0"` — in every
 sport — so that condition was never true and the filter matched nothing. The
 NFL and NBA game-outcome ledgers have therefore never been able to record a row,
 for as long as they have existed, and the college one inherited it on the day it
@@ -363,7 +446,7 @@ rendering "0–0" on every upcoming game card.
 
 ---
 
-## 7. Parlays, and what they are actually worth
+## 8. Parlays, and what they are actually worth
 
 Five, ten, fifteen and twenty touchdown scorers on one slip. The construction
 was measured, not assumed, and so was the honesty of the number it quotes.
@@ -378,13 +461,13 @@ independently, so the plain product is wrong for them.
 The first version of this restricted slips to one leg per game, because that is
 the construction whose product needs no correction:
 
-| construction | realised | independence product | ratio |
-|---|---|---|---|
-| one leg per game | 8.18% | 8.05% | **1.02** |
-| two legs per game | 6.82% | 8.36% | 0.82 |
+| construction      | realised | independence product | ratio    |
+| ----------------- | -------- | -------------------- | -------- |
+| one leg per game  | 8.18%    | 8.05%                | **1.02** |
+| two legs per game | 6.82%    | 8.36%                | 0.82     |
 
 That was the wrong call. A restriction is not the only way to be honest about
-correlation, and it cost real value: measuring the effect and *subtracting* it
+correlation, and it cost real value: measuring the effect and _subtracting_ it
 leaves the reader free to stack a shootout. On the 2026-09-19 slate the 20-leg
 slip improves from 1 in 40,714 at one leg per game to **1 in 28,806 at two** —
 better legs beat reaching into weaker games, even after the penalty is paid.
@@ -392,11 +475,11 @@ better legs beat reaching into weaker games, even after the penalty is paid.
 `research/cfb/parlay_corr.py` says why, by comparing how often pairs of
 candidates scored together against the product of their two probabilities:
 
-| pair | pairs | both scored | product | ratio |
-|---|---|---|---|---|
-| same team | 515 | 30.49% | 31.95% | 0.954 |
-| **same game, opposed** | 267 | **22.85%** | 30.29% | **0.754** |
-| different games (control) | 14,543 | 37.16% | 38.53% | 0.964 |
+| pair                      | pairs  | both scored | product | ratio     |
+| ------------------------- | ------ | ----------- | ------- | --------- |
+| same team                 | 515    | 30.49%      | 31.95%  | 0.954     |
+| **same game, opposed**    | 267    | **22.85%**  | 30.29%  | **0.754** |
+| different games (control) | 14,543 | 37.16%      | 38.53%  | 0.964     |
 
 Read against the 0.964 control, the same-team effect is nothing (0.99) and the
 opposed-pair effect is large (0.78). That is the opposite of the intuition —
@@ -411,11 +494,11 @@ So `adjustedProb` multiplies the product by **0.989 per same-team pair** and
 only size with enough wins to check anything:
 
 | legs per game | measured ratio | correction predicts |
-|---|---|---|
-| 1 | 1.15 | 1.00 |
-| 2 | 0.90 | **0.89** |
-| 3 | 0.89 | **0.86** |
-| unrestricted | 0.88 | **0.84** |
+| ------------- | -------------- | ------------------- |
+| 1             | 1.15           | 1.00                |
+| 2             | 0.90           | **0.89**            |
+| 3             | 0.89           | **0.86**            |
+| unrestricted  | 0.88           | **0.84**            |
 
 It lands. (The 1.15 at one leg per game is 6 wins in 29 slips — noise around an
 expected 1.00.)
@@ -436,12 +519,12 @@ slips are flagged `extrapolated` and the page says so in those words.
 
 Held out on 2025–26, one leg per game (`research/cfb/parlay_final.json`):
 
-| legs | floor | stated | about | observed | mean leg |
-|---|---|---|---|---|---|
-| 5 | 0.55 | 24.6% | 1 in 4 | **6 of 19 slips** | 73.7% |
-| 10 | 0.45 | 4.4% | 1 in 23 | 0 of 17 (0.7 expected) | 75.3% |
-| 15 | 0.45 | 0.63% | 1 in 159 | 0 of 16 (0.1 expected) | 71.2% |
-| 20 | 0.45 | 0.071% | **1 in 1,415** | 0 of 16 (0.01 expected) | 71.2% |
+| legs | floor | stated | about          | observed                | mean leg |
+| ---- | ----- | ------ | -------------- | ----------------------- | -------- |
+| 5    | 0.55  | 24.6%  | 1 in 4         | **6 of 19 slips**       | 73.7%    |
+| 10   | 0.45  | 4.4%   | 1 in 23        | 0 of 17 (0.7 expected)  | 75.3%    |
+| 15   | 0.45  | 0.63%  | 1 in 159       | 0 of 16 (0.1 expected)  | 71.2%    |
+| 20   | 0.45  | 0.071% | **1 in 1,415** | 0 of 16 (0.01 expected) | 71.2%    |
 
 **The zeroes are not a result.** At ten legs and up the product predicts fewer
 than one winning slip across the entire held-out period, so observing none is
@@ -460,12 +543,12 @@ Saturday's best twenty picks all clear 0.55 anyway, so the floor stops mattering
 
 From `research/nfl-td-scorer/parlay_nfl.py`, over 2022–24:
 
-| legs | stated | observed | buildable |
-|---|---|---|---|
-| 5 | 6.7% | 4 of 53 weeks | 86% of weeks |
-| 10 | 0.20% | 0 of 42 | 82% |
-| 15 | 0.007% | 0 of 4 | 55% |
-| 20 | — | — | **never** |
+| legs | stated | observed      | buildable    |
+| ---- | ------ | ------------- | ------------ |
+| 5    | 6.7%   | 4 of 53 weeks | 86% of weeks |
+| 10   | 0.20%  | 0 of 42       | 82%          |
+| 15   | 0.007% | 0 of 4        | 55%          |
+| 20   | —      | —             | **never**    |
 
 Those figures are all at one leg per game, which caps a slip at the size of the
 slate — and **no NFL week has twenty games**, the maximum being sixteen. With
@@ -493,13 +576,13 @@ Three things that needed care (`src/lib/td-reasons.ts`):
 - **Usage shares never appear as a caveat.** "Only 0% of the catches" reads as
   damning and is just what a running back looks like.
 - **Thin evidence outranks the coefficients.** `gp`'s fitted coefficient is
-  slightly *negative* — it is collinear with the usage terms — so three games of
+  slightly _negative_ — it is collinear with the usage terms — so three games of
   history registers as a small push in favour. That is an artefact, and letting
   it hide the one caveat that qualifies every September number would be perverse.
 
 ---
 
-## 8. Reproducing it
+## 9. Reproducing it
 
 ```bash
 cd research/cfb
@@ -510,23 +593,25 @@ python3 bakeoff.py          # logistic vs baselines vs gradient boosting
 python3 ablate.py           # what the expensive features actually buy
 python3 selection.py        # where the second pick's bar belongs
 python3 spread_prob.py      # fit the spread-to-probability sigma
-python3 final.py            # definitive metrics + export src/lib/cfb-td-model.json
+python3 final.py            # the original logistic fit (superseded)
+python3 bakeoff_big.py      # 24 algorithms, five metrics (see CFB-BAKEOFF.md)
+python3 export_forest.py    # fit + export the shipped forest, refit everything downstream
 python3 parlay.py           # parlay construction sweep
 python3 parlay_corr.py      # same-team vs same-game correlation
 python3 parlay_stack.py     # the stacking correction, and its validation
 python3 -c "import parlay; parlay.final()"   # the shipped size rules
 ```
 
-`final.py` writes three feature vectors and their probabilities into the model
-file. `bun scripts/test-cfb-td.ts` replays them through the TypeScript port and
-fails if the two disagree — a mis-ordered coefficient still produces a
-plausible-looking probability, so this is what catches it. It currently agrees
-to 5.6e-17.
+`export_forest.py` writes five feature vectors and their probabilities into the
+model file. `bun scripts/test-cfb-forest.ts` replays them through the TypeScript
+port and fails if the two disagree — a misread tree offset or a uint16 overflow
+still produces a plausible-looking probability, so this is what catches it. It
+currently agrees to 1.7e-9.
 
 Three live checks, none needing a database:
 
 ```bash
-bun scripts/test-cfb-td.ts      # TS model vs the Python fit
+bun scripts/test-cfb-forest.ts  # TS forest vs the Python fit
 bun scripts/test-cfb-smoke.ts   # the whole board against live ESPN
 bun scripts/test-td-ledger.ts   # what the ledger will and will not record
 bun scripts/test-td-settle.ts   # picked players resolved in real box scores

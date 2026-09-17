@@ -42,19 +42,21 @@
  *
  * WHAT THESE SLIPS ARE WORTH
  * --------------------------
- * College, held out on 2025-26 (research/cfb/parlay_final.json):
+ * College, held out on 2025-26, against the calibrated extra-trees model
+ * (research/cfb/export_forest.py):
  *
- *      legs   stated   about     observed
- *         5    24.6%   1 in 4    6 of 19 slips
- *        10     4.4%   1 in 23   0 of 17  (0.7 expected)
- *        15     0.63%  1 in 159  0 of 16  (0.1 expected)
- *        20     0.07%  1 in 1,415  0 of 16  (0.01 expected)
+ *      legs   stated   about       observed
+ *         5    19.1%   1 in 5        6 of 21 slips (4.0 expected)
+ *        10     3.2%   1 in 31       1 of 17 (0.5 expected)
+ *        15    0.42%   1 in 240      0 of 16 (0.07 expected)
+ *        20   0.042%  1 in 2391     0 of 16 (0.01 expected)
  *
- * The zeroes are not a failure of the model and not evidence the slip works:
- * at ten legs and up the product predicts fewer than one winning slip in the
- * entire held-out period, so there is no sample. A twenty-leg slip is one
- * winning Saturday in fourteen hundred, and college football plays about
- * fourteen Saturdays a year. The page says the number; it does not dress it up.
+ * The five-leg row is the only one with a real sample, and it landed: six wins
+ * against four expected. Below that there is nothing to learn — at fifteen legs
+ * and up the product predicts well under one winning slip across the entire
+ * held-out period, so a zero is arithmetic rather than evidence. A twenty-leg
+ * slip is one winning Saturday in about two and a half thousand, and college
+ * football plays roughly fourteen a year. The page says the number.
  *
  * NFL, 2022-24 (research/nfl-td-scorer/parlay_nfl_metrics.json):
  *
@@ -163,10 +165,26 @@ export const SIZE_EVIDENCE: Record<
   Record<number, { stated: number; oneIn: number; observed: string; note?: string }>
 > = {
   cfb: {
-    5: { stated: 0.2463, oneIn: 4, observed: "6 of 19 held-out slips" },
-    10: { stated: 0.0435, oneIn: 23, observed: "0 of 17 (0.7 expected)" },
-    15: { stated: 0.0063, oneIn: 159, observed: "0 of 16 (0.1 expected)" },
-    20: { stated: 0.00071, oneIn: 1415, observed: "0 of 16 (0.01 expected)" },
+    5: {
+      stated: 0.1907,
+      oneIn: 5,
+      observed: "6 of 21 held-out slips (4.0 expected)",
+    },
+    10: {
+      stated: 0.0321,
+      oneIn: 31,
+      observed: "1 of 17 (0.5 expected)",
+    },
+    15: {
+      stated: 0.00417,
+      oneIn: 240,
+      observed: "0 of 16 (0.07 expected)",
+    },
+    20: {
+      stated: 0.000418,
+      oneIn: 2391,
+      observed: "0 of 16 (0.01 expected)",
+    },
   },
   nfl: {
     5: { stated: 0.0673, oneIn: 15, observed: "4 of 53 weeks, 2022-24" },
@@ -183,10 +201,16 @@ export const SIZE_EVIDENCE: Record<
 
 /**
  * Measured per-pair correction, read against the different-games control.
- * research/cfb/parlay_corr.py; validated at the slip level in
- * research/cfb/parlay_stack.json.
+ *
+ * Re-measured on 2026-09-17 against the calibrated extra-trees model that
+ * replaced the logistic (research/cfb/export_forest.py). Both factors moved,
+ * and the control moved most: it was 0.964 under the logistic and is 0.990
+ * now, which is the calibration working — independent pairs multiply almost
+ * exactly right. Against that control the same-team penalty is real where it
+ * used to be nothing (0.842 against 0.989), and the opposed penalty is
+ * essentially unchanged (0.758 against 0.782).
  */
-export const PAIR_FACTOR = { sameTeam: 0.989, opposed: 0.782 };
+export const PAIR_FACTOR = { sameTeam: 0.842, opposed: 0.758 };
 
 /**
  * Opposed pairs beyond which the correction is extrapolating. The slips it was

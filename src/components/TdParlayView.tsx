@@ -121,10 +121,10 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
       current="parlay"
       eyebrow={`Diamond Edge · ${label}`}
       title="Touchdown Parlays"
-      blurb="Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, each with the model's probability and its reasons. Stack as many legs from one game as you like — the quoted chance is corrected for it rather than assuming the legs are independent, because two opposed players in the same game score together only 0.78× as often as the plain product implies."
+      blurb="Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, each with the model's probability and its reasons. Stack as many legs from one game as you like — the quoted chance is corrected for it rather than assuming the legs are independent, because two opposed players in the same game score together only 0.76× as often as the plain product implies, and two on the same team 0.84×."
       date={date}
       onDateChange={setDate}
-      footerNote={`Data · ESPN · logistic model on season usage · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
+      footerNote={`Data · ESPN · ${sport === "cfb" ? "calibrated extra-trees" : "logistic model"} on season usage · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
       statBar={
         <StatBar>
           <Stat label="Slip" value={`${current?.legs.length ?? 0} legs`} />

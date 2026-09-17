@@ -191,3 +191,63 @@ function overlaps(a: string, b: string): boolean {
           : s;
   return key(a) === key(b) && key(a) !== a;
 }
+
+/**
+ * The same phrases, ranked by a model's global feature importance instead of a
+ * per-pick coefficient push.
+ *
+ * A forest has no coefficients, so the attribution `explain` does above is not
+ * available for the college model — a tree ensemble cannot say how much THIS
+ * player's carry share moved THIS probability without a per-prediction
+ * attribution method (SHAP and friends), which is a great deal of machinery to
+ * ship for a line of card copy.
+ *
+ * So the ranking becomes global rather than per-pick: the forest's feature
+ * importances say which facts matter most for this kind of prediction, and the
+ * same volume gates as above decide which are true enough of this player to be
+ * worth saying. The individual numbers are still his.
+ *
+ * The distinction matters and is why this is a separate function rather than a
+ * flag: `explain` says "here is what moved the number for him", and this says
+ * "here are the numbers that matter, for him". The second is a weaker claim,
+ * and overstating it would be the kind of quiet dishonesty the phrase gates
+ * above exist to prevent.
+ */
+export function explainByImportance(
+  features: string[],
+  importances: Record<string, number>,
+  x: number[],
+  ctx: ReasonContext,
+  limit = 3,
+): Reasoning {
+  const ranked = features
+    .map((name, i) => ({ name, value: x[i], weight: importances[name] ?? 0 }))
+    .sort((a, b) => b.weight - a.weight);
+
+  const reasons: string[] = [];
+  for (const f of ranked) {
+    const phrase = PHRASES[f.name]?.(f.value, ctx);
+    if (!phrase) continue;
+    if (reasons.some((r) => overlaps(r, phrase))) continue;
+    reasons.push(phrase);
+    if (reasons.length === limit) break;
+  }
+
+  // Thin evidence still outranks everything — it qualifies every number on the
+  // card in September, whatever the model thinks of the features.
+  if (ctx.games < THIN_EVIDENCE)
+    return { reasons, against: `only ${Math.round(ctx.games)} games of usage behind this` };
+
+  // Without per-pick attribution there is no "biggest thing arguing against",
+  // so only the unambiguous caveats fire: a genuinely low scoring rate, a heavy
+  // underdog, a low-scoring projection.
+  let against: string | null = null;
+  for (const f of ranked) {
+    const phrase = AGAINST[f.name]?.(f.value, ctx);
+    if (phrase) {
+      against = phrase;
+      break;
+    }
+  }
+  return { reasons, against };
+}
