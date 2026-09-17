@@ -368,16 +368,26 @@ rendering "0–0" on every upcoming game card.
 Five, ten, fifteen and twenty touchdown scorers on one slip. The construction
 was measured, not assumed, and so was the honesty of the number it quotes.
 
-### One leg per game
+### Stacking a game is priced, not banned
 
-`research/cfb/parlay.py` builds every slip on every held-out Saturday both
-ways. On **220 identical slates**, one leg per game won outright — 18 winning
-slips against 15 — and, more usefully, its stated probability was honest:
+How many legs may come from one game is the reader's choice — the selector runs
+1, 2, 3 and unrestricted, and defaults to 2. What is not negotiable is that the
+number beside the slip stays honest, and legs from the same game do not behave
+independently, so the plain product is wrong for them.
+
+The first version of this restricted slips to one leg per game, because that is
+the construction whose product needs no correction:
 
 | construction | realised | independence product | ratio |
 |---|---|---|---|
-| **one leg per game** | 8.18% | 8.05% | **1.02** |
+| one leg per game | 8.18% | 8.05% | **1.02** |
 | two legs per game | 6.82% | 8.36% | 0.82 |
+
+That was the wrong call. A restriction is not the only way to be honest about
+correlation, and it cost real value: measuring the effect and *subtracting* it
+leaves the reader free to stack a shootout. On the 2026-09-19 slate the 20-leg
+slip improves from 1 in 40,714 at one leg per game to **1 in 28,806 at two** —
+better legs beat reaching into weaker games, even after the penalty is paid.
 
 `research/cfb/parlay_corr.py` says why, by comparing how often pairs of
 candidates scored together against the product of their two probabilities:
@@ -395,8 +405,32 @@ do. What actually matters is the **game script**: college football is decided by
 blowouts, and in a blowout the winning side's skill players score while the
 losing side's do not. A leg from each team is close to a bet against itself.
 
-One leg per game removes both effects, and since a team plays one game a day it
-caps teams at one for free.
+So `adjustedProb` multiplies the product by **0.989 per same-team pair** and
+**0.782 per opposed pair**, and that is the number the card leads with.
+`research/cfb/parlay_stack.py` checks it against real slips at five legs — the
+only size with enough wins to check anything:
+
+| legs per game | measured ratio | correction predicts |
+|---|---|---|
+| 1 | 1.15 | 1.00 |
+| 2 | 0.90 | **0.89** |
+| 3 | 0.89 | **0.86** |
+| unrestricted | 0.88 | **0.84** |
+
+It lands. (The 1.15 at one leg per game is 6 wins in 29 slips — noise around an
+expected 1.00.)
+
+Because the board shows one or two picks per game and both are usually on the
+favoured side, stacked pairs in college are nearly all **same-team**, where the
+penalty is 0.989 — so stacking there is close to free. It is the NFL, whose
+board shows three names a game including the opposing side, that picks up
+opposed pairs and pays for them.
+
+**The honest limit.** A per-pair factor multiplied over many overlapping pairs
+is a first-order approximation, and it was validated on slips carrying well
+under one opposed pair. A 20-leg NFL slip drawn from a 14-game Sunday carries
+five or six, where the same arithmetic says ×0.23 and nobody has checked. Those
+slips are flagged `extrapolated` and the page says so in those words.
 
 ### What each size is worth
 
@@ -422,7 +456,7 @@ The floor only bites at five legs, where being choosier measurably helps — a
 five-leg slip hit 21.4% at a 0.35 floor and 31.6% at 0.55. By ten legs a full
 Saturday's best twenty picks all clear 0.55 anyway, so the floor stops mattering.
 
-### The NFL's ceiling is arithmetic
+### The NFL's one-per-game ceiling
 
 From `research/nfl-td-scorer/parlay_nfl.py`, over 2022–24:
 
@@ -433,12 +467,14 @@ From `research/nfl-td-scorer/parlay_nfl.py`, over 2022–24:
 | 15 | 0.007% | 0 of 4 | 55% |
 | 20 | — | — | **never** |
 
-One leg per game caps a slip at the size of the slate, and **no NFL week has
-twenty games** — the maximum is sixteen. A twenty-leg NFL slip has to double up,
-which is precisely the construction measured at 0.82× above. The card builds it
-anyway, because it was asked for, and reports how many games doubled up and how
-many legs fell below the floor. On the 2026-09-20 slate that came to six
-doubled-up games and seven sub-floor legs, for a stated 1 in 1.5 million.
+Those figures are all at one leg per game, which caps a slip at the size of the
+slate — and **no NFL week has twenty games**, the maximum being sixteen. With
+stacking allowed that ceiling goes away, but the correction does the work: on
+the 2026-09-20 slate the 20-leg slip carries six doubled-up games, five opposed
+pairs and seven sub-floor legs, and the quoted chance is **1 in 5.2 million**
+against a raw product of 1 in 1.5 million. That is the correction earning its
+keep — and it is also flagged as extrapolated, because six opposed pairs is
+well past where it was checked.
 
 ### Per-leg reasoning
 
@@ -477,6 +513,7 @@ python3 spread_prob.py      # fit the spread-to-probability sigma
 python3 final.py            # definitive metrics + export src/lib/cfb-td-model.json
 python3 parlay.py           # parlay construction sweep
 python3 parlay_corr.py      # same-team vs same-game correlation
+python3 parlay_stack.py     # the stacking correction, and its validation
 python3 -c "import parlay; parlay.final()"   # the shipped size rules
 ```
 
@@ -493,5 +530,5 @@ bun scripts/test-cfb-td.ts      # TS model vs the Python fit
 bun scripts/test-cfb-smoke.ts   # the whole board against live ESPN
 bun scripts/test-td-ledger.ts   # what the ledger will and will not record
 bun scripts/test-td-settle.ts   # picked players resolved in real box scores
-bun scripts/test-td-parlay.ts   # slip invariants on a live slate
+bun scripts/test-td-parlay.ts   # slip invariants, at every per-game setting
 ```

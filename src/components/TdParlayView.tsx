@@ -12,6 +12,14 @@ type Leg = Parlay["legs"][number];
 
 const SIZES = [5, 10, 15, 20];
 
+/** 0 means unrestricted — Infinity does not survive the wire. */
+const PER_GAME: { value: number; label: string }[] = [
+  { value: 1, label: "1 / game" },
+  { value: 2, label: "2 / game" },
+  { value: 3, label: "3 / game" },
+  { value: 0, label: "any" },
+];
+
 const pct = (p: number, dp = 0) => `${(p * 100).toFixed(dp)}%`;
 const price = (n: number) => (n > 0 ? `+${n.toLocaleString()}` : n.toLocaleString());
 
@@ -89,10 +97,11 @@ function LegRow({ leg }: { leg: Leg }) {
 export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
   const [date, setDate] = useState(todayET());
   const [size, setSize] = useState(5);
+  const [perGame, setPerGame] = useState(2);
   const run = useServerFn(getTdParlays);
   const { data, isLoading, isError } = useQuery({
-    queryKey: [sport, "td-parlay", date],
-    queryFn: () => run({ data: { sport, date } }),
+    queryKey: [sport, "td-parlay", date, perGame],
+    queryFn: () => run({ data: { sport, date, maxPerGame: perGame } }),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -112,7 +121,7 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
       current="parlay"
       eyebrow={`Diamond Edge · ${label}`}
       title="Touchdown Parlays"
-      blurb="Five, ten, fifteen or twenty touchdown scorers on one slip — one leg per game, surest first, each with the model's probability and its reasons. One leg per game is not a style choice: two opposed players in the same game score together far less often than independence implies, so slips that stack them overstate themselves."
+      blurb="Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, each with the model's probability and its reasons. Stack as many legs from one game as you like — the quoted chance is corrected for it rather than assuming the legs are independent, because two opposed players in the same game score together only 0.78× as often as the plain product implies."
       date={date}
       onDateChange={setDate}
       footerNote={`Data · ESPN · logistic model on season usage · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
@@ -135,7 +144,7 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
 
       {!isLoading && !isError && parlays.length > 0 && (
         <>
-          <div className="mb-6 flex flex-wrap items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             {SIZES.map((s) => {
               const p = parlays.find((x) => x.size === s);
               return (
@@ -159,17 +168,62 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
             })}
           </div>
 
+          {/* How much of one game a slip may take is the reader's call; the
+              quoted chance is corrected for whatever they pick. */}
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Legs from one game
+            </span>
+            {PER_GAME.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setPerGame(o.value)}
+                aria-pressed={perGame === o.value}
+                className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                  perGame === o.value
+                    ? "border-primary text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+
           {/* The long slips are lottery tickets and the page says so in the
               same breath as it offers them. */}
           {current && current.legs.length > 0 && (
             <div className="mb-6 border border-border bg-card px-4 py-3">
               <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                 All {current.legs.length} legs hit{" "}
-                <span className="text-foreground">{oneIn(current.oneIn)}</span> — that is the
-                product of the legs, and one leg per game is the construction that makes the product
-                honest (measured 1.02× realised on held-out slates, against 0.82× when legs share a
-                game).
+                <span className="text-foreground">{oneIn(current.oneIn)}</span>
+                {current.correlationFactor < 0.999 ? (
+                  <>
+                    {" "}
+                    — the plain product says {pct(current.combinedProb, 3)}, corrected to{" "}
+                    {pct(current.adjustedProb, 3)} because{" "}
+                    {[
+                      current.stackedPairs.opposed > 0 &&
+                        `${current.stackedPairs.opposed} opposed pair${current.stackedPairs.opposed === 1 ? "" : "s"}`,
+                      current.stackedPairs.sameTeam > 0 &&
+                        `${current.stackedPairs.sameTeam} same-team pair${current.stackedPairs.sameTeam === 1 ? "" : "s"}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" and ")}{" "}
+                    share a game (×{current.correlationFactor.toFixed(2)}).
+                  </>
+                ) : (
+                  " — no two legs share a game, so the plain product needs no correction."
+                )}
               </div>
+              {current.extrapolated && (
+                <div className="mt-2 font-mono text-[11px] uppercase tracking-widest text-clay">
+                  {current.stackedPairs.opposed} opposed pairs is past where that correction was
+                  checked — it was measured on slips carrying under one. Treat this slip's number as
+                  an estimate of an estimate.
+                </div>
+              )}
               {ev && (
                 <div className="mt-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                   Backtest at this size:{" "}
@@ -182,7 +236,7 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
                 <div className="mt-2 font-mono text-[11px] uppercase tracking-widest text-clay">
                   {current.short && `Only ${current.legs.length} legs available. `}
                   {current.doubledUp > 0 &&
-                    `${current.doubledUp} game${current.doubledUp === 1 ? "" : "s"} contribute two legs — the slate has ${current.gamesAvailable}, and those legs are the ones the stated number overstates. `}
+                    `${current.doubledUp} game${current.doubledUp === 1 ? "" : "s"} contribute more than one leg, out of ${current.gamesAvailable} on the slate. `}
                   {current.belowFloor > 0 &&
                     `${current.belowFloor} leg${current.belowFloor === 1 ? "" : "s"} below this slip's usual bar of ${pct(current.floor)}.`}
                 </div>

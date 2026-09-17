@@ -331,15 +331,24 @@ export const getNflTdScorers = createServerFn({ method: "GET" })
  *
  * Legs are drawn from the picks the board already shows, not from a separate
  * search — so every leg is a name a reader can find on the card above, with the
- * same probability and the same reasoning. At one leg per game that means the
- * slip is the N games whose lead pick is strongest, which is exactly the
- * construction research/cfb/parlay.py validated.
+ * same probability and the same reasoning.
+ *
+ * `maxPerGame` is the reader's choice. One leg per game needs no correlation
+ * correction; anything higher is priced rather than refused — see td-parlay.ts.
+ * Zero means unrestricted, because Infinity does not survive JSON.
  */
 export const getTdParlays = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ sport: z.enum(["cfb", "nfl"]), date: z.string().optional() }))
+  .inputValidator(
+    z.object({
+      sport: z.enum(["cfb", "nfl"]),
+      date: z.string().optional(),
+      maxPerGame: z.number().int().min(0).max(10).optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const date = data.date ?? todayET();
     const sport = data.sport;
+    const maxPerGame = data.maxPerGame === 0 ? Infinity : (data.maxPerGame ?? undefined);
     try {
       const { buildTdParlays, PARLAY_SIZES, SIZE_EVIDENCE } = await import("./td-parlay");
       const candidates: ParlayCandidate[] = [];
@@ -392,7 +401,8 @@ export const getTdParlays = createServerFn({ method: "GET" })
         sport,
         games,
         candidates: candidates.length,
-        parlays: buildTdParlays(candidates, PARLAY_SIZES),
+        maxPerGame: Number.isFinite(maxPerGame ?? NaN) ? (maxPerGame as number) : 0,
+        parlays: buildTdParlays(candidates, PARLAY_SIZES, maxPerGame),
         evidence: SIZE_EVIDENCE[sport] ?? {},
         note: offseasonNote(sport, date),
         source: "live" as const,

@@ -1,24 +1,44 @@
 /**
  * td-parlay.ts — touchdown-scorer slips of 5, 10, 15 and 20 legs.
  *
- * ONE LEG PER GAME
- * ----------------
- * That is the whole construction, and it was measured rather than assumed.
- * research/cfb/parlay.py builds every slip on every held-out Saturday both
- * ways. On 220 identical slates, one leg per game won outright — 18 winning
- * slips against 15 — and, more usefully, its stated probability was honest:
- * 1.02x the independence product, against 0.82x when two legs shared a game.
+ * STACKING A GAME IS PRICED, NOT BANNED
+ * -------------------------------------
+ * How many legs may come from one game is the caller's choice. What is not
+ * negotiable is that the number next to the slip stays honest, and legs from
+ * the same game do not behave independently, so the plain product is wrong for
+ * them.
  *
- * research/cfb/parlay_corr.py says why. Two OPPOSED players in the same game
- * score together only 0.754x as often as independence implies, against a
- * 0.964x control for players in different games. College football is decided
- * by blowouts: in one, the winning side's skill players score and the losing
- * side's do not, so a leg from each team is closer to a coin flip against
- * itself than two independent bets. Two players on the same team come in at
- * 0.954x — indistinguishable from the control — so the goal-line competition
- * everyone expects is not the effect that matters. It is the game script.
+ * research/cfb/parlay_corr.py measured it over every pair of candidates on
+ * every held-out slate:
  *
- * Since a team plays one game a day, one leg per game caps teams at one free.
+ *      relationship          pairs   both scored   product   vs control
+ *      same team               515        30.49%    31.95%        0.989
+ *      same game, opposed      267        22.85%    30.29%        0.782
+ *      different games      14,543        37.16%    38.53%        1.000
+ *
+ * The control is the important column: pairs from different games come in at
+ * 0.964 of their product, so the model is very slightly optimistic across the
+ * board, and the same-game numbers are read against that rather than against
+ * 1.0. Doing so leaves the same-team effect at 0.989 — nothing — and the
+ * opposed effect at 0.782, which is large.
+ *
+ * That is the opposite of the intuition. Two backs competing for one goal line
+ * barely matter. What matters is the GAME SCRIPT: college football is decided
+ * by blowouts, and in a blowout the winning side's skill players score while
+ * the losing side's do not, so a leg from each team is close to a bet against
+ * itself.
+ *
+ * So `adjustedProb` multiplies the product by 0.989 per same-team pair and
+ * 0.782 per opposed pair. research/cfb/parlay_stack.json checks that against
+ * real slips, and at five legs — the only size with enough wins to check — it
+ * lands: predicted 0.89 against measured 0.90 at two legs per game, 0.86
+ * against 0.89 at three, 0.84 against 0.88 uncapped.
+ *
+ * The honest limit of it: a per-pair factor multiplied over many overlapping
+ * pairs is a first-order approximation, and it was validated at slips carrying
+ * well under one opposed pair. A twenty-leg slip drawn from one game after
+ * another carries thirteen, where the same arithmetic says 0.03 and nobody has
+ * checked. `extrapolated` marks those slips so the page can say so.
  *
  * WHAT THESE SLIPS ARE WORTH
  * --------------------------
@@ -77,18 +97,31 @@ export type ParlayLeg = ParlayCandidate & {
 export type TdParlay = {
   size: number;
   legs: ParlayLeg[];
-  /** Product of the leg probabilities. Honest at one leg per game; optimistic
-   *  by roughly a fifth for each game that had to double up. */
+  /** Plain product of the leg probabilities — what independence would imply. */
   combinedProb: number;
-  /** "about 1 in N". Rounded, because 1 in 1,415.3 is a false precision. */
+  /** The product corrected for same-game correlation. This is the number the
+   *  card leads with, because it is the one that survived the backtest. */
+  adjustedProb: number;
+  /** "about 1 in N", from `adjustedProb`. Rounded — 1 in 1,415.3 is a false
+   *  precision. */
   oneIn: number;
-  /** Fair American price for `combinedProb`, before any book margin. */
+  /** Fair American price for `adjustedProb`, before any book margin. */
   fairPrice: number;
+  /** Same-game pairs on the slip, which is what the correction is applied to. */
+  stackedPairs: { sameTeam: number; opposed: number };
+  /** How much the correction moved the number: adjustedProb / combinedProb. */
+  correlationFactor: number;
+  /** True when the slip carries more opposed pairs than the correction was
+   *  validated on, so the adjustment is an extrapolation rather than a
+   *  measurement. */
+  extrapolated: boolean;
+  /** Legs per game this slip was allowed. */
+  maxPerGame: number;
   /** Mean leg probability — the number that falls as a slip gets longer. */
   meanLeg: number;
   /** The weakest leg on the slip. */
   worstLeg: number;
-  /** Games contributing two legs, because the slate could not fill the slip. */
+  /** Games contributing more than one leg. */
   doubledUp: number;
   /** Legs taken below the size's floor, for the same reason. */
   belowFloor: number;
@@ -111,6 +144,17 @@ export type TdParlay = {
 export const SIZE_FLOOR: Record<number, number> = { 5: 0.55, 10: 0.45, 15: 0.45, 20: 0.45 };
 export const PARLAY_SIZES = [5, 10, 15, 20];
 const DEFAULT_FLOOR = 0.45;
+
+/**
+ * Legs allowed from one game by default.
+ *
+ * Two, not one. One is the only setting that needs no correlation correction,
+ * but it is also a restriction on what a slip can be — a reader who wants two
+ * names out of a shootout should have them, and `adjustedProb` prices that
+ * honestly. The selector goes up to unrestricted.
+ */
+export const DEFAULT_MAX_PER_GAME = 2;
+export const MAX_PER_GAME_CHOICES = [1, 2, 3, Infinity];
 
 /** Held-out evidence per size, quoted on the card. `observed` is deliberately
  *  kept next to `expected` so a zero cannot be read as a verdict. */
@@ -137,6 +181,35 @@ export const SIZE_EVIDENCE: Record<
   },
 };
 
+/**
+ * Measured per-pair correction, read against the different-games control.
+ * research/cfb/parlay_corr.py; validated at the slip level in
+ * research/cfb/parlay_stack.json.
+ */
+export const PAIR_FACTOR = { sameTeam: 0.989, opposed: 0.782 };
+
+/**
+ * Opposed pairs beyond which the correction is extrapolating. The slips it was
+ * checked against carried well under one; past a handful, multiplying a
+ * per-pair factor over pairs that heavily overlap stops being a first-order
+ * approximation of anything measured.
+ */
+const VALIDATED_OPPOSED_PAIRS = 3;
+
+/** Same-game pairs on a slip, split by whether the two are opposed. */
+function countStackedPairs(legs: ParlayCandidate[]): { sameTeam: number; opposed: number } {
+  let sameTeam = 0;
+  let opposed = 0;
+  for (let i = 0; i < legs.length; i++) {
+    for (let j = i + 1; j < legs.length; j++) {
+      if (legs[i].gameId !== legs[j].gameId) continue;
+      if (legs[i].team === legs[j].team) sameTeam += 1;
+      else opposed += 1;
+    }
+  }
+  return { sameTeam, opposed };
+}
+
 const americanPrice = (p: number) =>
   p >= 0.5 ? -Math.round((100 * p) / (1 - p)) : Math.round((100 * (1 - p)) / p);
 
@@ -155,11 +228,20 @@ const americanPrice = (p: number) =>
  *      is a weaker leg or a slip that is not the size it claims
  *   4. both at once
  *
- * Whatever it took is reported: `doubledUp` counts games contributing two legs
- * and `belowFloor` counts legs that did not clear the bar. Quietly returning a
- * four-leg "five-leg slip" is the worse failure, so it is the one avoided.
+ * Whatever it took is reported: `doubledUp` counts games contributing more than
+ * one leg and `belowFloor` counts legs that did not clear the bar. Quietly
+ * returning a four-leg "five-leg slip" is the worse failure, so it is avoided.
+ *
+ * `maxPerGame` is the caller's choice — one keeps the product honest with no
+ * correction at all, and anything higher is priced by `adjustedProb` instead of
+ * refused. Infinity is allowed and means "take the best legs on the board,
+ * wherever they come from".
  */
-export function buildTdParlay(candidates: ParlayCandidate[], size: number): TdParlay {
+export function buildTdParlay(
+  candidates: ParlayCandidate[],
+  size: number,
+  maxPerGame = DEFAULT_MAX_PER_GAME,
+): TdParlay {
   const floor = SIZE_FLOOR[size] ?? DEFAULT_FLOOR;
   const byProb = [...candidates].sort((a, b) => b.prob - a.prob);
   const gamesAvailable = new Set(candidates.map((c) => c.gameId)).size;
@@ -168,11 +250,16 @@ export function buildTdParlay(candidates: ParlayCandidate[], size: number): TdPa
   const seenPlayer = new Set<string>();
   const picked: ParlayCandidate[] = [];
 
+  // Relax in the order that costs least: fill at the requested cap and floor
+  // first, then widen the cap by one, then reach below the floor, then both.
+  // Widening past the caller's cap only ever happens when the slate is too
+  // small to fill the slip — an NFL week has no twenty games.
+  const wider = Number.isFinite(maxPerGame) ? maxPerGame + 1 : maxPerGame;
   const passes: [number, number][] = [
-    [1, floor],
-    [2, floor],
-    [1, 0],
-    [2, 0],
+    [maxPerGame, floor],
+    [wider, floor],
+    [maxPerGame, 0],
+    [wider, 0],
   ];
   for (const [cap, minProb] of passes) {
     for (const c of byProb) {
@@ -200,13 +287,22 @@ export function buildTdParlay(candidates: ParlayCandidate[], size: number): TdPa
 
   const combinedProb = legs.reduce((acc, l) => acc * l.prob, 1);
   const doubledUp = [...perGame.values()].filter((n) => n > 1).length;
+  const stackedPairs = countStackedPairs(picked);
+  const factor =
+    PAIR_FACTOR.sameTeam ** stackedPairs.sameTeam * PAIR_FACTOR.opposed ** stackedPairs.opposed;
+  const adjustedProb = legs.length ? combinedProb * factor : 0;
 
   return {
     size,
     legs,
     combinedProb: legs.length ? combinedProb : 0,
-    oneIn: legs.length && combinedProb > 0 ? Math.round(1 / combinedProb) : 0,
-    fairPrice: legs.length ? americanPrice(combinedProb) : 0,
+    adjustedProb,
+    oneIn: adjustedProb > 0 ? Math.round(1 / adjustedProb) : 0,
+    fairPrice: legs.length ? americanPrice(adjustedProb) : 0,
+    stackedPairs,
+    correlationFactor: legs.length ? factor : 1,
+    extrapolated: stackedPairs.opposed > VALIDATED_OPPOSED_PAIRS,
+    maxPerGame,
     meanLeg: legs.length ? legs.reduce((s, l) => s + l.prob, 0) / legs.length : 0,
     worstLeg: legs.length ? Math.min(...legs.map((l) => l.prob)) : 0,
     doubledUp,
@@ -221,6 +317,7 @@ export function buildTdParlay(candidates: ParlayCandidate[], size: number): TdPa
 export function buildTdParlays(
   candidates: ParlayCandidate[],
   sizes: number[] = PARLAY_SIZES,
+  maxPerGame = DEFAULT_MAX_PER_GAME,
 ): TdParlay[] {
-  return sizes.map((s) => buildTdParlay(candidates, s));
+  return sizes.map((s) => buildTdParlay(candidates, s, maxPerGame));
 }
