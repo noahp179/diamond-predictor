@@ -1,0 +1,118 @@
+{
+ "shipped": {
+  "top1": 0.5628318584070796,
+  "auc": 0.6918335019873183,
+  "ece": 0.016604648962927415,
+  "logloss": 0.5118777470239664
+ },
+ "interactions": {
+  "top1": 0.5752212389380531,
+  "auc": 0.6965545157734768,
+  "ece": 0.006928334269544977,
+  "logloss": 0.5092138474592957,
+  "params": 137
+ },
+ "bootstrap": {
+  "mean": 0.012814792478767042,
+  "lo": -0.0022176038878054635,
+  "hi": 0.029412566553338904,
+  "p_better": 0.942
+ },
+ "mcnemar": {
+  "ix_only": 77,
+  "shipped_only": 63,
+  "p": 0.27184203624171244
+ },
+ "per_season": {
+  "2025": {
+   "ix": 0.5724789915966386,
+   "shipped": 0.555672268907563
+  },
+  "2026": {
+   "ix": 0.5898876404494382,
+   "shipped": 0.601123595505618
+  }
+ },
+ "top_interactions": [
+  {
+   "term": "rush_ypg rec_td_rate",
+   "coef": -0.12386364286422759
+  },
+  {
+   "term": "rec_ypg elo_margin",
+   "coef": -0.11533235306247464
+  },
+  {
+   "term": "carry_share elo_margin",
+   "coef": 0.1080124529233888
+  },
+  {
+   "term": "cpg rec_td_rate",
+   "coef": 0.10373911035841608
+  },
+  {
+   "term": "rpg team_rec_tdpg",
+   "coef": 0.10218997542623251
+  },
+  {
+   "term": "cpg is_home",
+   "coef": 0.1006130637214607
+  },
+  {
+   "term": "rush_ypg anytime_rate",
+   "coef": -0.09863532697865977
+  },
+  {
+   "term": "rec_share rec_ypg",
+   "coef": -0.09691435690208812
+  },
+  {
+   "term": "rpg elo_margin",
+   "coef": 0.09461195934421868
+  },
+  {
+   "term": "cpg rush_ypg",
+   "coef": -0.09025120162579642
+  },
+  {
+   "term": "rec_share rpg",
+   "coef": 0.08681447494593778
+  },
+  {
+   "term": "rec_ypg gp",
+   "coef": 0.0834571132387934
+  },
+  {
+   "term": "cpg elo_margin",
+   "coef": -0.07873508976108876
+  },
+  {
+   "term": "rec_ypg rush_td_rate",
+   "coef": -0.07776937372056095
+  },
+  {
+   "term": "anytime_rate proj_team_pts",
+   "coef": -0.07469596076940205
+  },
+  {
+   "term": "carry_share is_home",
+   "coef": -0.07465818554709537
+  },
+  {
+   "term": "rec_ypg team_rec_tdpg",
+   "coef": -0.07251353757084851
+  },
+  {
+   "term": "rec_td_rate proj_team_pts",
+   "coef": 0.06928479467900607
+  },
+  {
+   "term": "cpg rush_td_rate",
+   "coef": 0.06649847772196224
+  },
+  {
+   "term": "cpg gp",
+   "coef": 0.06642945011829082
+  }
+ ]
+}
