@@ -18,6 +18,7 @@
  * (see USAGE_WINDOW) and the picks say so rather than the board going blank.
  */
 import model from "./td-model.json";
+import { explain } from "./td-reasons";
 import { etDateOf, todayET } from "./date";
 import { fetchScoreboard, seasonOf, type SlateGame } from "./espn.server";
 
@@ -427,6 +428,12 @@ export type TdPick = {
    *  Non-zero `carried` is the honest caveat on an early-season number. */
   games: number;
   carried: number;
+  /** Why the model likes it, read back out of its own coefficients. The Platt
+   *  step in `infer` is monotone, so it rescales the probability without
+   *  reordering which features drove it. See td-reasons.ts. */
+  reasons: string[];
+  /** The biggest thing arguing against the pick, where there is one. */
+  against: string | null;
 };
 export type TdGame = {
   gameId: number;
@@ -498,6 +505,13 @@ export async function tdScorersSlate(
           if (p.gp < 1 || p.car + p.tgt < 1) continue;
           const x = featureVector(p, team, oppDef, isHome, implied, total, margin);
           const prob = infer(x);
+          const { reasons, against } = explain(model, x, {
+            games: p.gp,
+            team: abbr,
+            opponent: isHome ? g.away.abbr : g.home.abbr,
+            carries: p.car / p.gp,
+            catches: p.tgt / p.gp,
+          });
           cand.push({
             pick: {
               playerId: p.id,
@@ -507,6 +521,8 @@ export async function tdScorersSlate(
               confidence: 0,
               games: p.gp,
               carried: p.cgp,
+              reasons,
+              against,
             },
             gp: p.gp,
             cgp: p.cgp,

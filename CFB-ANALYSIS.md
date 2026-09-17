@@ -363,7 +363,107 @@ rendering "0–0" on every upcoming game card.
 
 ---
 
-## 7. Reproducing it
+## 7. Parlays, and what they are actually worth
+
+Five, ten, fifteen and twenty touchdown scorers on one slip. The construction
+was measured, not assumed, and so was the honesty of the number it quotes.
+
+### One leg per game
+
+`research/cfb/parlay.py` builds every slip on every held-out Saturday both
+ways. On **220 identical slates**, one leg per game won outright — 18 winning
+slips against 15 — and, more usefully, its stated probability was honest:
+
+| construction | realised | independence product | ratio |
+|---|---|---|---|
+| **one leg per game** | 8.18% | 8.05% | **1.02** |
+| two legs per game | 6.82% | 8.36% | 0.82 |
+
+`research/cfb/parlay_corr.py` says why, by comparing how often pairs of
+candidates scored together against the product of their two probabilities:
+
+| pair | pairs | both scored | product | ratio |
+|---|---|---|---|---|
+| same team | 515 | 30.49% | 31.95% | 0.954 |
+| **same game, opposed** | 267 | **22.85%** | 30.29% | **0.754** |
+| different games (control) | 14,543 | 37.16% | 38.53% | 0.964 |
+
+Read against the 0.964 control, the same-team effect is nothing (0.99) and the
+opposed-pair effect is large (0.78). That is the opposite of the intuition —
+everyone expects two backs to compete for the same goal line, and they barely
+do. What actually matters is the **game script**: college football is decided by
+blowouts, and in a blowout the winning side's skill players score while the
+losing side's do not. A leg from each team is close to a bet against itself.
+
+One leg per game removes both effects, and since a team plays one game a day it
+caps teams at one for free.
+
+### What each size is worth
+
+Held out on 2025–26, one leg per game (`research/cfb/parlay_final.json`):
+
+| legs | floor | stated | about | observed | mean leg |
+|---|---|---|---|---|---|
+| 5 | 0.55 | 24.6% | 1 in 4 | **6 of 19 slips** | 73.7% |
+| 10 | 0.45 | 4.4% | 1 in 23 | 0 of 17 (0.7 expected) | 75.3% |
+| 15 | 0.45 | 0.63% | 1 in 159 | 0 of 16 (0.1 expected) | 71.2% |
+| 20 | 0.45 | 0.071% | **1 in 1,415** | 0 of 16 (0.01 expected) | 71.2% |
+
+**The zeroes are not a result.** At ten legs and up the product predicts fewer
+than one winning slip across the entire held-out period, so observing none is
+exactly what should happen. It is not evidence the model is wrong, and it is
+not evidence the slip works either — there is no sample, and there cannot be
+one from two seasons.
+
+A twenty-leg slip is one winning Saturday in about fourteen hundred. College
+football plays roughly fourteen Saturdays a year. The page prints the number.
+
+The floor only bites at five legs, where being choosier measurably helps — a
+five-leg slip hit 21.4% at a 0.35 floor and 31.6% at 0.55. By ten legs a full
+Saturday's best twenty picks all clear 0.55 anyway, so the floor stops mattering.
+
+### The NFL's ceiling is arithmetic
+
+From `research/nfl-td-scorer/parlay_nfl.py`, over 2022–24:
+
+| legs | stated | observed | buildable |
+|---|---|---|---|
+| 5 | 6.7% | 4 of 53 weeks | 86% of weeks |
+| 10 | 0.20% | 0 of 42 | 82% |
+| 15 | 0.007% | 0 of 4 | 55% |
+| 20 | — | — | **never** |
+
+One leg per game caps a slip at the size of the slate, and **no NFL week has
+twenty games** — the maximum is sixteen. A twenty-leg NFL slip has to double up,
+which is precisely the construction measured at 0.82× above. The card builds it
+anyway, because it was asked for, and reports how many games doubled up and how
+many legs fell below the floor. On the 2026-09-20 slate that came to six
+doubled-up games and seven sub-floor legs, for a stated 1 in 1.5 million.
+
+### Per-leg reasoning
+
+Each leg carries up to three reasons and, where there is one, the strongest
+argument against. Both are read back out of the model's own arithmetic: for a
+logistic regression, a feature's push on the log-odds is exactly
+`coef × (x − mean) / std`, so ranking those says which facts actually moved the
+number. Writing plausible sentences about carries and red-zone looks instead
+would read better and drift from the model the first time anything is refitted.
+This cannot drift — if a coefficient changes sign, the sentence changes with it.
+
+Three things that needed care (`src/lib/td-reasons.ts`):
+
+- **Rate phrases are gated on volume.** "Scores on 4% of his carries" for a
+  tight end with no carries is the league prior wearing his name.
+- **Usage shares never appear as a caveat.** "Only 0% of the catches" reads as
+  damning and is just what a running back looks like.
+- **Thin evidence outranks the coefficients.** `gp`'s fitted coefficient is
+  slightly *negative* — it is collinear with the usage terms — so three games of
+  history registers as a small push in favour. That is an artefact, and letting
+  it hide the one caveat that qualifies every September number would be perverse.
+
+---
+
+## 8. Reproducing it
 
 ```bash
 cd research/cfb
@@ -375,6 +475,9 @@ python3 ablate.py           # what the expensive features actually buy
 python3 selection.py        # where the second pick's bar belongs
 python3 spread_prob.py      # fit the spread-to-probability sigma
 python3 final.py            # definitive metrics + export src/lib/cfb-td-model.json
+python3 parlay.py           # parlay construction sweep
+python3 parlay_corr.py      # same-team vs same-game correlation
+python3 -c "import parlay; parlay.final()"   # the shipped size rules
 ```
 
 `final.py` writes three feature vectors and their probabilities into the model
@@ -390,4 +493,5 @@ bun scripts/test-cfb-td.ts      # TS model vs the Python fit
 bun scripts/test-cfb-smoke.ts   # the whole board against live ESPN
 bun scripts/test-td-ledger.ts   # what the ledger will and will not record
 bun scripts/test-td-settle.ts   # picked players resolved in real box scores
+bun scripts/test-td-parlay.ts   # slip invariants on a live slate
 ```

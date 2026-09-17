@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { todayET } from "./date";
 import { bestOddsSlate, predictSlate, recommendedSlate, seasonOf, type Sport } from "./espn.server";
+import type { ParlayCandidate } from "./td-parlay";
 
 function seasonLabel(sport: Sport, season: number): string {
   return sport === "nba" ? `${season - 1}-${String(season % 100).padStart(2, "0")}` : `${season}`;
@@ -317,6 +318,96 @@ export const getNflTdScorers = createServerFn({ method: "GET" })
         games: [],
         season: 0,
         seasonLabel: "",
+        note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
+        source: "error" as const,
+      };
+    }
+  });
+
+// -------------------------------------------------------------- TD parlays
+
+/**
+ * Touchdown slips of 5, 10, 15 and 20 legs, for either football.
+ *
+ * Legs are drawn from the picks the board already shows, not from a separate
+ * search — so every leg is a name a reader can find on the card above, with the
+ * same probability and the same reasoning. At one leg per game that means the
+ * slip is the N games whose lead pick is strongest, which is exactly the
+ * construction research/cfb/parlay.py validated.
+ */
+export const getTdParlays = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ sport: z.enum(["cfb", "nfl"]), date: z.string().optional() }))
+  .handler(async ({ data }) => {
+    const date = data.date ?? todayET();
+    const sport = data.sport;
+    try {
+      const { buildTdParlays, PARLAY_SIZES, SIZE_EVIDENCE } = await import("./td-parlay");
+      const candidates: ParlayCandidate[] = [];
+      let games = 0;
+      if (sport === "cfb") {
+        const { cfbTdSlate } = await import("./cfb-td.server");
+        const slate = await cfbTdSlate(date);
+        games = slate.games.length;
+        for (const g of slate.games) {
+          if (g.started) continue;
+          for (const p of g.picks)
+            candidates.push({
+              playerId: p.playerId,
+              player: p.player,
+              position: p.position,
+              team: p.team,
+              gameId: g.gameId,
+              matchup: g.matchup,
+              prob: p.prob,
+              tier: p.tier,
+              tierHit: p.tierHit,
+              reasons: p.reasons,
+              against: p.against,
+            });
+        }
+      } else {
+        const { tdScorersSlate } = await import("./nfl-td.server");
+        const slate = await tdScorersSlate(date);
+        games = slate.games.length;
+        for (const g of slate.games) {
+          if (g.started) continue;
+          for (const p of g.picks.slice(0, 3))
+            candidates.push({
+              playerId: p.playerId,
+              player: p.player,
+              position: null,
+              team: p.team,
+              gameId: g.gameId,
+              matchup: g.matchup,
+              prob: p.prob,
+              tier: null,
+              tierHit: null,
+              reasons: p.reasons,
+              against: p.against,
+            });
+        }
+      }
+      return {
+        date,
+        sport,
+        games,
+        candidates: candidates.length,
+        parlays: buildTdParlays(candidates, PARLAY_SIZES),
+        evidence: SIZE_EVIDENCE[sport] ?? {},
+        note: offseasonNote(sport, date),
+        source: "live" as const,
+      };
+    } catch (err) {
+      console.error(`[tdParlays] ${sport} ${date} failed:`, err);
+      const { PARLAY_SIZES, SIZE_EVIDENCE } = await import("./td-parlay");
+      return {
+        date,
+        sport,
+        games: 0,
+        candidates: 0,
+        parlays: [] as Awaited<ReturnType<typeof import("./td-parlay").buildTdParlays>>,
+        evidence: SIZE_EVIDENCE[sport] ?? {},
+        sizes: PARLAY_SIZES,
         note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
         source: "error" as const,
       };

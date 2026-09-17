@@ -1,0 +1,153 @@
+[
+ {
+  "size": 5,
+  "floor": 0.0,
+  "weeks": 66,
+  "filled": 57,
+  "hits": 4,
+  "realised": 0.07017543859649122,
+  "product": 0.06428878895552757,
+  "ratio": 1.091565726102506,
+  "leg_hit_rate": 0.5789473684210527
+ },
+ {
+  "size": 5,
+  "floor": 0.35,
+  "weeks": 66,
+  "filled": 57,
+  "hits": 4,
+  "realised": 0.07017543859649122,
+  "product": 0.06428878895552757,
+  "ratio": 1.091565726102506,
+  "leg_hit_rate": 0.5789473684210527
+ },
+ {
+  "size": 5,
+  "floor": 0.4,
+  "weeks": 66,
+  "filled": 55,
+  "hits": 4,
+  "realised": 0.07272727272727272,
+  "product": 0.06580066583097428,
+  "ratio": 1.1052665168174922,
+  "leg_hit_rate": 0.5781818181818181
+ },
+ {
+  "size": 5,
+  "floor": 0.45,
+  "weeks": 66,
+  "filled": 53,
+  "hits": 4,
+  "realised": 0.07547169811320754,
+  "product": 0.06729187364379209,
+  "ratio": 1.1215573891242077,
+  "leg_hit_rate": 0.5849056603773585
+ },
+ {
+  "size": 10,
+  "floor": 0.0,
+  "weeks": 66,
+  "filled": 54,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 0.0017086020952388357,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.5074074074074074
+ },
+ {
+  "size": 10,
+  "floor": 0.35,
+  "weeks": 66,
+  "filled": 51,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 0.0017846981441261922,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.5117647058823529
+ },
+ {
+  "size": 10,
+  "floor": 0.4,
+  "weeks": 66,
+  "filled": 42,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 0.001975690472710655,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.5023809523809524
+ },
+ {
+  "size": 10,
+  "floor": 0.45,
+  "weeks": 66,
+  "filled": 14,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 0.003082059106976953,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.4857142857142857
+ },
+ {
+  "size": 15,
+  "floor": 0.0,
+  "weeks": 66,
+  "filled": 36,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 2.1502695039734634e-05,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.4740740740740741
+ },
+ {
+  "size": 15,
+  "floor": 0.35,
+  "weeks": 66,
+  "filled": 13,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 3.614632602285014e-05,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.48717948717948717
+ },
+ {
+  "size": 15,
+  "floor": 0.4,
+  "weeks": 66,
+  "filled": 4,
+  "hits": 0,
+  "realised": 0.0,
+  "product": 7.056916500075382e-05,
+  "ratio": 0.0,
+  "leg_hit_rate": 0.5333333333333333
+ },
+ {
+  "size": 15,
+  "floor": 0.45,
+  "weeks": 66,
+  "filled": 0
+ },
+ {
+  "size": 20,
+  "floor": 0.0,
+  "weeks": 66,
+  "filled": 0
+ },
+ {
+  "size": 20,
+  "floor": 0.35,
+  "weeks": 66,
+  "filled": 0
+ },
+ {
+  "size": 20,
+  "floor": 0.4,
+  "weeks": 66,
+  "filled": 0
+ },
+ {
+  "size": 20,
+  "floor": 0.45,
+  "weeks": 66,
+  "filled": 0
+ }
+]

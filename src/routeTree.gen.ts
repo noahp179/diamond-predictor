@@ -33,6 +33,7 @@ import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
 import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
+import { Route as NflParlaysRouteImport } from './routes/nfl.parlays'
 import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
 import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
 import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
@@ -46,6 +47,7 @@ import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
 import { Route as CfbTrackRecordRouteImport } from './routes/cfb.track-record'
 import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
 import { Route as CfbRecommendedRouteImport } from './routes/cfb.recommended'
+import { Route as CfbParlaysRouteImport } from './routes/cfb.parlays'
 import { Route as CfbBestOddsRouteImport } from './routes/cfb.best-odds'
 import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
 import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
@@ -177,6 +179,11 @@ const NflRecommendedRoute = NflRecommendedRouteImport.update({
   path: '/recommended',
   getParentRoute: () => NflRoute,
 } as any)
+const NflParlaysRoute = NflParlaysRouteImport.update({
+  id: '/parlays',
+  path: '/parlays',
+  getParentRoute: () => NflRoute,
+} as any)
 const NflBestOddsRoute = NflBestOddsRouteImport.update({
   id: '/best-odds',
   path: '/best-odds',
@@ -240,6 +247,11 @@ const CfbTdScorersRoute = CfbTdScorersRouteImport.update({
 const CfbRecommendedRoute = CfbRecommendedRouteImport.update({
   id: '/recommended',
   path: '/recommended',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbParlaysRoute = CfbParlaysRouteImport.update({
+  id: '/parlays',
+  path: '/parlays',
   getParentRoute: () => CfbRoute,
 } as any)
 const CfbBestOddsRoute = CfbBestOddsRouteImport.update({
@@ -310,6 +322,7 @@ export interface FileRoutesByFullPath {
   '/teams': typeof TeamsRoute
   '/tennis': typeof TennisRouteWithChildren
   '/cfb/best-odds': typeof CfbBestOddsRoute
+  '/cfb/parlays': typeof CfbParlaysRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
@@ -323,6 +336,7 @@ export interface FileRoutesByFullPath {
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
   '/nfl/best-odds': typeof NflBestOddsRoute
+  '/nfl/parlays': typeof NflParlaysRoute
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
@@ -353,6 +367,7 @@ export interface FileRoutesByTo {
   '/props': typeof PropsRoute
   '/teams': typeof TeamsRoute
   '/cfb/best-odds': typeof CfbBestOddsRoute
+  '/cfb/parlays': typeof CfbParlaysRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
@@ -366,6 +381,7 @@ export interface FileRoutesByTo {
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
   '/nfl/best-odds': typeof NflBestOddsRoute
+  '/nfl/parlays': typeof NflParlaysRoute
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
@@ -401,6 +417,7 @@ export interface FileRoutesById {
   '/teams': typeof TeamsRoute
   '/tennis': typeof TennisRouteWithChildren
   '/cfb/best-odds': typeof CfbBestOddsRoute
+  '/cfb/parlays': typeof CfbParlaysRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
@@ -414,6 +431,7 @@ export interface FileRoutesById {
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
   '/nfl/best-odds': typeof NflBestOddsRoute
+  '/nfl/parlays': typeof NflParlaysRoute
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
@@ -452,6 +470,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/tennis'
     | '/cfb/best-odds'
+    | '/cfb/parlays'
     | '/cfb/recommended'
     | '/cfb/td-scorers'
     | '/cfb/track-record'
@@ -465,6 +484,7 @@ export interface FileRouteTypes {
     | '/nba/recommended'
     | '/nba/track-record'
     | '/nfl/best-odds'
+    | '/nfl/parlays'
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
@@ -495,6 +515,7 @@ export interface FileRouteTypes {
     | '/props'
     | '/teams'
     | '/cfb/best-odds'
+    | '/cfb/parlays'
     | '/cfb/recommended'
     | '/cfb/td-scorers'
     | '/cfb/track-record'
@@ -508,6 +529,7 @@ export interface FileRouteTypes {
     | '/nba/recommended'
     | '/nba/track-record'
     | '/nfl/best-odds'
+    | '/nfl/parlays'
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
@@ -542,6 +564,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/tennis'
     | '/cfb/best-odds'
+    | '/cfb/parlays'
     | '/cfb/recommended'
     | '/cfb/td-scorers'
     | '/cfb/track-record'
@@ -555,6 +578,7 @@ export interface FileRouteTypes {
     | '/nba/recommended'
     | '/nba/track-record'
     | '/nfl/best-odds'
+    | '/nfl/parlays'
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
@@ -765,6 +789,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NflRecommendedRouteImport
       parentRoute: typeof NflRoute
     }
+    '/nfl/parlays': {
+      id: '/nfl/parlays'
+      path: '/parlays'
+      fullPath: '/nfl/parlays'
+      preLoaderRoute: typeof NflParlaysRouteImport
+      parentRoute: typeof NflRoute
+    }
     '/nfl/best-odds': {
       id: '/nfl/best-odds'
       path: '/best-odds'
@@ -856,6 +887,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CfbRecommendedRouteImport
       parentRoute: typeof CfbRoute
     }
+    '/cfb/parlays': {
+      id: '/cfb/parlays'
+      path: '/parlays'
+      fullPath: '/cfb/parlays'
+      preLoaderRoute: typeof CfbParlaysRouteImport
+      parentRoute: typeof CfbRoute
+    }
     '/cfb/best-odds': {
       id: '/cfb/best-odds'
       path: '/best-odds'
@@ -931,6 +969,7 @@ declare module '@tanstack/react-router' {
 
 interface CfbRouteChildren {
   CfbBestOddsRoute: typeof CfbBestOddsRoute
+  CfbParlaysRoute: typeof CfbParlaysRoute
   CfbRecommendedRoute: typeof CfbRecommendedRoute
   CfbTdScorersRoute: typeof CfbTdScorersRoute
   CfbTrackRecordRoute: typeof CfbTrackRecordRoute
@@ -939,6 +978,7 @@ interface CfbRouteChildren {
 
 const CfbRouteChildren: CfbRouteChildren = {
   CfbBestOddsRoute: CfbBestOddsRoute,
+  CfbParlaysRoute: CfbParlaysRoute,
   CfbRecommendedRoute: CfbRecommendedRoute,
   CfbTdScorersRoute: CfbTdScorersRoute,
   CfbTrackRecordRoute: CfbTrackRecordRoute,
@@ -987,6 +1027,7 @@ const NbaRouteWithChildren = NbaRoute._addFileChildren(NbaRouteChildren)
 
 interface NflRouteChildren {
   NflBestOddsRoute: typeof NflBestOddsRoute
+  NflParlaysRoute: typeof NflParlaysRoute
   NflRecommendedRoute: typeof NflRecommendedRoute
   NflTdScorersRoute: typeof NflTdScorersRoute
   NflTrackRecordRoute: typeof NflTrackRecordRoute
@@ -995,6 +1036,7 @@ interface NflRouteChildren {
 
 const NflRouteChildren: NflRouteChildren = {
   NflBestOddsRoute: NflBestOddsRoute,
+  NflParlaysRoute: NflParlaysRoute,
   NflRecommendedRoute: NflRecommendedRoute,
   NflTdScorersRoute: NflTdScorersRoute,
   NflTrackRecordRoute: NflTrackRecordRoute,

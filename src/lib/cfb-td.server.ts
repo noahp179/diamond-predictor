@@ -38,6 +38,7 @@
  * `staleFeatures` marks those slates and the page says so.
  */
 import model from "./cfb-td-model.json";
+import { explain } from "./td-reasons";
 import { todayET } from "./date";
 import { fetchScoreboard, homeEdge, teamFormAsOf, type SlateGame } from "./espn.server";
 
@@ -344,6 +345,11 @@ export type CfbTdPick = {
   tierHit: number;
   /** Games of usage behind the pick. */
   games: number;
+  /** Why the model likes it — read back out of its own coefficients, strongest
+   *  first. See td-reasons.ts. */
+  reasons: string[];
+  /** The biggest thing arguing against the pick, where there is one. */
+  against: string | null;
 };
 
 export type CfbTdGame = {
@@ -468,8 +474,16 @@ export async function cfbTdSlate(date: string): Promise<{
       const gp = Math.max(1, teamGames);
       for (const p of usage.players) {
         if (p.car + p.rec < 1) continue;
-        const prob = infer(featureVector(p, usage, gp, isHome, projPts, projTotal, margin));
+        const x = featureVector(p, usage, gp, isHome, projPts, projTotal, margin);
+        const prob = infer(x);
         const t = tierFor(prob);
+        const { reasons, against } = explain(model, x, {
+          games: gp,
+          team: abbr,
+          opponent: isHome ? g.away.abbr : g.home.abbr,
+          carries: p.car / gp,
+          catches: p.rec / gp,
+        });
         cand.push({
           playerId: p.id,
           player: p.name,
@@ -479,6 +493,8 @@ export async function cfbTdSlate(date: string): Promise<{
           tier: t.label,
           tierHit: t.hit,
           games: Math.round(gp),
+          reasons,
+          against,
         });
       }
     }

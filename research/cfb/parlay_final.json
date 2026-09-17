@@ -1,0 +1,46 @@
+{
+ "5": {
+  "floor": 0.55,
+  "slips": 19,
+  "eligible_slates": 29,
+  "product": 0.2462460515585973,
+  "one_in": 4.060978820454458,
+  "hits": 6,
+  "observed": 0.3157894736842105,
+  "expected_hits": 4.678674979613349,
+  "leg_hit_rate": 0.7368421052631579
+ },
+ "10": {
+  "floor": 0.45,
+  "slips": 17,
+  "eligible_slates": 20,
+  "product": 0.04350653785633945,
+  "one_in": 22.985051196260322,
+  "hits": 0,
+  "observed": 0.0,
+  "expected_hits": 0.7396111435577706,
+  "leg_hit_rate": 0.7529411764705882
+ },
+ "15": {
+  "floor": 0.45,
+  "slips": 16,
+  "eligible_slates": 17,
+  "product": 0.00630100271152471,
+  "one_in": 158.70489916961503,
+  "hits": 0,
+  "observed": 0.0,
+  "expected_hits": 0.10081604338439536,
+  "leg_hit_rate": 0.7125
+ },
+ "20": {
+  "floor": 0.45,
+  "slips": 16,
+  "eligible_slates": 16,
+  "product": 0.000706845200787574,
+  "one_in": 1414.7369167758231,
+  "hits": 0,
+  "observed": 0.0,
+  "expected_hits": 0.011309523212601183,
+  "leg_hit_rate": 0.7125
+ }
+}

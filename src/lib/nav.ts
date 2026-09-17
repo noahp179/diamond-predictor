@@ -55,6 +55,7 @@ export type ViewKey =
   | "twoBases"
   | "stacks"
   | "tdScorers"
+  | "parlay"
   | "trackRecord"
   | "model";
 
@@ -148,14 +149,15 @@ const LABELS: Record<ViewKey, string> = {
   twoBases: "2+ Bases",
   stacks: "Team Stacks",
   tdScorers: "TD Scorers",
+  parlay: "TD Parlays",
   trackRecord: "Track Record",
   model: "Model & Backtest",
 };
 
 const VIEWS: Record<SportKey, ViewKey[]> = {
   mlb: ["slate", "recommended", "bestOdds", "props", "twoBases", "stacks", "trackRecord"],
-  nfl: ["slate", "recommended", "bestOdds", "tdScorers", "trackRecord"],
-  cfb: ["slate", "recommended", "bestOdds", "tdScorers", "trackRecord"],
+  nfl: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
+  cfb: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
   nba: ["slate", "recommended", "bestOdds", "trackRecord"],
   soccer: ["slate", "props", "model", "trackRecord"],
   tennis: ["slate", "model", "trackRecord"],
@@ -170,6 +172,7 @@ const SEGMENT: Record<ViewKey, string> = {
   twoBases: "two-bases",
   stacks: "stacks",
   tdScorers: "td-scorers",
+  parlay: "parlays",
   trackRecord: "track-record",
   model: "model",
 };
