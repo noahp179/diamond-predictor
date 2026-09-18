@@ -13,6 +13,23 @@ type Leg = Parlay["legs"][number];
 
 const SIZES = [5, 10, 15, 20];
 
+/**
+ * The three questions the NFL board can answer off one feature vector.
+ *
+ * Only anytime runs on college — the other two were fitted on NFL play-by-play
+ * and NFL market lines, and college has neither feed behind them.
+ *
+ * Fifteen and twenty legs are absent from the narrow markets on purpose. At a
+ * 3.7% base rate a fifteen-leg 2+ slip is a number with nothing attached to it,
+ * and a first-touchdown slip cannot have more legs than the slate has games.
+ */
+const MARKETS = [
+  { value: "anytime", label: "Anytime TD", blurb: "one touchdown or more" },
+  { value: "td1", label: "First TD", blurb: "the game's opening touchdown" },
+  { value: "td2", label: "2+ TDs", blurb: "two or more in one game" },
+] as const;
+type Market = (typeof MARKETS)[number]["value"];
+
 /** 0 means unrestricted — Infinity does not survive the wire. */
 const PER_GAME: { value: number; label: string }[] = [
   { value: 1, label: "1 / game" },
@@ -111,21 +128,50 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
   const [date, setDate] = useState(todayET());
   const [size, setSize] = useState(5);
   const [perGame, setPerGame] = useState(2);
+  const [market, setMarket] = useState<Market>("anytime");
   const run = useServerFn(getTdParlays);
   const { data, isLoading, isError } = useQuery({
-    queryKey: [sport, "td-parlay", date, perGame],
-    queryFn: () => run({ data: { sport, date, maxPerGame: perGame } }),
+    queryKey: [sport, "td-parlay", date, perGame, market],
+    queryFn: () => run({ data: { sport, date, maxPerGame: perGame, market } }),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
 
   const parlays = data?.parlays ?? [];
-  const current = parlays.find((p) => p.size === size);
+  // Each market offers its own sizes, and a reader who was on 20 legs when they
+  // switch to a market that stops at 10 must not be left staring at a blank
+  // panel — fall back to the largest size this market does offer.
+  const sizes = (data?.sizes ?? SIZES) as number[];
+  const activeSize = sizes.includes(size) ? size : (sizes[sizes.length - 1] ?? 5);
+  const current = parlays.find((p) => p.size === activeSize);
   const evidence = (data?.evidence ?? {}) as Record<
     number,
-    { stated: number; oneIn: number; observed: string; note?: string }
+    {
+      stated: number;
+      oneIn: number;
+      observed?: string;
+      note?: string;
+      slips?: number;
+      won?: number;
+      expected?: number;
+    }
   >;
-  const ev = evidence[size];
+  const evRaw = evidence[activeSize];
+  // The two evidence shapes say the same thing differently: the anytime board
+  // carries a written `observed`, the narrow markets carry the counts. Render
+  // the counts into the same sentence rather than teaching the card two formats.
+  const ev = evRaw
+    ? {
+        ...evRaw,
+        observed:
+          evRaw.observed ??
+          `${evRaw.won ?? 0} of ${evRaw.slips ?? 0} held-out weeks (${(evRaw.expected ?? 0).toFixed(3)} expected)`,
+      }
+    : undefined;
+  const heldout = data?.heldout as
+    | { top1: number; games: number; base_rate: number; auc: number; ceiling?: number }
+    | null
+    | undefined;
   const label = sport === "cfb" ? "College Football" : "NFL";
 
   // Quote the correction the board is actually applying rather than a number
@@ -149,16 +195,28 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
       eyebrow={`Diamond Edge · ${label}`}
       title="Touchdown Parlays"
       blurb={
-        `Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, ` +
-        `each with the model's probability and its reasons. Stack as many legs from ` +
-        `one game as you like — the quoted chance is corrected for it rather than ` +
-        `assuming the legs are independent, because two opposed players in the same ` +
-        `game score together only ${pair.opposed.toFixed(2)}× as often as the plain ` +
-        `product implies, and two on the same team ${pair.sameTeam.toFixed(2)}×.`
+        market === "anytime"
+          ? `Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, ` +
+            `each with the model's probability and its reasons. Stack as many legs from ` +
+            `one game as you like — the quoted chance is corrected for it rather than ` +
+            `assuming the legs are independent, because two opposed players in the same ` +
+            `game score together only ${pair.opposed.toFixed(2)}× as often as the plain ` +
+            `product implies, and two on the same team ${pair.sameTeam.toFixed(2)}×.`
+          : market === "td1"
+            ? `Five or ten players to score their game's FIRST touchdown. One leg per ` +
+              `game, and that is arithmetic rather than caution: exactly one player ` +
+              `opens a game's scoring, so two legs from one game could never both win. ` +
+              `About one first touchdown in twenty goes to a defender or a returner, ` +
+              `which no pick here could have been, and every number below already ` +
+              `carries that.`
+            : `Five or ten players to score TWICE OR MORE in their game. A rare thing — ` +
+              `it happens to about one candidate in twenty-seven — and the board is ` +
+              `better at ranking it than at being confident about it. Read the ` +
+              `backtest line under each slip before the price.`
       }
       date={date}
       onDateChange={setDate}
-      footerNote={`Data · ESPN · ${modelName} on season usage · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
+      footerNote={`Data · ESPN · ${market === "anytime" ? modelName : "L2 logistic"} on season usage · ${MARKETS.find((m) => m.value === market)?.label} · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
       statBar={
         <StatBar>
           <Stat label="Slip" value={`${current?.legs.length ?? 0} legs`} />
@@ -196,19 +254,64 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
         </Note>
       )}
 
+      {/* Which question the board is answering. NFL only — the narrow markets
+          were fitted on NFL play-by-play and NFL market lines. */}
+      {sport === "nfl" && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Market
+          </span>
+          {MARKETS.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => setMarket(m.value)}
+              aria-pressed={market === m.value}
+              title={m.blurb}
+              className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                market === m.value
+                  ? "border-primary text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* What the market being shown actually did on seasons it was not fitted
+          on. The narrow markets are long shots and the headline number should
+          not be the price. */}
+      {!isLoading && !isError && heldout && (
+        <div className="mb-4 border border-border bg-card px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          Held out ({heldout.games} games): top pick right{" "}
+          <span className="text-foreground">{pct(heldout.top1, 1)}</span> of the time, against a{" "}
+          {pct(heldout.base_rate, 1)} base rate
+          {heldout.ceiling != null && (
+            <>
+              {" "}
+              and a {pct(heldout.ceiling, 1)} ceiling — the rest of the time the first score
+              came off a defender or a returner
+            </>
+          )}
+          .
+        </div>
+      )}
+
       {!isLoading && !isError && parlays.length > 0 && (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            {SIZES.map((s) => {
+            {sizes.map((s) => {
               const p = parlays.find((x) => x.size === s);
               return (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSize(s)}
-                  aria-pressed={size === s}
+                  aria-pressed={activeSize === s}
                   className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                    size === s
+                    activeSize === s
                       ? "border-primary text-primary"
                       : "border-border text-muted-foreground hover:text-foreground"
                   }`}
@@ -223,27 +326,40 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
           </div>
 
           {/* How much of one game a slip may take is the reader's call; the
-              quoted chance is corrected for whatever they pick. */}
-          <div className="mb-6 flex flex-wrap items-center gap-2">
-            <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Legs from one game
-            </span>
-            {PER_GAME.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => setPerGame(o.value)}
-                aria-pressed={perGame === o.value}
-                className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
-                  perGame === o.value
-                    ? "border-primary text-primary"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+              quoted chance is corrected for whatever they pick.
+
+              Except on first touchdown, where it is not a choice. Exactly one
+              player opens a game's scoring, so a second leg from the same game
+              could never also win — that is a slip that cannot be built, not a
+              correlated one to price, and offering the control would be
+              offering a setting that silently does nothing. */}
+          {market === "td1" ? (
+            <div className="mb-6 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              One leg per game · only one player scores a game's first touchdown, so a
+              second leg from the same game could never also land
+            </div>
+          ) : (
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+              <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Legs from one game
+              </span>
+              {PER_GAME.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setPerGame(o.value)}
+                  aria-pressed={perGame === o.value}
+                  className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                    perGame === o.value
+                      ? "border-primary text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* The long slips are lottery tickets and the page says so in the
               same breath as it offers them. */}
@@ -281,9 +397,19 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
               {ev && (
                 <div className="mt-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                   Backtest at this size:{" "}
-                  <span className="text-foreground">{pct(ev.stated, 2)}</span> stated ·{" "}
+                  <span className="text-foreground">{pct(ev.stated, 4)}</span> stated ·{" "}
                   {ev.observed}
                   {ev.note ? ` · ${ev.note}` : ""}
+                </div>
+              )}
+              {/* A slip this long shot never won in the backtest because it was
+                  never expected to. Saying so is the difference between evidence
+                  of failure and no evidence at all. */}
+              {ev && (ev.expected ?? 1) < 1 && (ev.won ?? 0) === 0 && (
+                <div className="mt-1 font-mono text-[11px] uppercase tracking-widest text-clay">
+                  Zero wins here is not a verdict — over {ev.slips ?? 0} held-out weeks this
+                  slip was expected to land {(ev.expected ?? 0).toFixed(3)} times. The backtest
+                  cannot tell you whether the price is right at this length.
                 </div>
               )}
               {(current.doubledUp > 0 || current.belowFloor > 0 || current.short) && (

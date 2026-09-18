@@ -327,14 +327,35 @@ const americanPrice = (p: number) =>
  * refused. Infinity is allowed and means "take the best legs on the board,
  * wherever they come from".
  */
+/**
+ * Per-market overrides, supplied by the caller for the narrow touchdown markets.
+ *
+ * The anytime board's floors and correlation factors describe the anytime
+ * board's probability scale and co-scoring behaviour, and neither transfers.
+ * A 2+ model tops out near 0.43 where the anytime ranker reaches 0.70, so the
+ * anytime floors would empty the board; and first-touchdown legs from one game
+ * are mutually exclusive rather than correlated, which is a cap of one rather
+ * than a multiplier. Passing these in keeps the market knowledge in
+ * nfl-td-markets.ts, where it was measured, instead of spreading it here.
+ */
+export type ParlayOverrides = {
+  floor?: number;
+  pair?: { sameTeam: number; opposed: number };
+  /** A hard cap the relaxation passes may not widen. Used where a second leg
+   *  from the same game is impossible rather than merely correlated. */
+  hardMaxPerGame?: number;
+};
+
 export function buildTdParlay(
   candidates: ParlayCandidate[],
   size: number,
   maxPerGame = DEFAULT_MAX_PER_GAME,
   sport = "cfb",
+  overrides: ParlayOverrides = {},
 ): TdParlay {
-  const floor = SIZE_FLOOR[sport]?.[size] ?? DEFAULT_FLOOR;
-  const pair = PAIR_FACTOR[sport] ?? DEFAULT_PAIR_FACTOR;
+  const floor = overrides.floor ?? SIZE_FLOOR[sport]?.[size] ?? DEFAULT_FLOOR;
+  const pair = overrides.pair ?? PAIR_FACTOR[sport] ?? DEFAULT_PAIR_FACTOR;
+  if (overrides.hardMaxPerGame != null) maxPerGame = Math.min(maxPerGame, overrides.hardMaxPerGame);
   const byProb = [...candidates].sort((a, b) => b.prob - a.prob);
   const gamesAvailable = new Set(candidates.map((c) => c.gameId)).size;
 
@@ -346,7 +367,12 @@ export function buildTdParlay(
   // first, then widen the cap by one, then reach below the floor, then both.
   // Widening past the caller's cap only ever happens when the slate is too
   // small to fill the slip — an NFL week has no twenty games.
-  const wider = Number.isFinite(maxPerGame) ? maxPerGame + 1 : maxPerGame;
+  // Widening by one is how a thin slate still fills a slip — but where a second
+  // leg from one game is impossible, widening would build a slip that cannot win.
+  const hard = overrides.hardMaxPerGame ?? Infinity;
+  const wider = Number.isFinite(maxPerGame)
+    ? Math.min((maxPerGame as number) + 1, hard)
+    : maxPerGame;
   const passes: [number, number][] = [
     [maxPerGame, floor],
     [wider, floor],
@@ -410,6 +436,7 @@ export function buildTdParlays(
   sizes: number[] = PARLAY_SIZES,
   maxPerGame = DEFAULT_MAX_PER_GAME,
   sport = "cfb",
+  overridesFor: (size: number) => ParlayOverrides = () => ({}),
 ): TdParlay[] {
-  return sizes.map((s) => buildTdParlay(candidates, s, maxPerGame, sport));
+  return sizes.map((s) => buildTdParlay(candidates, s, maxPerGame, sport, overridesFor(s)));
 }

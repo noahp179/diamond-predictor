@@ -24,6 +24,7 @@
  * (see USAGE_WINDOW) and the picks say so rather than the board going blank.
  */
 import { inferRanker, SPEC, CONSTANTS } from "./nfl-td-ranker";
+import { inferMarket, MARKET_SPEC, type TdMarket } from "./nfl-td-markets";
 import { explain } from "./td-reasons";
 import { etDateOf, todayET } from "./date";
 import { fetchScoreboard, seasonOf, type SlateGame } from "./espn.server";
@@ -35,6 +36,18 @@ const C = CONSTANTS;
 /** Standardize → pairwise score → Platt → shrink. All of it lives in
  *  nfl-td-ranker.ts so nothing here can produce an uncalibrated number. */
 const infer = inferRanker;
+
+/** The board answers three questions off one feature vector: anytime (the
+ *  pairwise ranker), the game's first touchdown, and two or more. Each has its
+ *  own fitted model and its own calibration — see nfl-td-markets.ts for why the
+ *  ranker wins the first question and loses the other two. */
+function inferFor(market: TdMarket, x: number[]): number {
+  return market === "anytime" ? infer(x) : inferMarket(market, x);
+}
+
+function specFor(market: TdMarket) {
+  return market === "anytime" ? SPEC : MARKET_SPEC[market];
+}
 
 // --------------------------------------------------------------- fetching
 type Cached<T> = { at: number; v: T };
@@ -467,9 +480,16 @@ function confidenceFor(
   return Math.round(100 * (0.45 * sep + 0.3 * maturity + 0.25 * volume));
 }
 
-/** Top touchdown-scorer picks for every game on `date`. */
+/**
+ * Top touchdown-scorer picks for every game on `date`.
+ *
+ * `market` selects which question is being asked. The features, the fetching
+ * and the per-game shape are identical across all three — only the model that
+ * scores the vector changes, which is exactly what makes them comparable.
+ */
 export async function tdScorersSlate(
   date: string,
+  market: TdMarket = "anytime",
 ): Promise<{ season: number | null; games: TdGame[] }> {
   const season = seasonOf("nfl", date);
   const slate = await fetchScoreboard("nfl", date);
@@ -504,8 +524,8 @@ export async function tdScorersSlate(
         for (const p of team.players.values()) {
           if (p.gp < 1 || p.car + p.tgt < 1) continue;
           const x = featureVector(p, team, oppDef, isHome, implied, total, margin);
-          const prob = infer(x);
-          const { reasons, against } = explain(SPEC, x, {
+          const prob = inferFor(market, x);
+          const { reasons, against } = explain(specFor(market), x, {
             games: p.gp,
             team: abbr,
             opponent: isHome ? g.away.abbr : g.home.abbr,

@@ -350,15 +350,29 @@ export const getTdParlays = createServerFn({ method: "GET" })
       sport: z.enum(["cfb", "nfl"]),
       date: z.string().optional(),
       maxPerGame: z.number().int().min(0).max(10).optional(),
+      // The narrow markets are NFL-only: they were fitted on NFL play-by-play
+      // and NFL box scores, and college has neither the market lines nor the
+      // first-touchdown feed behind them.
+      market: z.enum(["anytime", "td1", "td2"]).optional(),
     }),
   )
   .handler(async ({ data }) => {
     const asked = data.date ?? todayET();
     const sport = data.sport;
-    const maxPerGame = data.maxPerGame === 0 ? Infinity : (data.maxPerGame ?? undefined);
+    const market = sport === "nfl" ? (data.market ?? "anytime") : "anytime";
+    const requestedCap = data.maxPerGame === 0 ? Infinity : (data.maxPerGame ?? undefined);
+    let maxPerGame = requestedCap;
     try {
       const { buildTdParlays, PARLAY_SIZES, SIZE_EVIDENCE, DEFAULT_MAX_PER_GAME } =
         await import("./td-parlay");
+      const M = market === "anytime" ? null : await import("./nfl-td-markets");
+
+      // Each market offers its own sizes. Fifteen and twenty legs exist only on
+      // the anytime board; at a 3.7% base rate a fifteen-leg 2+ slip is a
+      // number with nothing attached to it.
+      const sizes = M ? M.MARKET_SIZES[market as "td1" | "td2"] : PARLAY_SIZES;
+      const hardCap = M ? M.MARKET_MAX_PER_GAME[market as "td1" | "td2"] : undefined;
+      if (hardCap != null) maxPerGame = Math.min(maxPerGame ?? DEFAULT_MAX_PER_GAME, hardCap);
 
       // Land on a date that can actually answer the question. Football is not
       // played on most days, and a board that renders four em-dashes because
@@ -367,7 +381,7 @@ export const getTdParlays = createServerFn({ method: "GET" })
       const cap = Number.isFinite(maxPerGame ?? NaN)
         ? (maxPerGame as number)
         : DEFAULT_MAX_PER_GAME;
-      const want = Math.ceil(Math.max(...PARLAY_SIZES) / Math.max(cap, 1));
+      const want = Math.ceil(Math.max(...sizes) / Math.max(cap, 1));
       const found = await nextPlayableDate(sport, asked, want);
       const date = found.date;
       const candidates: ParlayCandidate[] = [];
@@ -395,7 +409,7 @@ export const getTdParlays = createServerFn({ method: "GET" })
         }
       } else {
         const { tdScorersSlate } = await import("./nfl-td.server");
-        const slate = await tdScorersSlate(date);
+        const slate = await tdScorersSlate(date, market);
         games = slate.games.length;
         for (const g of slate.games) {
           if (g.started) continue;
@@ -429,8 +443,21 @@ export const getTdParlays = createServerFn({ method: "GET" })
         games,
         candidates: candidates.length,
         maxPerGame: Number.isFinite(maxPerGame ?? NaN) ? (maxPerGame as number) : 0,
-        parlays: buildTdParlays(candidates, PARLAY_SIZES, maxPerGame, sport),
-        evidence: SIZE_EVIDENCE[sport] ?? {},
+        market,
+        sizes,
+        parlays: buildTdParlays(candidates, sizes, maxPerGame, sport, (size) =>
+          M
+            ? {
+                floor: M.MARKET_FLOOR[market as "td1" | "td2"][size],
+                pair: M.MARKET_PAIR_FACTOR[market as "td1" | "td2"],
+                hardMaxPerGame: M.MARKET_MAX_PER_GAME[market as "td1" | "td2"],
+              }
+            : {},
+        ),
+        evidence: M
+          ? M.MARKET_EVIDENCE[market as "td1" | "td2"]
+          : (SIZE_EVIDENCE[sport] ?? {}),
+        heldout: M ? M.MARKET_HELDOUT[market as "td1" | "td2"] : null,
         note: offseasonNote(sport, date),
         source: "live" as const,
       };
@@ -442,11 +469,14 @@ export const getTdParlays = createServerFn({ method: "GET" })
         requestedDate: asked,
         thin: false,
         sport,
+        market,
+        sizes: PARLAY_SIZES,
         games: 0,
         candidates: 0,
         maxPerGame: Number.isFinite(maxPerGame ?? NaN) ? (maxPerGame as number) : 0,
         parlays: [] as Awaited<ReturnType<typeof import("./td-parlay").buildTdParlays>>,
         evidence: SIZE_EVIDENCE[sport] ?? {},
+        heldout: null,
         note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
         source: "error" as const,
       };
