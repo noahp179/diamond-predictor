@@ -90,7 +90,8 @@ export const SPORTS: SportNav[] = [
     key: "nfl",
     label: "NFL",
     phrase: "the NFL",
-    blurb: "Margin-of-victory Elo across the slate, plus touchdown scorers.",
+    blurb:
+      "Margin-of-victory Elo across the slate, player props on yards and receptions, and touchdown scorers.",
     href: "/nfl",
     leagued: false,
   },
@@ -156,7 +157,7 @@ const LABELS: Record<ViewKey, string> = {
 
 const VIEWS: Record<SportKey, ViewKey[]> = {
   mlb: ["slate", "recommended", "bestOdds", "props", "twoBases", "stacks", "trackRecord"],
-  nfl: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
+  nfl: ["slate", "recommended", "bestOdds", "props", "tdScorers", "parlay", "trackRecord"],
   cfb: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
   nba: ["slate", "recommended", "bestOdds", "trackRecord"],
   soccer: ["slate", "props", "model", "trackRecord"],
