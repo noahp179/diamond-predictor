@@ -266,6 +266,49 @@ npx tsx scripts/test-nfl-props.ts 2025-11-16
 - Cards say when the form window still reaches into last season, which in
   September it always does.
 
+## Reasoning on every pick
+
+Each pick carries the reason its market likes it, read out of that market's own
+fitted coefficients. For a logistic, a feature's contribution to the log-odds is
+
+    coef[i] * ((x[i] - mean[i]) / std[i])
+
+which is exactly "how far this player is from an average qualifying player on
+this input, times how much this market cares about it". Rank those, name the top
+few, and the words cannot drift from the percentage beside them — they *are*
+that percentage, restated. Nothing is written by hand about a player and nothing
+is a language model's opinion.
+
+Fourteen markets are fourteen separate fits, so the same player can surface with
+different reasons on two rungs. Target share is most of the story for 7+
+receptions and close to irrelevant for 80+ rushing yards, and the coefficients
+already know that.
+
+Two gates took iteration against the live board, and both are about a phrase
+being *sensible* rather than being *true*:
+
+- **A share means nothing outside the channel a player operates in.** The first
+  draft faulted Justin Jefferson for "only 0% of the team's carries" and Saquon
+  Barkley for his catch rate. Both were accurate statements of the arithmetic
+  and useless to a reader. Phrases now see every feature rather than only their
+  own, so a carry share only speaks for a player who carries the ball.
+- **A negative has to belong to the market.** That still left Aaron Jones
+  faulted for his target share on a **40+ rushing yards** prop — true of the
+  coefficient, irrelevant to the question being asked. Negatives are gated on
+  the market's channel, with scrimmage yards counting as both.
+
+A thin form window is stated unconditionally rather than competing for the one
+negative slot. It qualifies every other number on the card, and it would
+otherwise lose to a tougher-sounding opponent line.
+
+`scripts/test-nfl-props.ts` asserts what the parity check cannot see: that every
+rendered pick carries a reason, and that no negative comes from the wrong
+channel. Both failures are silent otherwise — the probability is perfectly
+correct either way, and the card just reads as though the model is confused. On
+the 2026-09-20 slate, 70 of 70 board picks carry a reason and none is misplaced.
+
+Code: `src/lib/nfl-props-reasons.ts`.
+
 ## Honest limits
 
 - **Quarterback markets are thin.** 515 test rows and AUC in the 0.6s. Treated
