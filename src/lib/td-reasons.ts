@@ -106,8 +106,20 @@ const PHRASES: Record<string, Phrase> = {
  * model has no position to key that off, so the safer thing is to let volume
  * and evidence speak instead.
  */
+/**
+ * The thin-evidence caveat, in three places and pluralised in all of them.
+ *
+ * "only 1 games of usage behind this" was on the live board every September:
+ * in Week 2 a one-game sample is the common case, not the edge one, and the
+ * caveat is the line the card leans on hardest when it has least to go on.
+ */
+export function thinEvidencePhrase(games: number): string {
+  const n = Math.round(games);
+  return `only ${n} game${n === 1 ? "" : "s"} of usage behind this`;
+}
+
 const AGAINST: Record<string, Phrase> = {
-  gp: (v) => (v <= 4 ? `only ${Math.round(v)} games of usage behind this` : null),
+  gp: (v) => (v <= 4 ? thinEvidencePhrase(v) : null),
   anytime_rate: (v, c) =>
     v <= 0.18 && c.games >= 4 ? `scores in only ${pct(v)} of his games` : null,
   elo_margin: (v, c) => (v <= -7 ? `${c.team} ${Math.round(-v)}-point underdogs` : null),
@@ -168,7 +180,7 @@ export function explain(spec: ModelSpec, x: number[], ctx: ReasonContext, limit 
   // or a low target share. The caveat that qualifies every other number on the
   // card should not lose that race, so it is stated unconditionally.
   if (ctx.games < THIN_EVIDENCE)
-    return { reasons, against: `only ${Math.round(ctx.games)} games of usage behind this` };
+    return { reasons, against: thinEvidencePhrase(ctx.games) };
 
   let against: string | null = null;
   for (const c of [...contributions].sort((a, b) => a.push - b.push)) {
@@ -240,7 +252,7 @@ export function explainByImportance(
   // Thin evidence still outranks everything — it qualifies every number on the
   // card in September, whatever the model thinks of the features.
   if (ctx.games < THIN_EVIDENCE)
-    return { reasons, against: `only ${Math.round(ctx.games)} games of usage behind this` };
+    return { reasons, against: thinEvidencePhrase(ctx.games) };
 
   // Without per-pick attribution there is no "biggest thing arguing against",
   // so only the unambiguous caveats fire: a genuinely low scoring rate, a heavy
