@@ -53,3 +53,21 @@ export function etDateOf(iso: string): string {
   const t = Date.parse(iso);
   return Number.isFinite(t) ? etDate(new Date(t)) : iso.slice(0, 10);
 }
+
+/**
+ * A calendar day offset, on the YYYY-MM-DD string itself.
+ *
+ * Deliberately arithmetic on the date parts rather than `new Date(t + 86400e3)`:
+ * the strings here are calendar days in US Eastern, not instants, and adding a
+ * fixed number of milliseconds to one lands an hour off across the two DST
+ * boundaries — which in this app are early November and mid-March, both of them
+ * inside football season. Parsing as UTC noon keeps it on the intended day
+ * whatever the host timezone.
+ */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return date;
+  const at = new Date(Date.UTC(y, m - 1, d, 12));
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}

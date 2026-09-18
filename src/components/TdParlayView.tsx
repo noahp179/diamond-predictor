@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getTdParlays } from "@/lib/sports.functions";
+import { PAIR_FACTOR } from "@/lib/td-parlay";
 import { todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getTdParlays>>;
@@ -22,6 +23,18 @@ const PER_GAME: { value: number; label: string }[] = [
 
 const pct = (p: number, dp = 0) => `${(p * 100).toFixed(dp)}%`;
 const price = (n: number) => (n > 0 ? `+${n.toLocaleString()}` : n.toLocaleString());
+
+/** "Sun Sep 20" — enough to tell the reader which day they are looking at. */
+function dayLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return date;
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 /** "1 in 1,507,887" is the number that matters most on a long slip. */
 function oneIn(n: number): string {
@@ -115,16 +128,37 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
   const ev = evidence[size];
   const label = sport === "cfb" ? "College Football" : "NFL";
 
+  // Quote the correction the board is actually applying rather than a number
+  // typed into this file. The two sports disagree — a college game is decided
+  // by blowouts, so opposed scorers are strongly anti-correlated, while NFL
+  // games stay close and the penalty is mild — and a hardcoded pair of figures
+  // went stale the moment either model was replaced.
+  const pair = PAIR_FACTOR[sport] ?? PAIR_FACTOR.cfb;
+  const modelName =
+    sport === "cfb" ? "calibrated extra-trees" : "within-game pairwise ranker";
+
+  // The board may be showing a different day than the one asked for, because
+  // football is not played on most of them.
+  const shown = data?.date;
+  const movedTo = shown && shown !== date ? shown : null;
+
   return (
     <SportShell
       sport={sport}
       current="parlay"
       eyebrow={`Diamond Edge · ${label}`}
       title="Touchdown Parlays"
-      blurb="Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, each with the model's probability and its reasons. Stack as many legs from one game as you like — the quoted chance is corrected for it rather than assuming the legs are independent, because two opposed players in the same game score together only 0.76× as often as the plain product implies, and two on the same team 0.84×."
+      blurb={
+        `Five, ten, fifteen or twenty touchdown scorers on one slip, surest first, ` +
+        `each with the model's probability and its reasons. Stack as many legs from ` +
+        `one game as you like — the quoted chance is corrected for it rather than ` +
+        `assuming the legs are independent, because two opposed players in the same ` +
+        `game score together only ${pair.opposed.toFixed(2)}× as often as the plain ` +
+        `product implies, and two on the same team ${pair.sameTeam.toFixed(2)}×.`
+      }
       date={date}
       onDateChange={setDate}
-      footerNote={`Data · ESPN · ${sport === "cfb" ? "calibrated extra-trees" : "logistic model"} on season usage · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
+      footerNote={`Data · ESPN · ${modelName} on season usage · Not affiliated with ${sport === "cfb" ? "college football or the NCAA" : "the NFL"}`}
       statBar={
         <StatBar>
           <Stat label="Slip" value={`${current?.legs.length ?? 0} legs`} />
@@ -141,6 +175,26 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
         </div>
       )}
       {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
+
+      {/* Moving the reader to a playable day is only acceptable if the page
+          says so. Silently showing Sunday's slip under Tuesday's date would
+          trade one confusing board for a misleading one. */}
+      {!isLoading && !isError && movedTo && (
+        <Note>
+          No {sport === "cfb" ? "college" : "NFL"} games left to build from on{" "}
+          {dayLabel(date)} — showing <span className="text-foreground">{dayLabel(movedTo)}</span>,
+          the next slate that can fill a slip. Pick a date above to override.
+        </Note>
+      )}
+
+      {!isLoading && !isError && data?.thin && (data?.games ?? 0) > 0 && (
+        <Note>
+          {dayLabel(shown ?? date)} carries {data?.games} game
+          {data?.games === 1 ? "" : "s"}, which is the fullest slate in the week ahead but not
+          enough for every size at this cap — the longer slips reach further down the board or
+          double up to fill.
+        </Note>
+      )}
 
       {!isLoading && !isError && parlays.length > 0 && (
         <>

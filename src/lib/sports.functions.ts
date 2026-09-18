@@ -2,7 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { todayET } from "./date";
-import { bestOddsSlate, predictSlate, recommendedSlate, seasonOf, type Sport } from "./espn.server";
+import {
+  bestOddsSlate,
+  nextPlayableDate,
+  predictSlate,
+  recommendedSlate,
+  seasonOf,
+  type Sport,
+} from "./espn.server";
 import type { ParlayCandidate } from "./td-parlay";
 
 function seasonLabel(sport: Sport, season: number): string {
@@ -346,11 +353,23 @@ export const getTdParlays = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }) => {
-    const date = data.date ?? todayET();
+    const asked = data.date ?? todayET();
     const sport = data.sport;
     const maxPerGame = data.maxPerGame === 0 ? Infinity : (data.maxPerGame ?? undefined);
     try {
-      const { buildTdParlays, PARLAY_SIZES, SIZE_EVIDENCE } = await import("./td-parlay");
+      const { buildTdParlays, PARLAY_SIZES, SIZE_EVIDENCE, DEFAULT_MAX_PER_GAME } =
+        await import("./td-parlay");
+
+      // Land on a date that can actually answer the question. Football is not
+      // played on most days, and a board that renders four em-dashes because
+      // the reader opened it on a Tuesday has failed at the only thing it does.
+      // The largest slip needs the most games, so that is what we look for.
+      const cap = Number.isFinite(maxPerGame ?? NaN)
+        ? (maxPerGame as number)
+        : DEFAULT_MAX_PER_GAME;
+      const want = Math.ceil(Math.max(...PARLAY_SIZES) / Math.max(cap, 1));
+      const found = await nextPlayableDate(sport, asked, want);
+      const date = found.date;
       const candidates: ParlayCandidate[] = [];
       let games = 0;
       if (sport === "cfb") {
@@ -398,6 +417,14 @@ export const getTdParlays = createServerFn({ method: "GET" })
       }
       return {
         date,
+        // What the reader asked for, so the page can say plainly when it has
+        // moved them — silently showing Sunday's slip under Tuesday's date
+        // would be worse than the blank board this replaces.
+        requestedDate: asked,
+        /** True when the scan could not find a slate big enough for a 20-leg
+         *  slip anywhere in the week ahead; the board is then showing the best
+         *  it found rather than a full one. */
+        thin: !found.reached,
         sport,
         games,
         candidates: candidates.length,
@@ -408,16 +435,18 @@ export const getTdParlays = createServerFn({ method: "GET" })
         source: "live" as const,
       };
     } catch (err) {
-      console.error(`[tdParlays] ${sport} ${date} failed:`, err);
+      console.error(`[tdParlays] ${sport} ${asked} failed:`, err);
       const { PARLAY_SIZES, SIZE_EVIDENCE } = await import("./td-parlay");
       return {
-        date,
+        date: asked,
+        requestedDate: asked,
+        thin: false,
         sport,
         games: 0,
         candidates: 0,
+        maxPerGame: Number.isFinite(maxPerGame ?? NaN) ? (maxPerGame as number) : 0,
         parlays: [] as Awaited<ReturnType<typeof import("./td-parlay").buildTdParlays>>,
         evidence: SIZE_EVIDENCE[sport] ?? {},
-        sizes: PARLAY_SIZES,
         note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
         source: "error" as const,
       };

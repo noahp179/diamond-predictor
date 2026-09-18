@@ -13,7 +13,7 @@
  * cached with a short TTL so new results flow in.
  */
 
-import { etDateOf } from "./date";
+import { addDays, etDateOf } from "./date";
 import type { PredictedGame, TeamSide } from "./mlb-core";
 
 export type Sport = "nba" | "nfl" | "cfb";
@@ -511,6 +511,59 @@ export async function fetchScoreboard(sport: Sport, date: string): Promise<Slate
     .map(toSlateGame)
     .filter((g): g is SlateGame => g !== null)
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * The next date a touchdown slip can actually be built from.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The parlay board opened on today's date, and football is not played on most
+ * of them. A five-leg slip needs three games at two legs apiece and a
+ * twenty-leg slip needs ten, so on a Tuesday — or a Thursday carrying one
+ * night game — every size rendered "—" and the page said "No slip to build".
+ * That is a correct sentence and a useless board: the reader came for five,
+ * ten, fifteen and twenty names, and got a date-picker puzzle.
+ *
+ * So the board asks for the nearest date that can answer instead. It scans
+ * forward a day at a time, counting games that have not kicked off, and stops
+ * at the first one that could fill the largest slip. Scoreboard calls are
+ * cheap — a date with no games is a 1.2KB response in about 0.3s — and the
+ * scan stops early on the common path, so a Thursday costs three extra calls
+ * to reach Sunday and an in-season Sunday costs none.
+ *
+ * ESPN rejects a date RANGE on this endpoint (400), which is why this is a
+ * loop rather than one request.
+ *
+ * Returns the best date it saw, not merely the first non-empty one: a Saturday
+ * with twelve games beats the Friday with one that precedes it. `reached` says
+ * whether it actually found enough for the largest slip, so the caller can
+ * tell "here is Sunday" from "this is as good as the next week gets".
+ */
+export async function nextPlayableDate(
+  sport: Sport,
+  from: string,
+  wantGames: number,
+  lookaheadDays = 7,
+): Promise<{ date: string; games: number; reached: boolean; scanned: number }> {
+  let best = { date: from, games: -1, reached: false, scanned: 0 };
+  for (let i = 0; i <= lookaheadDays; i++) {
+    const d = addDays(from, i);
+    // Walking out of the season is not a reason to keep walking.
+    if (seasonOf(sport, d) === null) break;
+    let games = 0;
+    try {
+      games = (await fetchScoreboard(sport, d)).filter((g) => g.state === "pre").length;
+    } catch {
+      continue; // one unreachable date should not sink the scan
+    }
+    const scanned = i + 1;
+    if (games > best.games) best = { date: d, games, reached: games >= wantGames, scanned };
+    else best = { ...best, scanned };
+    if (games >= wantGames) break;
+  }
+  if (best.games < 0) return { date: from, games: 0, reached: false, scanned: 0 };
+  return best;
 }
 
 export type PowerRow = { rank: number; abbr: string; name: string; elo: number };
