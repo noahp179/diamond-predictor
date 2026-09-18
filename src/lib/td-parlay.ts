@@ -247,13 +247,30 @@ export const SIZE_EVIDENCE: Record<
  *
  * The same-team penalties agree almost exactly (0.842 college, 0.826 NFL): two
  * backs splitting one goal line is the same problem in both codes. The OPPOSED
- * factors do not, and the gap is large — 0.758 college against 0.883 NFL. Two
- * scorers on opposite sides of a college game are strongly anti-correlated
+ * factors do not agree, and the gap is large — 0.758 college against 0.883 NFL.
+ * Two scorers on opposite sides of a college game are strongly anti-correlated
  * because college games are decided by blowouts, and a blowout is one team
  * scoring five times and the other none. NFL games stay close, both offences
  * keep taking meaningful snaps, and the penalty for taking one from each side
  * is correspondingly milder. Applying college's 0.758 to an NFL slip would have
  * under-priced every opposed pair on the card.
+ *
+ * WHAT DRIVES THE SAME-TEAM PENALTY: multi-touchdown concentration. Condition
+ * on one teammate's touchdown count and measure the OTHER one (MULTI-TD.md §4)
+ * — a partner who does not score leaves you at 0.982 of your stated chance, a
+ * partner who scores once at 0.900, and a partner who scores twice at 0.778.
+ * The goal line is a finite resource, and that is it being measured.
+ *
+ * WHICH INVITES keying the factor on the partner's EXPECTED count. It does not
+ * work; read MULTI-TD.md §5 before trying it. Fitted on the training seasons
+ * the same-team ratio appears to climb 0.548 → 0.937 across quintiles of
+ * combined expected touchdowns — but the DIFFERENT-GAMES control climbs
+ * 0.647 → 1.064 over the same slices, and those pairs cannot influence each
+ * other. Combined expected touchdowns is close to a restatement of the two
+ * legs' probabilities, so that trend is mostly this model's calibration curve.
+ * Against the control the real penalty is 0.812–0.881: flat enough that one
+ * number is the right shape, and a keyed version loses out of sample on log
+ * loss and on the within-bucket error it was built to win.
  */
 export const PAIR_FACTOR: Record<string, { sameTeam: number; opposed: number }> = {
   cfb: { sameTeam: 0.842, opposed: 0.758 },
