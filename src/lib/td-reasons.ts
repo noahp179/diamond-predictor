@@ -157,12 +157,16 @@ export function explain(spec: ModelSpec, x: number[], ctx: ReasonContext, limit 
     if (reasons.length === limit) break;
   }
 
-  // Thin evidence outranks everything the coefficients have to say, and it is
-  // not something they CAN say: `gp`'s fitted coefficient is slightly negative
-  // (it is collinear with the usage terms), so a player with three games behind
-  // him registers as a small push IN FAVOUR. That is an artefact of the fit,
-  // not a finding, and it would be perverse to let it hide the one caveat that
-  // qualifies every other number on the card in September.
+  // Thin evidence outranks everything the coefficients have to say.
+  //
+  // Under the pairwise ranker `gp` carries a positive weight, so three games of
+  // usage does register as a push against the pick — unlike the logistic this
+  // replaced, where the coefficient came out slightly negative and a thin
+  // sample argued faintly IN FAVOUR. But the honest weight is not enough on its
+  // own: `against` surfaces exactly one phrase, the single most negative
+  // contribution, and in September gp is routinely outvoted by a soft matchup
+  // or a low target share. The caveat that qualifies every other number on the
+  // card should not lose that race, so it is stated unconditionally.
   if (ctx.games < THIN_EVIDENCE)
     return { reasons, against: `only ${Math.round(ctx.games)} games of usage behind this` };
 

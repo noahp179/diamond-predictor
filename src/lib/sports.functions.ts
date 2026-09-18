@@ -402,7 +402,7 @@ export const getTdParlays = createServerFn({ method: "GET" })
         games,
         candidates: candidates.length,
         maxPerGame: Number.isFinite(maxPerGame ?? NaN) ? (maxPerGame as number) : 0,
-        parlays: buildTdParlays(candidates, PARLAY_SIZES, maxPerGame),
+        parlays: buildTdParlays(candidates, PARLAY_SIZES, maxPerGame, sport),
         evidence: SIZE_EVIDENCE[sport] ?? {},
         note: offseasonNote(sport, date),
         source: "live" as const,

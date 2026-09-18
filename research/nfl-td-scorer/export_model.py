@@ -15,7 +15,10 @@ from sklearn.preprocessing import StandardScaler
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
-APP_OUT = os.path.abspath(os.path.join(HERE, "..", "..", "src", "lib", "td-model.json"))
+# The logistic this file fits is no longer deployed — the board runs the
+# pairwise ranker (see export_ranker.py). Kept because the feature list and
+# the shrinkage constants it froze are still the definition both models use.
+APP_OUT = os.path.abspath(os.path.join(HERE, "td-model.json"))
 
 K_RUSH, K_REC, K_ANY = 25.0, 30.0, 4.0
 LG_RUSH, LG_REC, LG_ANY = 0.0347, 0.0469, 0.21

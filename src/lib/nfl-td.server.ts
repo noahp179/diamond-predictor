@@ -1,9 +1,15 @@
 /**
  * nfl-td.server.ts — live "most likely touchdown scorer" picks for an NFL slate.
  *
- * The model is a logistic regression on season-to-date usage + the market's
- * implied team total (research/nfl-td-scorer, backtested AUC ~0.70 out of
- * sample). Weights are frozen in td-model.json; this module rebuilds the same
+ * The model is a within-game pairwise ranker on season-to-date usage + the
+ * market's implied team total. It is trained on the comparison the card makes —
+ * one scorer minus one non-scorer from the SAME game — rather than on `scored`
+ * pooled across every player-game, and it picks the right name in 49.2% of
+ * games on seasons it was not fitted on, against 44.9% for the logistic it
+ * replaced. See nfl-td-ranker.ts for why that trade also LOWERS its AUC, and
+ * research/nfl-td-scorer/bakeoff_nfl.py for the twenty-three models it beat.
+ *
+ * Weights are frozen in nfl-td-ranker.json; this module rebuilds the same
  * season-to-date features live from ESPN box scores, then applies them.
  *
  * Data path (all public ESPN, cached; never touches Supabase):
@@ -17,24 +23,18 @@
  * none — so the usage window is topped up with last season's most recent games
  * (see USAGE_WINDOW) and the picks say so rather than the board going blank.
  */
-import model from "./td-model.json";
+import { inferRanker, SPEC, CONSTANTS } from "./nfl-td-ranker";
 import { explain } from "./td-reasons";
 import { etDateOf, todayET } from "./date";
 import { fetchScoreboard, seasonOf, type SlateGame } from "./espn.server";
 
 const NFL = "football/nfl";
-const C = model.constants;
+const C = CONSTANTS;
 
 // ------------------------------------------------------------- inference
-/** Standardize → logistic → Platt calibration, matching export_model.py. */
-function infer(x: number[]): number {
-  let z = model.intercept;
-  for (let i = 0; i < model.coef.length; i++)
-    z += model.coef[i] * ((x[i] - model.mean[i]) / model.std[i]);
-  const raw = 1 / (1 + Math.exp(-z));
-  const lg = Math.log(raw / (1 - raw));
-  return 1 / (1 + Math.exp(-(model.platt_a * lg + model.platt_b)));
-}
+/** Standardize → pairwise score → Platt → shrink. All of it lives in
+ *  nfl-td-ranker.ts so nothing here can produce an uncalibrated number. */
+const infer = inferRanker;
 
 // --------------------------------------------------------------- fetching
 type Cached<T> = { at: number; v: T };
@@ -505,7 +505,7 @@ export async function tdScorersSlate(
           if (p.gp < 1 || p.car + p.tgt < 1) continue;
           const x = featureVector(p, team, oppDef, isHome, implied, total, margin);
           const prob = infer(x);
-          const { reasons, against } = explain(model, x, {
+          const { reasons, against } = explain(SPEC, x, {
             games: p.gp,
             team: abbr,
             opponent: isHome ? g.away.abbr : g.home.abbr,

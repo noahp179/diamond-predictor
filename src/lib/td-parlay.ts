@@ -135,15 +135,33 @@ export type TdParlay = {
 };
 
 /**
- * Minimum leg probability per size.
+ * Minimum leg probability per size, PER SPORT.
  *
- * The floor only bites at five legs, where being choosier measurably helps: on
- * the held-out seasons a five-leg slip hit 21.4% at a 0.35 floor and 31.6% at
- * 0.55. By ten legs a full Saturday's best twenty picks all clear 0.55 anyway,
- * so the floor stops mattering and the slip is simply the best the board has.
- * It stays lower there so a thin midweek slate can still fill one.
+ * A floor is a threshold on a probability SCALE, and the two boards no longer
+ * share one. College runs a calibrated extra-trees model reaching into the 0.8s;
+ * the NFL ranker shrinks 20% toward a 0.214 base rate and tops out near 0.70.
+ * The college numbers applied to NFL probabilities are not the same bar — they
+ * are a higher one, and carrying them across silently emptied the NFL board:
+ * nineteen buildable five-leg weeks became four, and fifteen and twenty legs
+ * became unbuildable outright.
+ *
+ * cfb  the floor only bites at five legs, where being choosier measurably
+ *      helps: on the held-out seasons a five-leg slip hit 21.4% at a 0.35 floor
+ *      and 31.6% at 0.55. By ten legs a full Saturday's best twenty picks all
+ *      clear 0.55 anyway, so the floor stops mattering and the slip is simply
+ *      the best the board has. It stays lower there so a thin midweek slate can
+ *      still fill one.
+ *
+ * nfl  re-derived on the training seasons under the deployed ranker by
+ *      research/nfl-td-scorer/floor_pick.py: the highest floor at each size
+ *      that still fills 70% of the weeks with enough games to fill it at all.
+ *      The floors fall with size because a Sunday has at most sixteen games and
+ *      a twenty-leg slip has to reach further down the board by construction.
  */
-export const SIZE_FLOOR: Record<number, number> = { 5: 0.55, 10: 0.45, 15: 0.45, 20: 0.45 };
+export const SIZE_FLOOR: Record<string, Record<number, number>> = {
+  cfb: { 5: 0.55, 10: 0.45, 15: 0.45, 20: 0.45 },
+  nfl: { 5: 0.45, 10: 0.4, 15: 0.35, 20: 0.3 },
+};
 export const PARLAY_SIZES = [5, 10, 15, 20];
 const DEFAULT_FLOOR = 0.45;
 
@@ -187,30 +205,61 @@ export const SIZE_EVIDENCE: Record<
     },
   },
   nfl: {
-    5: { stated: 0.0673, oneIn: 15, observed: "4 of 53 weeks, 2022-24" },
-    10: { stated: 0.00198, oneIn: 505, observed: "0 of 42 (0.08 expected)" },
-    15: { stated: 0.00007, oneIn: 14000, observed: "0 of 4 weeks that could fill it" },
+    5: {
+      stated: 0.063181,
+      oneIn: 16,
+      observed: "2 of 19 held-out weeks (1.20 expected)",
+    },
+    10: {
+      stated: 0.00121439,
+      oneIn: 823,
+      observed: "0 of 19 held-out weeks (0.02 expected)",
+    },
+    15: {
+      stated: 0.0000096017,
+      oneIn: 104148,
+      observed: "0 of 19 held-out weeks (0.00 expected)",
+    },
     20: {
-      stated: 0,
-      oneIn: 0,
-      observed: "never buildable one-per-game",
+      stated: 0.000000036101,
+      oneIn: 27700328,
+      observed: "0 of 18 held-out weeks (0.00 expected)",
       note: "An NFL week has at most 16 games, so a 20-leg slip has to double up.",
     },
   },
 };
 
 /**
- * Measured per-pair correction, read against the different-games control.
+ * Measured per-pair correction, read against the different-games control,
+ * PER SPORT — because the two sports disagree about the interesting one.
  *
- * Re-measured on 2026-09-17 against the calibrated extra-trees model that
- * replaced the logistic (research/cfb/export_forest.py). Both factors moved,
- * and the control moved most: it was 0.964 under the logistic and is 0.990
- * now, which is the calibration working — independent pairs multiply almost
- * exactly right. Against that control the same-team penalty is real where it
- * used to be nothing (0.842 against 0.989), and the opposed penalty is
- * essentially unchanged (0.758 against 0.782).
+ * cfb  re-measured on 2026-09-17 against the calibrated extra-trees model that
+ *      replaced the logistic (research/cfb/export_forest.py). Both factors
+ *      moved, and the control moved most: it was 0.964 under the logistic and
+ *      is 0.990 now, which is the calibration working — independent pairs
+ *      multiply almost exactly right. Against that control the same-team
+ *      penalty is real where it used to be nothing (0.842 against 0.989), and
+ *      the opposed penalty is essentially unchanged (0.758 against 0.782).
+ *
+ * nfl  measured on the held-out seasons under the ranker
+ *      (research/nfl-td-scorer/export_ranker.py). Control 1.015 — the closest
+ *      to exactly independent either board has produced.
+ *
+ * The same-team penalties agree almost exactly (0.842 college, 0.826 NFL): two
+ * backs splitting one goal line is the same problem in both codes. The OPPOSED
+ * factors do not, and the gap is large — 0.758 college against 0.883 NFL. Two
+ * scorers on opposite sides of a college game are strongly anti-correlated
+ * because college games are decided by blowouts, and a blowout is one team
+ * scoring five times and the other none. NFL games stay close, both offences
+ * keep taking meaningful snaps, and the penalty for taking one from each side
+ * is correspondingly milder. Applying college's 0.758 to an NFL slip would have
+ * under-priced every opposed pair on the card.
  */
-export const PAIR_FACTOR = { sameTeam: 0.842, opposed: 0.758 };
+export const PAIR_FACTOR: Record<string, { sameTeam: number; opposed: number }> = {
+  cfb: { sameTeam: 0.842, opposed: 0.758 },
+  nfl: { sameTeam: 0.826, opposed: 0.883 },
+};
+const DEFAULT_PAIR_FACTOR = PAIR_FACTOR.cfb;
 
 /**
  * Opposed pairs beyond which the correction is extrapolating. The slips it was
@@ -265,8 +314,10 @@ export function buildTdParlay(
   candidates: ParlayCandidate[],
   size: number,
   maxPerGame = DEFAULT_MAX_PER_GAME,
+  sport = "cfb",
 ): TdParlay {
-  const floor = SIZE_FLOOR[size] ?? DEFAULT_FLOOR;
+  const floor = SIZE_FLOOR[sport]?.[size] ?? DEFAULT_FLOOR;
+  const pair = PAIR_FACTOR[sport] ?? DEFAULT_PAIR_FACTOR;
   const byProb = [...candidates].sort((a, b) => b.prob - a.prob);
   const gamesAvailable = new Set(candidates.map((c) => c.gameId)).size;
 
@@ -312,8 +363,7 @@ export function buildTdParlay(
   const combinedProb = legs.reduce((acc, l) => acc * l.prob, 1);
   const doubledUp = [...perGame.values()].filter((n) => n > 1).length;
   const stackedPairs = countStackedPairs(picked);
-  const factor =
-    PAIR_FACTOR.sameTeam ** stackedPairs.sameTeam * PAIR_FACTOR.opposed ** stackedPairs.opposed;
+  const factor = pair.sameTeam ** stackedPairs.sameTeam * pair.opposed ** stackedPairs.opposed;
   const adjustedProb = legs.length ? combinedProb * factor : 0;
 
   return {
@@ -342,6 +392,7 @@ export function buildTdParlays(
   candidates: ParlayCandidate[],
   sizes: number[] = PARLAY_SIZES,
   maxPerGame = DEFAULT_MAX_PER_GAME,
+  sport = "cfb",
 ): TdParlay[] {
-  return sizes.map((s) => buildTdParlay(candidates, s, maxPerGame));
+  return sizes.map((s) => buildTdParlay(candidates, s, maxPerGame, sport));
 }

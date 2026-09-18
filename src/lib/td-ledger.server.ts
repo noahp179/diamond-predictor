@@ -39,7 +39,7 @@ export type TdSport = "cfb" | "nfl";
 /** Bumped when a model changes in a way that makes old rows incomparable. */
 export const TD_MODEL_VERSION: Record<TdSport, string> = {
   cfb: "cfb-td-extratrees-v1",
-  nfl: "nfl-td-logistic-v1",
+  nfl: "nfl-td-pairrank-v1",
 };
 
 export const TD_MARKET = "anytime_td";

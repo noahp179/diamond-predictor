@@ -9,7 +9,12 @@
  *
  *   bun scripts/test-td-parlay.ts [cfb|nfl] [YYYY-MM-DD]
  */
-import { buildTdParlays, PAIR_FACTOR, PARLAY_SIZES, SIZE_EVIDENCE } from "../src/lib/td-parlay";
+import {
+  buildTdParlays,
+  PAIR_FACTOR,
+  PARLAY_SIZES,
+  SIZE_EVIDENCE,
+} from "../src/lib/td-parlay";
 import type { ParlayCandidate, TdParlay } from "../src/lib/td-parlay";
 
 const sport = (process.argv[2] ?? "cfb") as "cfb" | "nfl";
@@ -94,9 +99,21 @@ function runChecks(p: TdParlay, cap: number, label: string) {
   for (const l of p.legs) perGame.set(l.gameId, (perGame.get(l.gameId) ?? 0) + 1);
   const maxSeen = Math.max(...perGame.values());
   // The cap may only be exceeded when the slate cannot fill the slip within it.
+  //
+  // The binding constraint is not how many games are on the slate — it is how
+  // many have a candidate CLEARING THIS SIZE'S FLOOR, which is what the builder
+  // may draw from before it starts relaxing. Those are the same number on a
+  // Saturday, where fifty games make the floor irrelevant at any size, and they
+  // are not on an NFL Sunday: fourteen games, but only nine with a pick over a
+  // ten-leg slip's 0.40 floor, so a one-per-game ten-leg slip is genuinely
+  // unbuildable and doubling up is the correct answer rather than a violation.
+  const overFloor = new Set(
+    candidates.filter((c) => c.prob >= p.floor).map((c) => c.gameId),
+  ).size;
   check(
-    maxSeen <= cap || p.size > gamesAvailable * cap,
-    `respects the ${label} cap unless the slate cannot fill it (saw ${maxSeen}/game)`,
+    maxSeen <= cap || p.size > overFloor * cap,
+    `respects the ${label} cap unless the slate cannot fill it ` +
+      `(saw ${maxSeen}/game; ${overFloor} games clear the ${p.floor} floor)`,
   );
   check(
     !Number.isFinite(cap) || maxSeen <= cap + 1,
@@ -121,8 +138,8 @@ function runChecks(p: TdParlay, cap: number, label: string) {
 
   const expected =
     product *
-    PAIR_FACTOR.sameTeam ** p.stackedPairs.sameTeam *
-    PAIR_FACTOR.opposed ** p.stackedPairs.opposed;
+    PAIR_FACTOR[sport].sameTeam ** p.stackedPairs.sameTeam *
+    PAIR_FACTOR[sport].opposed ** p.stackedPairs.opposed;
   check(
     Math.abs(expected - p.adjustedProb) < 1e-12,
     "adjustedProb applies the measured per-pair correction",
@@ -149,7 +166,7 @@ for (const { cap, label } of [
   { cap: Infinity, label: "any" },
 ]) {
   console.log(`\n########## legs from one game: ${label} ##########`);
-  for (const p of buildTdParlays(candidates, PARLAY_SIZES, cap)) runChecks(p, cap, label);
+  for (const p of buildTdParlays(candidates, PARLAY_SIZES, cap, sport)) runChecks(p, cap, label);
 }
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
