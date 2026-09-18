@@ -12,6 +12,18 @@ type Game = Result["games"][number];
 type Pick = Game["picks"][number];
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+/** "Sun Sep 20" — enough to tell the reader which day they are looking at. */
+function dayLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return date;
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
 const signed = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(Math.round(x * 100))}`;
 
 /**
@@ -175,6 +187,16 @@ export function NflPropsView() {
         </div>
       )}
       {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
+
+      {/* Moving the reader to a day football is played is only acceptable if
+          the page says so. */}
+      {!isLoading && !isError && data?.date && data.date !== date && (
+        <Note>
+          No NFL games on {dayLabel(date)} — showing{" "}
+          <span className="text-foreground">{dayLabel(data.date)}</span>, the next slate with a
+          card. Pick a date above to override.
+        </Note>
+      )}
 
       {!isLoading && !isError && markets.length > 0 && (
         <div className="mb-6 border border-border bg-card">

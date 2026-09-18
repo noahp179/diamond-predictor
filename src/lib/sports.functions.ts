@@ -268,12 +268,20 @@ export const getMlbTwoBases = createServerFn({ method: "GET" })
 export const getNflProps = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => {
-    const date = data?.date ?? todayET();
+    const asked = data?.date ?? todayET();
     try {
       const { propsSlate } = await import("./nfl-props.server");
+      // Land on a day football is played, for the same reason the parlay board
+      // does: opening the page on a Tuesday and being told "no props to
+      // project" is a correct sentence and a useless board. One game is enough
+      // here — unlike a five-leg slip, a single Thursday night still fills a
+      // card — so this only moves the reader when the day is genuinely empty.
+      const found = await nextPlayableDate("nfl", asked, 1);
+      const date = found.date;
       const { season, games, markets } = await propsSlate(date);
       return {
         date,
+        requestedDate: asked,
         games,
         markets,
         season,
@@ -284,7 +292,8 @@ export const getNflProps = createServerFn({ method: "GET" })
     } catch (err) {
       console.error(`[nflProps] failed:`, err);
       return {
-        date,
+        date: asked,
+        requestedDate: asked,
         games: [] as Awaited<ReturnType<typeof import("./nfl-props.server").propsSlate>>["games"],
         markets: [] as Awaited<
           ReturnType<typeof import("./nfl-props.server").propsSlate>
