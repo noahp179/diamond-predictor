@@ -1,13 +1,8 @@
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  AccuracyTrend,
-  BucketAccuracy,
-  ChartCard,
-  EmptyChart,
-  VolumeChart,
-} from "@/components/LedgerCharts";
+import { AccuracyTrend, ChartCard, EmptyChart } from "@/components/LedgerCharts";
+import { CalibrationTable } from "@/components/CalibrationTable";
 import { Note } from "@/components/AppShell";
 import { ParlayRecord } from "@/components/ParlayRecord";
 import { getTdLedger } from "@/lib/tracking.functions";
@@ -92,6 +87,25 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
           are never averaged into a single figure for the site.
         </p>
       </div>
+
+      {/* The whole section in one sentence, before any chart. A reader who
+          stops here should still leave knowing the answer. */}
+      {!isLoading && data?.status === "ok" && n > 0 && (
+        <div className="mb-6 border border-border bg-card px-5 py-4">
+          <p className="text-lg leading-relaxed">
+            Of the{" "}
+            <span className="font-display text-2xl text-foreground">{n}</span> picks settled so
+            far, <span className="font-display text-2xl text-foreground">{s!.hits}</span> scored —{" "}
+            <span className="text-foreground">{pct(s!.hitRate, 0)}</span>. The backtest said{" "}
+            <span className="text-foreground">{pct(claim?.anyHit, 0)}</span>.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {enough
+              ? "Enough settled picks for that comparison to mean something."
+              : `Below ${MEANINGFUL_N} settled picks the two numbers will differ by a few points for no reason at all, so treat the gap as noise until the count catches up.`}
+          </p>
+        </div>
+      )}
 
       {isLoading && <div className="h-40 animate-pulse border border-border bg-card" />}
 
@@ -217,9 +231,9 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
       {n > 0 && (
         <>
           <ChartCard
-            title="Are the picked players scoring?"
-            subtitle="The live hit rate across every shown pick as they settle, against the rate the backtest claimed for the same cut of the board. Early points swing hard because the denominator is tiny."
-            footer="Cumulative, not per-day. One Saturday or Sunday is far too small a sample to read on its own."
+            title="Is the hit rate settling where it should?"
+            subtitle="The running hit rate across every pick shown, as results come in. The dashed line is what the backtest promised. Early on the line jumps around because it is averaging a handful of picks; it should steady toward the dashes, or visibly not."
+            footer="Each point is every pick settled up to that moment, not that day alone — so the line gets calmer as it goes right."
           >
             {(data?.running.length ?? 0) > 0 ? (
               <AccuracyTrend
@@ -236,27 +250,54 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
           </ChartCard>
 
           <ChartCard
-            title="Is a 60% pick a 60% pick?"
-            subtitle="Every settled pick bucketed by the probability printed next to it, against how often that bucket actually scored. The bands run lower than the game-outcome chart above because a touchdown pick is not the favoured side of anything — the lead name on a card is around 65% and the fourth around 35%."
-            footer="Taller actual than stated means the board was under-confident in that bucket; shorter means over-confident, which is the expensive direction. A bucket holding a handful of picks will disagree wildly however good the model is."
+            title="When it says 60%, do 60% score?"
+            subtitle="Picks grouped by the number printed next to them, against how often that group actually scored. The groups run lower than the game chart above because a touchdown pick is not the favoured side of anything — the lead name on a card is about 65%, the fourth about 35%."
+            footer="Two dots on one line per group: the hollow one is what the board claimed, the filled one is what happened. Close together means the percentage on the card can be taken at face value."
           >
             {(data?.calibration.length ?? 0) > 0 ? (
-              <BucketAccuracy calibration={data!.calibration} />
+              <CalibrationTable rows={data!.calibration} unit="picks" />
             ) : (
               <EmptyChart>
-                Calibration needs settled picks spread across probability bands. Nothing to plot
+                This needs settled picks spread across a few probability groups. Nothing to show
                 yet.
               </EmptyChart>
             )}
           </ChartCard>
 
           <ChartCard
-            title="How fast is this filling up?"
-            subtitle="Picks settled per game day, with that day's hit rate riding on top. The bars are the honest context for every other number in this section."
-            footer="A single slate is almost never a meaningful sample, which is why the daily rate is drawn thin and the volume solid."
+            title="Day by day"
+            subtitle="What each slate contributed. This was a bar chart with the hit rate drawn over it on a second scale, which meant comparing bar heights against a line that shared no units with them — the numbers say it better."
+            footer="One slate is almost never a meaningful sample on its own. The point of this table is the running total, not any single row."
           >
             {(data?.daily.length ?? 0) > 0 ? (
-              <VolumeChart daily={data!.daily} barName="picks settled" />
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[420px] border-collapse font-mono text-[11px]">
+                  <thead>
+                    <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
+                      <th className="py-2 pr-3 font-normal">Slate</th>
+                      <th className="py-2 pr-3 text-right font-normal">Settled</th>
+                      <th className="py-2 pr-3 text-right font-normal">Scored</th>
+                      <th className="py-2 text-right font-normal">That day</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...data!.daily].reverse().slice(0, 12).map((d) => (
+                      <tr key={d.date} className="border-b border-border/60 last:border-b-0">
+                        <td className="py-2.5 pr-3 tabular-nums text-foreground">{d.date}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums text-muted-foreground">
+                          {d.n}
+                        </td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums text-muted-foreground">
+                          {d.correct}
+                        </td>
+                        <td className="py-2.5 text-right tabular-nums text-foreground">
+                          {pct(d.accuracy, 0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <EmptyChart>Nothing has settled yet.</EmptyChart>
             )}
