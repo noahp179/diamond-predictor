@@ -428,12 +428,22 @@ export async function runTrackingCycle(today: string) {
   const tdNfl = (await snapshotTdPicks("nfl", today)) + (await snapshotTdPicks("nfl", next));
   const tdSettled = await settleTdPicks(today);
 
+  // Slips are frozen AFTER the picks that make them up, and settled AFTER
+  // those picks settle — both in the same cycle, and both in that order. A
+  // slip whose legs are not in the pick ledger yet cannot be scored, and the
+  // settler correctly leaves it pending rather than guessing.
+  const { snapshotParlays, settleParlays } = await import("./parlay-ledger.server");
+  const parCfb = (await snapshotParlays("cfb", today)) + (await snapshotParlays("cfb", next));
+  const parNfl = (await snapshotParlays("nfl", today)) + (await snapshotParlays("nfl", next));
+  const parSettled = await settleParlays(today);
+
   const settled = await settlePending(today);
   return {
     today,
-    recorded: { soccer, tennis, nfl, nba, cfb, tdCfb, tdNfl },
+    recorded: { soccer, tennis, nfl, nba, cfb, tdCfb, tdNfl, parCfb, parNfl },
     ...settled,
     touchdowns: tdSettled,
+    parlays: parSettled,
   };
 }
 

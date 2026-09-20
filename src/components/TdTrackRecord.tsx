@@ -9,6 +9,7 @@ import {
   VolumeChart,
 } from "@/components/LedgerCharts";
 import { Note } from "@/components/AppShell";
+import { ParlayRecord } from "@/components/ParlayRecord";
 import { getTdLedger } from "@/lib/tracking.functions";
 
 /**
@@ -199,6 +200,11 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
           </div>
         </div>
       )}
+
+      {/* The slips are a different unit from the picks above — a slip is right
+          only if every leg is — so they get their own table rather than a
+          column in that one. */}
+      <ParlayRecord sport={sport} />
 
       {n === 0 && data?.status === "ok" && (
         <p className="mb-8 border border-dashed border-border px-5 py-4 text-sm text-muted-foreground">

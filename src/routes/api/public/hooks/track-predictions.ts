@@ -52,10 +52,13 @@ function verifyCronSecret(request: Request): Response | null {
  * different questions.
  */
 async function diagnose(): Promise<Response> {
-  const [events, cfbTd, nflTd] = await Promise.all([
+  const { readParlayLedger } = await import("@/lib/parlay-ledger.server");
+  const [events, cfbTd, nflTd, cfbPar, nflPar] = await Promise.all([
     readLedger("tennis", "atp"),
     readTdLedger("cfb"),
     readTdLedger("nfl"),
+    readParlayLedger("cfb"),
+    readParlayLedger("nfl"),
   ]);
   const picks = cfbTd.summary.n + cfbTd.summary.pending + nflTd.summary.n + nflTd.summary.pending;
   return Response.json({
@@ -72,6 +75,16 @@ async function diagnose(): Promise<Response> {
     tdLedgerStatus: { cfb: cfbTd.status, nfl: nflTd.status },
     tdPicksRecorded: picks,
     tdPicksSettled: cfbTd.summary.n + nflTd.summary.n,
+    // parlay_predictions — the 5/10/15/20 slips as offered. `expected` is the
+    // sum of what those settled slips claimed; without it a zero in `won`
+    // cannot be told apart from a broken model.
+    parlayLedgerReady: cfbPar.status === "ok" && nflPar.status === "ok",
+    parlayLedgerStatus: { cfb: cfbPar.status, nfl: nflPar.status },
+    parlaysSettled: cfbPar.totals.slips + nflPar.totals.slips,
+    parlaysPending: cfbPar.totals.pending + nflPar.totals.pending,
+    parlaysWon: cfbPar.totals.won + nflPar.totals.won,
+    parlaysExpected:
+      Math.round((cfbPar.totals.expected + nflPar.totals.expected) * 1000) / 1000,
     today: new Date().toISOString().slice(0, 10),
   });
 }

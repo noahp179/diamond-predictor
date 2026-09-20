@@ -106,3 +106,11 @@ export const getTdLedger = createServerFn({ method: "GET" })
     const { readTdLedger } = await import("./td-ledger.server");
     return readTdLedger(data.sport);
   });
+
+/** The 5/10/15/20 slips as offered, and how they came in. */
+export const getParlayLedger = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ sport: z.enum(["cfb", "nfl"]) }))
+  .handler(async ({ data }) => {
+    const { readParlayLedger } = await import("./parlay-ledger.server");
+    return readParlayLedger(data.sport);
+  });
