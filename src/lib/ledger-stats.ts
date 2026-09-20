@@ -69,6 +69,29 @@ const BANDS: [number, number, string][] = [
   [0.85, 1.01, "85%+"],
 ];
 
+/**
+ * Buckets for a market where the pick is NOT the favoured side.
+ *
+ * The bands above start at 50% because a game-outcome pick is by construction
+ * the side above the coin flip — nothing below 50% is ever printed. A touchdown
+ * scorer is the opposite: the best pick on a card runs about 65% and the fifth
+ * one about 35%, and a 2+ or first-touchdown pick tops out near 35%. Bucketing
+ * those with the game bands drops every call into "<55%" and the calibration
+ * chart becomes one bar, which is not a calibration chart.
+ *
+ * So these bands cover the range the player boards actually occupy. Sharing the
+ * bucketing FUNCTION and varying only the edges is what keeps the two charts
+ * comparable in shape while each one says something about its own market.
+ */
+export const PLAYER_BANDS: [number, number, string][] = [
+  [0, 0.25, "<25%"],
+  [0.25, 0.35, "25-35%"],
+  [0.35, 0.45, "35-45%"],
+  [0.45, 0.55, "45-55%"],
+  [0.55, 0.65, "55-65%"],
+  [0.65, 1.01, "65%+"],
+];
+
 export type Bucket = {
   band: string;
   lo: number;
@@ -90,8 +113,11 @@ export type Bucket = {
  * Empty buckets are dropped. A bar of height zero over "no calls" reads as "it
  * never got one right", which is the opposite of what it means.
  */
-export function bucketise(calls: { pickProb: number; correct: boolean }[]): Bucket[] {
-  return BANDS.map(([lo, hi, band]) => {
+export function bucketise(
+  calls: { pickProb: number; correct: boolean }[],
+  bands: [number, number, string][] = BANDS,
+): Bucket[] {
+  return bands.map(([lo, hi, band]) => {
     const inBand = calls.filter((c) => c.pickProb >= lo && c.pickProb < hi);
     return {
       band,

@@ -31,6 +31,7 @@
  * broader event than the model predicts would flatter it for free.
  */
 import { supabaseAdmin as _admin } from "@/integrations/supabase/client.server";
+import { bucketise, PLAYER_BANDS, type Bucket } from "./ledger-stats";
 import { supabase } from "@/integrations/supabase/client";
 import cfbModel from "./cfb-td-forest.json";
 
@@ -58,13 +59,40 @@ const ESPN_PATH: Record<TdSport, string> = {
  * NFL-TD-SCORER-BACKTEST.md, whose research predates this ledger and does not
  * export a machine-readable claim; they are quoted here rather than invented.
  */
-export const TD_CLAIM: Record<TdSport, { leadHit: number; anyHit: number; source: string }> = {
+/**
+ * What the held-out backtest claimed, for the live ledger to be measured
+ * against. Three numbers because the board makes three different claims:
+ *
+ *   leadHit  the pick the card leads with
+ *   anyHit   every pick the card SHOWS, lead and tail together. Much lower than
+ *            leadHit by construction — the fourth name on a card is not the
+ *            first — and it is the number to compare a raw hit rate against.
+ *   gameHit  games where any shown pick scored. The reader's question if they
+ *            take the whole card rather than one name.
+ *
+ * NFL's entry described the retired logistic until 2026-09-20, and not only the
+ * wrong model: it carried anyHit 0.483, the LEAD pick's rate, as though it were
+ * the rate across all four shown picks. The real figure is 0.370, so the page
+ * was holding the live ledger to a claim eleven points too generous and would
+ * have read as underperformance that was not there. Re-measured by
+ * research/nfl-td-scorer (board_claim.json) on the seasons the ranker never saw.
+ */
+export const TD_CLAIM: Record<
+  TdSport,
+  { leadHit: number; anyHit: number; gameHit: number; source: string }
+> = {
   cfb: {
     leadHit: 0.581,
     anyHit: cfbModel.holdout.pick_hit_rate,
+    gameHit: cfbModel.holdout.game_hit_rate,
     source: "held out on 2025–26, CFB-ANALYSIS.md",
   },
-  nfl: { leadHit: 0.483, anyHit: 0.483, source: "held out on 2023–24, NFL-TD-SCORER-BACKTEST.md" },
+  nfl: {
+    leadHit: 0.4917,
+    anyHit: 0.3704,
+    gameHit: 0.8405,
+    source: "held out on 2025–26, NFL-BAKEOFF.md",
+  },
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -343,7 +371,7 @@ export type TdLedgerView = {
    */
   status: "ok" | "not-provisioned" | "unreadable";
   writable: boolean;
-  claim: { leadHit: number; anyHit: number; source: string };
+  claim: { leadHit: number; anyHit: number; gameHit: number; source: string };
   summary: {
     n: number;
     hits: number;
@@ -359,6 +387,15 @@ export type TdLedgerView = {
   };
   byRank: TdLedgerGroup[];
   byTier: TdLedgerGroup[];
+  /** Hit rate by stated-probability band, so the board can be checked against
+   *  its own claims rather than only against its backtest. Uses PLAYER_BANDS,
+   *  not the game-outcome bands — see ledger-stats.ts for why. */
+  calibration: Bucket[];
+  /** Cumulative hit rate over settled picks, oldest first. The series a reader
+   *  needs to see whether a gap is a trend or the first fifty calls. */
+  running: { i: number; date: string; accuracy: number }[];
+  /** One row per day that settled anything, oldest first. */
+  daily: { date: string; n: number; correct: number; accuracy: number }[];
   recent: TdLedgerRow[];
 };
 
@@ -402,6 +439,9 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
     },
     byRank: [],
     byTier: [],
+    calibration: [],
+    running: [],
+    daily: [],
     recent: [],
   };
 
@@ -464,6 +504,21 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null;
     };
 
+    // The query comes back newest-first so the recent table reads correctly.
+    // A running series has to read the other way, so it is sorted here rather
+    // than reversing the query and breaking the table.
+    const chrono = [...done].sort(
+      (a, b) => a.event_date.localeCompare(b.event_date) || a.pick_rank - b.pick_rank,
+    );
+    let seen = 0;
+    const byDay = new Map<string, { n: number; hits: number }>();
+    for (const r of chrono) {
+      const cur = byDay.get(r.event_date) ?? { n: 0, hits: 0 };
+      cur.n += 1;
+      if (r.scored) cur.hits += 1;
+      byDay.set(r.event_date, cur);
+    }
+
     return {
       ...empty,
       summary: {
@@ -479,6 +534,22 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
         firstDate: dates[0] ?? null,
         lastDate: dates[dates.length - 1] ?? null,
       },
+      calibration: bucketise(
+        done.map((r) => ({ pickProb: Number(r.prob), correct: !!r.scored })),
+        PLAYER_BANDS,
+      ),
+      running: chrono.map((r, i) => {
+        seen += r.scored ? 1 : 0;
+        return { i: i + 1, date: r.event_date, accuracy: seen / (i + 1) };
+      }),
+      daily: [...byDay.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({
+          date,
+          n: v.n,
+          correct: v.hits,
+          accuracy: v.n ? v.hits / v.n : 0,
+        })),
       byRank: group(
         done.map((r) => ({ key: `Pick ${r.pick_rank}`, scored: r.scored })),
         ["Pick 1", "Pick 2", "Pick 3"],

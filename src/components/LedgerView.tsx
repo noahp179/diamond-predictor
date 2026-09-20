@@ -10,6 +10,7 @@ import {
   EmptyChart,
   VolumeChart,
 } from "@/components/LedgerCharts";
+import { TdTrackRecord } from "@/components/TdTrackRecord";
 import { getTrackLedger } from "@/lib/tracking.functions";
 import type { DivisionSlug, SportKey } from "@/lib/nav";
 
@@ -347,6 +348,13 @@ export function LedgerView({
           </div>
         </section>
       )}
+
+      {/* The touchdown board keeps its own ledger, in its own table, with its
+          own base rate. It is stacked below rather than merged in: averaging
+          "picked the winner" with "this man scored" would produce a site-wide
+          accuracy that describes neither. Football only — no other sport has a
+          player board wired to the forward ledger. */}
+      {(sport === "cfb" || sport === "nfl") && <TdTrackRecord sport={sport} />}
     </AppShell>
   );
 }

@@ -15,9 +15,31 @@
 import { predictSlate } from "../src/lib/espn.server";
 import { cfbTdSlate } from "../src/lib/cfb-td.server";
 import { readTdLedger, canTrackTd, TD_CLAIM } from "../src/lib/td-ledger.server";
+import { addDays, todayET } from "../src/lib/date";
 
-const PAST = "2026-09-12"; // a played Saturday
-const UPCOMING = "2026-09-19"; // a scheduled one
+/**
+ * Both dates are DERIVED, not written down.
+ *
+ * They used to be two hardcoded Saturdays, and the test duly started failing
+ * the morning the "upcoming" one became yesterday: 4 of 71 college games still
+ * counted as recordable and the scheduled-games-carry-no-score check flipped.
+ * That is a fixture rotting, not a regression, and a test that cries wolf on a
+ * calendar roll gets ignored exactly when it matters.
+ *
+ * College plays Saturdays, so the next one is the slate that is reliably still
+ * scheduled, and the one a fortnight back is reliably finished.
+ */
+function nextSaturday(from: string): string {
+  for (let i = 1; i <= 7; i++) {
+    const d = addDays(from, i);
+    const [y, m, day] = d.split("-").map(Number);
+    if (new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay() === 6) return d;
+  }
+  return addDays(from, 7);
+}
+
+const UPCOMING = nextSaturday(todayET()); // a scheduled Saturday
+const PAST = addDays(UPCOMING, -14); // one that finished a fortnight ago
 
 let failures = 0;
 const check = (ok: boolean, msg: string) => {

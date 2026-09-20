@@ -1,0 +1,11 @@
+{
+ "seasons": [
+  2025,
+  2026
+ ],
+ "games": 301,
+ "picks_per_game": 4.0,
+ "lead_hit_rate": 0.49169435215946844,
+ "pick_hit_rate": 0.3704318936877076,
+ "game_hit_rate": 0.840531561461794
+}
