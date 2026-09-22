@@ -408,6 +408,125 @@ number for the same hitter.
 
 ---
 
+## The parlays
+
+`/mlb/parlays` assembles the board into a five, ten or fifteen-leg slip. The
+construction was chosen and reported by `research/mlb-tb2/parlay_tb2.py`, on
+2026 split in half by date: the first half picks the floors and caps, the second
+half is the only thing reported. The model itself was fitted through 2025, so
+all of 2026 is held out for it either way.
+
+### The hypothesis was wrong, which is the interesting part
+
+Football penalises stacking a game hard. Two team-mates on a touchdown slip
+compete for a finite number of goal-line carries, and the measured factor is
+0.826 — take both and you are worth 17% less than the plain product implies.
+
+Two hitters in one lineup do not compete. They share a starting pitcher and a
+ballpark, so if he is wild and it is warm in Cincinnati both should get
+extra-base hits and neither should if he is dealing. That is a clear positive
+correlation, and for an all-or-nothing slip positive correlation is *help* —
+correlated legs land together more often than independence implies. The
+expectation going in was that baseball would reward stacking where football
+punishes it.
+
+Measured against a different-games control, over every pair of candidates on
+every chosen day:
+
+```
+         pair type      pairs    both   expected   ratio
+       same lineup      4,449     894      904.4   0.988
+same game, opposed      3,417     596      656.9   0.907
+ different games       59,479  11,282    11655.5   0.968   <- the control
+```
+
+Against that control: **same lineup 1.021, opposed 0.937.**
+
+The stack effect is *nothing*. Not negative as in football, not the positive
+edge the reasoning predicted — 1.02, which is zero to any decision this makes.
+The reason is that 2+ total bases is mostly an individual event: one double does
+it, so a hitter's own power and plate appearances swamp whatever the offence
+does collectively. The opposed figure is a mild real penalty, presumably the
+game script that lets one side's starter cruise.
+
+### A bug worth naming
+
+The first version of this computed each slip's stated probability as the **plain
+product of its legs**, while the app quoted that product times the correction
+above. The card would have cited a backtest computed a different way than the
+number printed over it — and at fifteen legs uncapped that gap is a factor of
+two, because 0.937 applied eighteen times is 0.30.
+
+Moving the correction inside the backtest did more than make the two agree. The
+construction sweep chooses on stated probability, so it now **pays for
+stacking** — and that changed its answer. Fifteen legs had chosen unrestricted;
+priced properly it chooses three per game. Five and ten stay unrestricted, where
+1.021 makes stacking genuinely free.
+
+That is the whole argument for pricing a thing before choosing on it: the sweep
+was not wrong about the arithmetic, it was choosing on a number the board was
+never going to show.
+
+### What ships, per size
+
+| legs | cap | floor | stated | about | held out | legs landed |
+|---|---|---|---|---|---|---|
+| 5 | any | 0.45 | 3.40% | 1 in 29 | **4 of 77 days** (2.62 expected) | 2.6 of 5 |
+| 10 | any | 0.42 | 0.072% | 1 in 1,392 | 0 of 82 (0.06 expected) | 4.8 of 10 |
+| 15 | 3/game | 0.42 | 0.0014% | 1 in 70,454 | 0 of 70 (0.00 expected) | 7.0 of 15 |
+
+The five-leg row is the only one with a real sample and it landed: four wins
+against 2.62 expected, on days the construction never saw. Below that there is
+nothing to learn from the win column — at ten legs the slips were expected to
+land 0.06 times across the whole held-out period, so a zero is arithmetic rather
+than evidence, and the board says so rather than letting a column of zeros read
+as a broken model.
+
+**Legs landed is the column that carries the long sizes.** Every fifteen-leg
+slip losing is certain; averaging 7.0 of 15 rather than 3 of 15 is the
+difference between a board worth reading and one that is not, and it is measured
+on every single held-out day.
+
+### The floors are low because the model's range is
+
+0.45 at five legs would be an absurd bar on a touchdown board, where the lead
+pick runs 65%. Here it is near the top: the model's whole range is 0.175 to
+0.624, and only 594 of ~37,000 batter-games clear 0.50 at all. **Every leg of
+these slips is close to a coin flip**, which is why a slip compounds so fast —
+and it is a property of the market, not a defect of the model. Two or more total
+bases is simply harder than "scored at some point".
+
+### What is recorded
+
+Picks go to `player_predictions` under the market `tb2`, slips to
+`parlay_predictions`, both written before first pitch and settled from the MLB
+box score on `totalBases >= 2`. Two things baseball needs that football does
+not:
+
+- **A hitter who never came to the plate is a void, not a miss.** Lineup cards
+  land about two hours before first pitch, so a pick can be on somebody rested
+  or scratched that afternoon. The model was fitted on batter-*games*, and a
+  sportsbook refunds that prop rather than losing it. The row settles with no
+  result and leaves the record; a slip carrying one voids with it.
+- **The pick ledger records deeper than the card.** A slip settles by joining
+  its legs against the pick ledger, and these slips draw from the whole slate
+  rather than the three names a game card shows — so a leg can be the
+  fifth-best hitter in its game. Recording only the card would leave that slip
+  permanently unsettleable, waiting rather than failing.
+
+### One finding that should change how you read the board
+
+Held out, the card's three hitters hit **43.1%, 41.8% and 43.0%**. The ordering
+*within a game* is close to decoration at the top three.
+
+That is not the model saying nothing. The best hitter on the **whole slate** got
+two bases 53.5% of the time against a 35.0% base rate. The signal is across
+games, not inside one — which is exactly why a slip takes its legs from the
+whole board rather than one per game, and why the per-game cap is a real trade
+rather than an obvious call.
+
+---
+
 ## Reproducing
 
 ```bash
@@ -418,7 +537,11 @@ python3 features_tb2.py           # the eight candidate blocks
 python3 bakeoff_tb2.py            # ablation, greedy selection, twelve algorithms
 python3 weather_sensitivity.py    # does the weather survive being a forecast?
 python3 final_tb2.py              # freeze -> src/lib/mlb-tb2-model.json
+python3 board_claim_tb2.py        # what the CARD claims, for the live ledger
+python3 parlay_tb2.py             # correlation, construction sweep, held-out slips
 npx tsx scripts/test-two-bases.ts
+npx tsx scripts/test-base-parlay.ts   # slip invariants against a live slate
+npx tsx scripts/test-tb2-ledger.ts    # claim + settlement invariants
 ```
 
 ---
