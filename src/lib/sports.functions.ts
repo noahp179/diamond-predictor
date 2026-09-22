@@ -287,41 +287,24 @@ export const getTwoBaseParlays = createServerFn({ method: "GET" })
           ? Infinity
           : data.maxPerGame;
     try {
-      const { twoBaseSlate } = await import("./mlb-tb2.server");
+      const { twoBaseParlayCandidates } = await import("./mlb-tb2.server");
 
       // A fifteen-leg slip needs a day with hitters left to bet on. Look at the
       // asked-for day first and roll forward only if it is spent — baseball
       // plays nearly every day, so one step is almost always enough and two is
       // the whole All-Star break.
-      const now = Date.now();
       let date = asked;
-      let slate = await twoBaseSlate(asked);
-      let live = slate.picks.filter((p) => Date.parse(p.startsAt) > now);
-      let startedGames = new Set(
-        slate.picks.filter((p) => Date.parse(p.startsAt) <= now).map((p) => p.gameId),
-      ).size;
-      for (let i = 0; i < 2 && live.length < Math.min(...SIZES); i++) {
+      let built = await twoBaseParlayCandidates(asked);
+      let startedGames =
+        new Set(built.slate.picks.map((p) => p.gameId)).size -
+        new Set(built.candidates.map((c) => c.gameId)).size;
+      for (let i = 0; i < 2 && built.candidates.length < Math.min(...SIZES); i++) {
         date = addDays(date, 1);
-        slate = await twoBaseSlate(date);
-        live = slate.picks.filter((p) => Date.parse(p.startsAt) > now);
+        built = await twoBaseParlayCandidates(date);
         startedGames = 0;
       }
+      const { slate, candidates } = built;
 
-      const candidates: ParlayCandidate[] = live.map((p) => ({
-        playerId: String(p.playerId),
-        player: p.player,
-        position: null,
-        team: p.team,
-        gameId: p.gameId,
-        matchup: p.matchup,
-        prob: p.prob,
-        tier: p.tier,
-        tierHit: p.tierHitRate,
-        // The board already explains every projection in its own words; the
-        // slip quotes that rather than inventing a second explanation.
-        reasons: p.up.slice(0, 3).map((r) => r.detail || r.label),
-        against: p.down[0]?.detail ?? p.down[0]?.label ?? null,
-      }));
       const games = new Set(candidates.map((c) => c.gameId)).size;
       return {
         date,

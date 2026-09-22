@@ -107,9 +107,19 @@ export const getTdLedger = createServerFn({ method: "GET" })
     return readTdLedger(data.sport);
   });
 
+/**
+ * The live 2+ total bases record — the same shape as the touchdown ledger, so
+ * one component renders both. Its own function rather than a sport on that one
+ * because it answers a different question and carries a different claim.
+ */
+export const getTb2Ledger = createServerFn({ method: "GET" }).handler(async () => {
+  const { readTb2Ledger } = await import("./tb2-ledger.server");
+  return readTb2Ledger();
+});
+
 /** The 5/10/15/20 slips as offered, and how they came in. */
 export const getParlayLedger = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ sport: z.enum(["cfb", "nfl"]) }))
+  .inputValidator(z.object({ sport: z.enum(["cfb", "nfl", "mlb"]) }))
   .handler(async ({ data }) => {
     const { readParlayLedger } = await import("./parlay-ledger.server");
     return readParlayLedger(data.sport);

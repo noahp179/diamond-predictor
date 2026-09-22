@@ -110,7 +110,7 @@ export function canTrackTd(): boolean {
 // ------------------------------------------------------------------ write
 
 export type TdPickRow = {
-  sport: TdSport;
+  sport: PlayerSport;
   market: string;
   model_version: string;
   event_id: string;
@@ -356,8 +356,13 @@ export type TdLedgerRow = {
 
 export type TdLedgerGroup = { label: string; n: number; hits: number; hitRate: number | null };
 
+/** Sports that write player-level picks to `player_predictions`. MLB's market
+ *  is 2+ total bases rather than touchdowns; the table and the read path do not
+ *  care, which is what its `market` column is for. */
+export type PlayerSport = TdSport | "mlb";
+
 export type TdLedgerView = {
-  sport: TdSport;
+  sport: PlayerSport;
   modelVersion: string;
   /**
    * Three states, because two of them look identical on an empty page and only
@@ -379,12 +384,25 @@ export type TdLedgerView = {
     brier: number | null;
     logLoss: number | null;
     pending: number;
+    /**
+     * Picks settled with no result to score — baseball's hitter who never came
+     * to the plate. Counted separately from `pending`, which was where they
+     * landed when the only two states were "scored" and "not yet": a void is
+     * finished, it is simply not a hit or a miss, and filing it under pending
+     * made a settled ledger look permanently behind.
+     */
+    voided: number;
     games: number;
     gamesWithHit: number;
     gameHitRate: number | null;
     firstDate: string | null;
     lastDate: string | null;
   };
+  /** What the picks are called on the page. Touchdowns for football, total
+   *  bases for baseball — the ledger stores a count either way and only the
+   *  word differs, so it travels with the view instead of being guessed from
+   *  the sport at three separate render sites. */
+  countLabel: string;
   byRank: TdLedgerGroup[];
   byTier: TdLedgerGroup[];
   /** Hit rate by stated-probability band, so the board can be checked against
@@ -417,13 +435,53 @@ function group(rows: { key: string; scored: boolean | null }[], order?: string[]
 
 /** The live record for one sport's touchdown board. */
 export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
-  const modelVersion = TD_MODEL_VERSION[sport];
+  return readPlayerLedger({
+    sport,
+    market: TD_MARKET,
+    modelVersion: TD_MODEL_VERSION[sport],
+    claim: TD_CLAIM[sport],
+    countLabel: "touchdowns",
+  });
+}
+
+/**
+ * The live record for one player board, whatever it predicts.
+ *
+ * Everything below this line is market-agnostic and always was — the rows come
+ * out of one table filtered by sport and market, and the arithmetic on them is
+ * hit rates, Brier, calibration bands and a running series. Baseball's 2+ bases
+ * board reads through here rather than through a second copy of it, because two
+ * copies of a ledger reader is two places for the hit rate to be computed
+ * differently.
+ */
+export async function readPlayerLedger(opts: {
+  sport: PlayerSport;
+  market: string;
+  modelVersion: string;
+  claim: { leadHit: number; anyHit: number; gameHit: number; source: string };
+  countLabel: string;
+  /** Pick ranks the board actually shows, in card order. */
+  rankOrder?: string[];
+  /**
+   * Deepest pick rank that counts as the card.
+   *
+   * Baseball's table carries rows deeper than the card, recorded only so its
+   * slips can be settled leg by leg (see snapshotTb2Picks). Those are real
+   * forward picks, but they are not what a reader was shown, so a record of
+   * "the board" has to leave them out or it reports a hit rate nobody saw.
+   */
+  maxRank?: number;
+}): Promise<TdLedgerView> {
+  const { sport, market, modelVersion, claim, countLabel } = opts;
+  const maxRank = opts.maxRank ?? Infinity;
+  const rankOrder = opts.rankOrder ?? ["Pick 1", "Pick 2", "Pick 3"];
   const empty: TdLedgerView = {
     sport,
     modelVersion,
     status: "ok",
     writable: canTrackTd(),
-    claim: TD_CLAIM[sport],
+    claim,
+    countLabel,
     summary: {
       n: 0,
       hits: 0,
@@ -431,6 +489,7 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       brier: null,
       logLoss: null,
       pending: 0,
+      voided: 0,
       games: 0,
       gamesWithHit: 0,
       gameHitRate: null,
@@ -450,7 +509,7 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       .from("player_predictions")
       .select("*")
       .eq("sport", sport)
-      .eq("market", TD_MARKET)
+      .eq("market", market)
       .eq("provenance", "forward")
       .order("event_date", { ascending: false })
       .limit(2000);
@@ -466,11 +525,11 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       console.error(
         missing
           ? "[td-ledger] player_predictions does not exist — apply supabase/migrations/20260913120000_player_predictions.sql"
-          : `[td-ledger] read ${sport} failed: ${error.message}`,
+          : `[td-ledger] read ${sport}/${market} failed: ${error.message}`,
       );
       return { ...empty, status: missing ? "not-provisioned" : "unreadable" };
     }
-    const rows = (data ?? []) as {
+    const all = (data ?? []) as {
       event_id: string;
       event_date: string;
       player: string;
@@ -486,6 +545,7 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       log_loss: number | null;
       settled_at: string | null;
     }[];
+    const rows = all.filter((r) => r.pick_rank <= maxRank);
     if (rows.length === 0) return empty;
 
     const done = rows.filter((r) => r.settled_at != null && r.scored != null);
@@ -527,7 +587,8 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
         hitRate: done.length ? hits / done.length : null,
         brier: mean(done.map((r) => (r.brier == null ? null : Number(r.brier)))),
         logLoss: mean(done.map((r) => (r.log_loss == null ? null : Number(r.log_loss)))),
-        pending: rows.length - done.length,
+        pending: rows.filter((r) => r.settled_at == null).length,
+        voided: rows.filter((r) => r.settled_at != null && r.scored == null).length,
         games: byGame.size,
         gamesWithHit,
         gameHitRate: byGame.size ? gamesWithHit / byGame.size : null,
@@ -552,7 +613,7 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
         })),
       byRank: group(
         done.map((r) => ({ key: `Pick ${r.pick_rank}`, scored: r.scored })),
-        ["Pick 1", "Pick 2", "Pick 3"],
+        rankOrder,
       ),
       byTier: group(
         done.filter((r) => r.tier).map((r) => ({ key: r.tier as string, scored: r.scored })),
@@ -572,7 +633,7 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
       })),
     };
   } catch (err) {
-    console.error(`[td-ledger] read ${sport}:`, err);
+    console.error(`[td-ledger] read ${sport}/${market}:`, err);
     return empty;
   }
 }

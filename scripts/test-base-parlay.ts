@@ -29,28 +29,16 @@ import {
   SIZE_FLOOR,
 } from "../src/lib/td-parlay";
 import type { ParlayCandidate, TdParlay } from "../src/lib/td-parlay";
-import { twoBaseSlate } from "../src/lib/mlb-tb2.server";
+import { twoBaseParlayCandidates } from "../src/lib/mlb-tb2.server";
 import { todayET } from "../src/lib/date";
 
 const SIZES = [5, 10, 15];
 const date = process.argv[2] ?? todayET();
 const now = Date.now();
 
-const slate = await twoBaseSlate(date);
-const live = slate.picks.filter((p) => Date.parse(p.startsAt) > now);
-const candidates: ParlayCandidate[] = live.map((p) => ({
-  playerId: String(p.playerId),
-  player: p.player,
-  position: null,
-  team: p.team,
-  gameId: p.gameId,
-  matchup: p.matchup,
-  prob: p.prob,
-  tier: p.tier,
-  tierHit: p.tierHitRate,
-  reasons: p.up.slice(0, 3).map((r) => r.detail || r.label),
-  against: p.down[0]?.detail ?? p.down[0]?.label ?? null,
-}));
+// Through the same builder the page, the slip ledger and the pick ledger use,
+// so this is testing what ships rather than a second copy of it.
+const { slate, candidates } = await twoBaseParlayCandidates(date, now);
 
 const gamesAvailable = new Set(candidates.map((c) => c.gameId)).size;
 const startedGames = new Set(slate.picks.map((p) => p.gameId)).size - gamesAvailable;

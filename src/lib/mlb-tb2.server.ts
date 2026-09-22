@@ -39,6 +39,7 @@
  */
 import model from "./mlb-tb2-model.json";
 import { batterRows, type BatterRow } from "./mlb-props.server";
+import type { ParlayCandidate } from "./td-parlay";
 
 const API = "https://statsapi.mlb.com/api/v1";
 
@@ -547,6 +548,45 @@ export async function twoBaseSlate(date: string): Promise<TwoBaseSlate> {
   const posted = new Set(rows.filter((r) => r.lineupPosted).map((r) => `${r.gamePk}:${r.teamId}`))
     .size;
   return { date, season, picks, byGame, lineupsPosted: posted, games, model: meta };
+}
+
+/**
+ * The slate as parlay legs: every hitter in a game that has not started.
+ *
+ * ONE BUILDER, THREE CALLERS, and that is the point. The parlay page, the slip
+ * ledger and the pick ledger all need the same set, and when each built its own
+ * they could disagree — which is not cosmetic here, because the slip ledger
+ * settles by joining its legs against the pick ledger on (event_id, player_id).
+ * A leg the pick ledger never recorded is a slip that can never be scored, and
+ * it would sit pending forever rather than failing loudly.
+ *
+ * Started games are dropped: the board shows a game under way because the
+ * projection is still the projection, but a leg on a hitter who has already
+ * batted twice is not a bet anyone can place.
+ */
+export async function twoBaseParlayCandidates(
+  date: string,
+  now = Date.now(),
+): Promise<{ slate: TwoBaseSlate; candidates: ParlayCandidate[] }> {
+  const slate = await twoBaseSlate(date);
+  const candidates: ParlayCandidate[] = slate.picks
+    .filter((p) => Date.parse(p.startsAt) > now)
+    .map((p) => ({
+      playerId: String(p.playerId),
+      player: p.player,
+      position: null,
+      team: p.team,
+      gameId: p.gameId,
+      matchup: p.matchup,
+      prob: p.prob,
+      tier: p.tier,
+      tierHit: p.tierHitRate,
+      // The board already explains every projection in its own words; a slip
+      // quotes that rather than inventing a second explanation.
+      reasons: p.up.slice(0, 3).map((r) => r.detail || r.label),
+      against: p.down[0]?.detail ?? p.down[0]?.label ?? null,
+    }));
+  return { slate, candidates };
 }
 
 /** Stable grouping that keeps each group in the order it was given. */

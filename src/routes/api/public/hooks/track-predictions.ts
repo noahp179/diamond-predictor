@@ -53,14 +53,20 @@ function verifyCronSecret(request: Request): Response | null {
  */
 async function diagnose(): Promise<Response> {
   const { readParlayLedger } = await import("@/lib/parlay-ledger.server");
-  const [events, cfbTd, nflTd, cfbPar, nflPar] = await Promise.all([
+  const { readTb2Ledger } = await import("@/lib/tb2-ledger.server");
+  const [events, cfbTd, nflTd, mlbTb2, cfbPar, nflPar, mlbPar] = await Promise.all([
     readLedger("tennis", "atp"),
     readTdLedger("cfb"),
     readTdLedger("nfl"),
+    readTb2Ledger(),
     readParlayLedger("cfb"),
     readParlayLedger("nfl"),
+    readParlayLedger("mlb"),
   ]);
-  const picks = cfbTd.summary.n + cfbTd.summary.pending + nflTd.summary.n + nflTd.summary.pending;
+  const players = [cfbTd, nflTd, mlbTb2];
+  const parlays = [cfbPar, nflPar, mlbPar];
+  const picks = players.reduce((n, l) => n + l.summary.n + l.summary.pending, 0);
+  const sum = (f: (p: (typeof parlays)[number]) => number) => parlays.reduce((n, p) => n + f(p), 0);
   return Response.json({
     ok: true,
     ran: false,
@@ -71,20 +77,19 @@ async function diagnose(): Promise<Response> {
     ledgerReady: events.status === "ok",
     ledgerStatus: events.status,
     // player_predictions — touchdown scorers
-    tdLedgerReady: cfbTd.status === "ok" && nflTd.status === "ok",
-    tdLedgerStatus: { cfb: cfbTd.status, nfl: nflTd.status },
+    tdLedgerReady: players.every((l) => l.status === "ok"),
+    tdLedgerStatus: { cfb: cfbTd.status, nfl: nflTd.status, mlb: mlbTb2.status },
     tdPicksRecorded: picks,
-    tdPicksSettled: cfbTd.summary.n + nflTd.summary.n,
+    tdPicksSettled: players.reduce((n, l) => n + l.summary.n, 0),
     // parlay_predictions — the 5/10/15/20 slips as offered. `expected` is the
     // sum of what those settled slips claimed; without it a zero in `won`
     // cannot be told apart from a broken model.
-    parlayLedgerReady: cfbPar.status === "ok" && nflPar.status === "ok",
-    parlayLedgerStatus: { cfb: cfbPar.status, nfl: nflPar.status },
-    parlaysSettled: cfbPar.totals.slips + nflPar.totals.slips,
-    parlaysPending: cfbPar.totals.pending + nflPar.totals.pending,
-    parlaysWon: cfbPar.totals.won + nflPar.totals.won,
-    parlaysExpected:
-      Math.round((cfbPar.totals.expected + nflPar.totals.expected) * 1000) / 1000,
+    parlayLedgerReady: parlays.every((p) => p.status === "ok"),
+    parlayLedgerStatus: { cfb: cfbPar.status, nfl: nflPar.status, mlb: mlbPar.status },
+    parlaysSettled: sum((p) => p.totals.slips),
+    parlaysPending: sum((p) => p.totals.pending),
+    parlaysWon: sum((p) => p.totals.won),
+    parlaysExpected: Math.round(sum((p) => p.totals.expected) * 1000) / 1000,
     today: new Date().toISOString().slice(0, 10),
   });
 }

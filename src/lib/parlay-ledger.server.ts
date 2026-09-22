@@ -28,17 +28,58 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseAdmin as _admin } from "@/integrations/supabase/client.server";
-import { TD_MODEL_VERSION, type TdSport } from "./td-ledger.server";
-import { PARLAY_SIZES, DEFAULT_MAX_PER_GAME, type ParlayCandidate } from "./td-parlay";
+import { TD_MODEL_VERSION, type PlayerSport } from "./td-ledger.server";
+import { PARLAY_SIZES, DEFAULT_MAX_PER_GAME, SIZE_CAP, type ParlayCandidate } from "./td-parlay";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyTable = { from: (t: string) => any };
 const admin = () => _admin as unknown as AnyTable | undefined;
 const reader = () => admin() ?? (supabase as unknown as AnyTable);
 
-/** The market recorded. The narrow boards (first TD, 2+) are parlay-only and
- *  can be added here by name once they are worth a season of rows. */
-export const PARLAY_MARKET = "anytime_td";
+/**
+ * The market recorded, per sport. Football's narrow boards (first TD, 2+ TDs)
+ * are parlay-only and can be added here by name once they are worth a season of
+ * rows; baseball's slips are built from the 2+ total bases board, which is a
+ * different question and so a different market.
+ */
+export const PARLAY_MARKET_FOR: Record<PlayerSport, string> = {
+  cfb: "anytime_td",
+  nfl: "anytime_td",
+  mlb: "tb2",
+};
+
+/** Football's market, kept as a named export because callers and tests that
+ *  predate baseball ask for it by this name. */
+export const PARLAY_MARKET = PARLAY_MARKET_FOR.nfl;
+
+/** Sizes offered per sport. Baseball stops at fifteen: at a mean leg near a
+ *  coin flip a twenty-leg slip is 1 in several million, and offering a number
+ *  with nothing attached to it is not offering anything. */
+const SIZES_FOR: Record<PlayerSport, number[]> = {
+  cfb: PARLAY_SIZES,
+  nfl: PARLAY_SIZES,
+  mlb: [5, 10, 15],
+};
+
+/** The pick ledger's model version for the legs of this sport's slips, so a
+ *  slip and its legs are always stamped with the same model. */
+async function modelVersionFor(sport: PlayerSport): Promise<string> {
+  if (sport !== "mlb") return TD_MODEL_VERSION[sport];
+  const { TB2_MODEL_VERSION } = await import("./tb2-ledger.server");
+  return TB2_MODEL_VERSION;
+}
+
+/**
+ * Legs from one game the recorded slip is built with.
+ *
+ * Football records at the board's default of two per game at every size.
+ * Baseball's default is per size — unrestricted at five and ten, three per game
+ * at fifteen — because that is what the construction sweep chose once stacking
+ * was priced, and the recorded slip has to be the slip a reader was offered.
+ */
+function capFor(sport: PlayerSport, size: number): number {
+  return sport === "mlb" ? (SIZE_CAP.mlb?.[size] ?? Infinity) : DEFAULT_MAX_PER_GAME;
+}
 
 export function canTrackParlays(): boolean {
   return admin() !== undefined;
@@ -63,22 +104,36 @@ type LegRow = {
  * track three slips nobody was shown by default. The column is there so a
  * second construction can be added later without a migration.
  */
-export async function snapshotParlays(sport: TdSport, date: string): Promise<number> {
+export async function snapshotParlays(sport: PlayerSport, date: string): Promise<number> {
   const db = admin();
   if (!db) return 0;
   try {
-    const { buildTdParlays } = await import("./td-parlay");
+    const { buildTdParlay } = await import("./td-parlay");
     const candidates: ParlayCandidate[] = [];
-    if (sport === "cfb") {
+    if (sport === "mlb") {
+      // Baseball's legs come off the 2+ total bases board, through the same
+      // builder the page and the pick ledger use — see twoBaseParlayCandidates
+      // for why that sharing is load-bearing rather than tidy.
+      const { twoBaseParlayCandidates } = await import("./mlb-tb2.server");
+      candidates.push(...(await twoBaseParlayCandidates(date)).candidates);
+    } else if (sport === "cfb") {
       const { cfbTdSlate } = await import("./cfb-td.server");
       const { games } = await cfbTdSlate(date);
       for (const g of games) {
         if (g.started) continue;
         for (const p of g.picks)
           candidates.push({
-            playerId: p.playerId, player: p.player, position: p.position, team: p.team,
-            gameId: g.gameId, matchup: g.matchup, prob: p.prob, tier: p.tier,
-            tierHit: p.tierHit, reasons: p.reasons, against: p.against,
+            playerId: p.playerId,
+            player: p.player,
+            position: p.position,
+            team: p.team,
+            gameId: g.gameId,
+            matchup: g.matchup,
+            prob: p.prob,
+            tier: p.tier,
+            tierHit: p.tierHit,
+            reasons: p.reasons,
+            against: p.against,
           });
       }
     } else {
@@ -90,23 +145,35 @@ export async function snapshotParlays(sport: TdSport, date: string): Promise<num
         // the slip a reader was offered rather than a better one.
         for (const p of g.picks.slice(0, 3))
           candidates.push({
-            playerId: p.playerId, player: p.player, position: null, team: p.team,
-            gameId: g.gameId, matchup: g.matchup, prob: p.prob, tier: null,
-            tierHit: null, reasons: p.reasons, against: p.against,
+            playerId: p.playerId,
+            player: p.player,
+            position: null,
+            team: p.team,
+            gameId: g.gameId,
+            matchup: g.matchup,
+            prob: p.prob,
+            tier: null,
+            tierHit: null,
+            reasons: p.reasons,
+            against: p.against,
           });
       }
     }
     if (candidates.length === 0) return 0;
 
-    const slips = buildTdParlays(candidates, PARLAY_SIZES, DEFAULT_MAX_PER_GAME, sport);
+    const version = await modelVersionFor(sport);
+    const market = PARLAY_MARKET_FOR[sport];
+    const slips = SIZES_FOR[sport].map((size) =>
+      buildTdParlay(candidates, size, capFor(sport, size), sport),
+    );
     const rows = slips
       // A slip that could not be filled at all is not an offer, and recording
       // it would put a guaranteed loss in the denominator.
       .filter((p) => p.legs.length > 0)
       .map((p) => ({
         sport,
-        market: PARLAY_MARKET,
-        model_version: TD_MODEL_VERSION[sport],
+        market,
+        model_version: version,
         slate_date: date,
         size: p.size,
         max_per_game: Number.isFinite(p.maxPerGame) ? p.maxPerGame : 0,
@@ -208,14 +275,24 @@ export async function settleParlays(throughDate: string, lookbackDays = 28) {
     const resolved = legs.map((l) => byKey.get(`${l.event_id}:${l.player_id}`));
     // Every leg must be present AND settled. A leg missing from the pick
     // ledger is not a loss — it is a slip we cannot score, and it waits.
-    if (resolved.some((r) => r == null || !r.settled || r.scored == null)) continue;
+    if (resolved.some((r) => r == null || !r.settled)) continue;
 
+    // A VOIDED LEG VOIDS THE SLIP. Baseball's pick ledger settles a hitter who
+    // never came to the plate with `scored` null rather than false, because a
+    // sportsbook voids that bet rather than losing it (see tb2-ledger). A slip
+    // carrying such a leg is not the slip whose probability was quoted: the
+    // book would re-price it over the legs that stood, and this record has no
+    // way to say what that slip was worth. So it is settled with `won` null and
+    // drops out of the denominator, which is the only honest thing available —
+    // counting it as a loss would punish the board for a lineup card, and
+    // leaving it pending forever would quietly hide it.
+    const void_ = resolved.some((r) => r!.scored == null);
     const hit = resolved.filter((r) => r!.scored).length;
     const { error: ue } = await db
       .from("parlay_predictions")
       .update({
-        legs_hit: hit,
-        won: hit === legs.length,
+        legs_hit: void_ ? null : hit,
+        won: void_ ? null : hit === legs.length,
         settled_at: new Date().toISOString(),
       })
       .eq("id", slip.id);
@@ -244,7 +321,7 @@ export type ParlaySizeRecord = {
 };
 
 export type ParlayLedgerView = {
-  sport: TdSport;
+  sport: PlayerSport;
   status: "ok" | "not-provisioned" | "unreadable";
   writable: boolean;
   bySize: ParlaySizeRecord[];
@@ -261,7 +338,7 @@ export type ParlayLedgerView = {
   }[];
 };
 
-export async function readParlayLedger(sport: TdSport): Promise<ParlayLedgerView> {
+export async function readParlayLedger(sport: PlayerSport): Promise<ParlayLedgerView> {
   const empty: ParlayLedgerView = {
     sport,
     status: "ok",
@@ -277,7 +354,7 @@ export async function readParlayLedger(sport: TdSport): Promise<ParlayLedgerView
       .from("parlay_predictions")
       .select("*")
       .eq("sport", sport)
-      .eq("market", PARLAY_MARKET)
+      .eq("market", PARLAY_MARKET_FOR[sport])
       .eq("provenance", "forward")
       .order("slate_date", { ascending: false })
       .limit(1000);
@@ -303,7 +380,7 @@ export async function readParlayLedger(sport: TdSport): Promise<ParlayLedgerView
 
     const done = rows.filter((r) => r.settled_at != null && r.won != null);
     const dates = rows.map((r) => r.slate_date).sort();
-    const bySize: ParlaySizeRecord[] = PARLAY_SIZES.map((size) => {
+    const bySize: ParlaySizeRecord[] = SIZES_FOR[sport].map((size) => {
       const all = rows.filter((r) => r.size === size);
       const settled = all.filter((r) => r.settled_at != null && r.won != null);
       const probs = settled.map((r) => Number(r.stated_prob));
