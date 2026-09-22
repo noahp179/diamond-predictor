@@ -180,8 +180,7 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
   // games stay close and the penalty is mild — and a hardcoded pair of figures
   // went stale the moment either model was replaced.
   const pair = PAIR_FACTOR[sport] ?? PAIR_FACTOR.cfb;
-  const modelName =
-    sport === "cfb" ? "calibrated extra-trees" : "within-game pairwise ranker";
+  const modelName = sport === "cfb" ? "calibrated extra-trees" : "within-game pairwise ranker";
 
   // The board may be showing a different day than the one asked for, because
   // football is not played on most of them.
@@ -239,9 +238,9 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
           trade one confusing board for a misleading one. */}
       {!isLoading && !isError && movedTo && (
         <Note>
-          No {sport === "cfb" ? "college" : "NFL"} games left to build from on{" "}
-          {dayLabel(date)} — showing <span className="text-foreground">{dayLabel(movedTo)}</span>,
-          the next slate that can fill a slip. Pick a date above to override.
+          No {sport === "cfb" ? "college" : "NFL"} games left to build from on {dayLabel(date)} —
+          showing <span className="text-foreground">{dayLabel(movedTo)}</span>, the next slate that
+          can fill a slip. Pick a date above to override.
         </Note>
       )}
 
@@ -291,8 +290,8 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
           {heldout.ceiling != null && (
             <>
               {" "}
-              and a {pct(heldout.ceiling, 1)} ceiling — the rest of the time the first score
-              came off a defender or a returner
+              and a {pct(heldout.ceiling, 1)} ceiling — the rest of the time the first score came
+              off a defender or a returner
             </>
           )}
           .
@@ -335,8 +334,8 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
               offering a setting that silently does nothing. */}
           {market === "td1" ? (
             <div className="mb-6 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              One leg per game · only one player scores a game's first touchdown, so a
-              second leg from the same game could never also land
+              One leg per game · only one player scores a game's first touchdown, so a second leg
+              from the same game could never also land
             </div>
           ) : (
             <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -407,16 +406,16 @@ export function TdParlayView({ sport }: { sport: "cfb" | "nfl" }) {
                   of failure and no evidence at all. */}
               {ev && (ev.expected ?? 1) < 1 && (ev.won ?? 0) === 0 && (
                 <div className="mt-1 font-mono text-[11px] uppercase tracking-widest text-clay">
-                  Zero wins here is not a verdict — over {ev.slips ?? 0} held-out weeks this
-                  slip was expected to land {(ev.expected ?? 0).toFixed(3)} times. The backtest
-                  cannot tell you whether the price is right at this length.
+                  Zero wins here is not a verdict — over {ev.slips ?? 0} held-out weeks this slip
+                  was expected to land {(ev.expected ?? 0).toFixed(3)} times. The backtest cannot
+                  tell you whether the price is right at this length.
                 </div>
               )}
               {(current.doubledUp > 0 || current.belowFloor > 0 || current.short) && (
                 <div className="mt-2 font-mono text-[11px] uppercase tracking-widest text-clay">
                   {current.short && `Only ${current.legs.length} legs available. `}
                   {current.doubledUp > 0 &&
-                    `${current.doubledUp} game${current.doubledUp === 1 ? "" : "s"} contribute more than one leg, out of ${current.gamesAvailable} on the slate. `}
+                    `${current.doubledUp} game${current.doubledUp === 1 ? " contributes" : "s contribute"} more than one leg, out of ${current.gamesAvailable} on the slate. `}
                   {current.belowFloor > 0 &&
                     `${current.belowFloor} leg${current.belowFloor === 1 ? "" : "s"} below this slip's usual bar of ${pct(current.floor)}.`}
                 </div>

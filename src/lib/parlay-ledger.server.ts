@@ -339,11 +339,27 @@ export type ParlayLedgerView = {
 };
 
 export async function readParlayLedger(sport: PlayerSport): Promise<ParlayLedgerView> {
+  // A ledger with nothing in it still knows which slips this sport offers, and
+  // saying so is not padding. The page's backtest columns — what each size is
+  // worth, and how many legs it lands on a typical day — hang off these rows,
+  // and returning an empty list printed a table with headers and no body: the
+  // one question a reader has before any live data exists ("how likely is a
+  // fifteen-leg slip?") answered with nothing at all.
+  const blankSizes: ParlaySizeRecord[] = SIZES_FOR[sport].map((size) => ({
+    size,
+    slips: 0,
+    won: 0,
+    expected: 0,
+    stated: null,
+    meanLegsHit: null,
+    meanLegs: null,
+    pending: 0,
+  }));
   const empty: ParlayLedgerView = {
     sport,
     status: "ok",
     writable: canTrackParlays(),
-    bySize: [],
+    bySize: blankSizes,
     totals: { slips: 0, won: 0, expected: 0, pending: 0 },
     firstDate: null,
     lastDate: null,

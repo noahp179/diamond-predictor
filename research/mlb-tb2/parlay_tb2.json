@@ -45,7 +45,10 @@
    "realised": 0.05194805194805195,
    "mean_legs_hit": 2.5974025974025974,
    "mean_correction": 1.0170349695192065,
-   "mean_stacked_pairs": 3.74025974025974
+   "mean_stacked_pairs": 3.74025974025974,
+   "mean_opposed_pairs": 0.7792207792207793,
+   "p90_opposed_pairs": 3.4000000000000057,
+   "max_opposed_pairs": 6
   },
   "10": {
    "cap": 99,
@@ -58,7 +61,10 @@
    "realised": 0.0,
    "mean_legs_hit": 4.7560975609756095,
    "mean_correction": 0.918288840426637,
-   "mean_stacked_pairs": 10.939024390243903
+   "mean_stacked_pairs": 10.939024390243903,
+   "mean_opposed_pairs": 3.9634146341463414,
+   "p90_opposed_pairs": 10.0,
+   "max_opposed_pairs": 15
   },
   "15": {
    "cap": 3,
@@ -71,7 +77,10 @@
    "realised": 0.0,
    "mean_legs_hit": 6.957142857142857,
    "mean_correction": 0.9757036056823627,
-   "mean_stacked_pairs": 9.357142857142858
+   "mean_stacked_pairs": 9.357142857142858,
+   "mean_opposed_pairs": 2.7,
+   "p90_opposed_pairs": 5.0,
+   "max_opposed_pairs": 8
   }
  },
  "split": {

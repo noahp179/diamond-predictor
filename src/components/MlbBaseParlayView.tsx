@@ -373,7 +373,7 @@ export function MlbBaseParlayView() {
                 <div className="mt-2 font-mono text-[11px] uppercase tracking-widest text-clay">
                   {current.short && `Only ${current.legs.length} legs available. `}
                   {current.doubledUp > 0 &&
-                    `${current.doubledUp} game${current.doubledUp === 1 ? "" : "s"} contribute more than one leg, out of ${current.gamesAvailable} still to start. `}
+                    `${current.doubledUp} game${current.doubledUp === 1 ? " contributes" : "s contribute"} more than one leg, out of ${current.gamesAvailable} still to start. `}
                   {current.belowFloor > 0 &&
                     `${current.belowFloor} leg${current.belowFloor === 1 ? "" : "s"} below this slip's usual bar of ${pct(current.floor)}.`}
                 </div>

@@ -224,6 +224,15 @@ def main():
             "mean_legs_hit": float(sl.legs_hit.mean()),
             "mean_correction": float(sl.factor.mean()),
             "mean_stacked_pairs": float(sl.stacked.mean()),
+            "mean_opposed_pairs": float(sl.opposed_pairs.mean()),
+            # How far the correction was actually exercised. The app flags a
+            # slip as extrapolating past this, and football's threshold of
+            # three is not baseball's: an unrestricted five-leg slip routinely
+            # carries four opposed pairs here, which is inside what these days
+            # measured rather than beyond it. p90 rather than the mean, because
+            # half the validated slips sit above a mean.
+            "p90_opposed_pairs": float(sl.opposed_pairs.quantile(0.90)),
+            "max_opposed_pairs": int(sl.opposed_pairs.max()),
         }
         print(f"{size:>5} {c['cap']:>5} {c['floor']:>6.2f} {len(sl):>6} {st*100:>8.3f}% "
               f"{1/st if st else 0:>8,.0f} {int(sl.won.sum()):>5} {sl.stated.sum():>9.2f} "

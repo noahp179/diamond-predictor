@@ -373,12 +373,26 @@ export const PAIR_FACTOR: Record<string, { sameTeam: number; opposed: number }> 
 const DEFAULT_PAIR_FACTOR = PAIR_FACTOR.cfb;
 
 /**
- * Opposed pairs beyond which the correction is extrapolating. The slips it was
- * checked against carried well under one; past a handful, multiplying a
- * per-pair factor over pairs that heavily overlap stops being a first-order
- * approximation of anything measured.
+ * Opposed pairs beyond which the correction is extrapolating.
+ *
+ * Football: the slips it was checked against carried well under one, so three
+ * is already generous. Past a handful, multiplying a per-pair factor over pairs
+ * that heavily overlap stops being a first-order approximation of anything
+ * measured.
+ *
+ * Baseball is different and carrying football's three over was wrong on the
+ * live board: it fired on the very construction the backtest validated. An
+ * unrestricted five-leg slip stacks a warm ballpark and routinely carries four
+ * opposed pairs, and the held-out days that produced "4 of 77, 2.62 expected"
+ * carried up to six. The numbers below are the MOST any validated slip carried
+ * at that size (research/mlb-tb2/parlay_tb2.py, max_opposed_pairs), so the
+ * warning means what it says: more opposed pairs than any slip behind the
+ * figure quoted beside it.
  */
 const VALIDATED_OPPOSED_PAIRS = 3;
+const VALIDATED_OPPOSED: Record<string, Record<number, number>> = {
+  mlb: { 5: 6, 10: 15, 15: 8 },
+};
 
 /** Same-game pairs on a slip, split by whether the two are opposed. */
 function countStackedPairs(legs: ParlayCandidate[]): { sameTeam: number; opposed: number } {
@@ -512,7 +526,8 @@ export function buildTdParlay(
     fairPrice: legs.length ? americanPrice(adjustedProb) : 0,
     stackedPairs,
     correlationFactor: legs.length ? factor : 1,
-    extrapolated: stackedPairs.opposed > VALIDATED_OPPOSED_PAIRS,
+    extrapolated:
+      stackedPairs.opposed > (VALIDATED_OPPOSED[sport]?.[size] ?? VALIDATED_OPPOSED_PAIRS),
     maxPerGame,
     meanLeg: legs.length ? legs.reduce((s, l) => s + l.prob, 0) / legs.length : 0,
     worstLeg: legs.length ? Math.min(...legs.map((l) => l.prob)) : 0,

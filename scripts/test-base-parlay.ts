@@ -153,11 +153,16 @@ function runChecks(p: TdParlay, cap: number, label: string) {
     `the correction is bounded by its own factors over ${sameGame} pairs ` +
       `(x${p.correlationFactor.toFixed(3)} in [${lo.toFixed(3)}, ${hi.toFixed(3)}])`,
   );
-  // A slip carrying more opposed pairs than the correction was measured on must
-  // say so, because that is where the approximation stops being one.
+  // A slip carrying more opposed pairs than any slip behind the quoted backtest
+  // must say so, because that is where the approximation stops being one. The
+  // bar is per size and it is baseball's, not football's: the held-out days
+  // that produced the five-leg figure carried up to six opposed pairs, so
+  // flagging at football's three fired on the validated construction itself.
+  const VALIDATED: Record<number, number> = { 5: 6, 10: 15, 15: 8 };
   check(
-    p.extrapolated === p.stackedPairs.opposed > 3,
-    `flags extrapolation exactly when it is extrapolating (${p.stackedPairs.opposed} opposed)`,
+    p.extrapolated === p.stackedPairs.opposed > VALIDATED[p.size],
+    `flags extrapolation exactly when it is extrapolating ` +
+      `(${p.stackedPairs.opposed} opposed, measured up to ${VALIDATED[p.size]})`,
   );
   check(
     p.belowFloor === 0 || p.legs.length === p.size,
