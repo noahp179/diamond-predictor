@@ -19,6 +19,7 @@ import { bucketise } from "@/lib/ledger-stats";
 import { BucketAccuracy } from "@/components/LedgerCharts";
 import { TRACKED_MODELS, TRACK_RECORD_START } from "@/lib/mlb-models";
 import { AppShell } from "@/components/AppShell";
+import { TdTrackRecord } from "@/components/TdTrackRecord";
 
 export const Route = createFileRoute("/mlb/track-record")({
   head: () => ({
@@ -587,6 +588,13 @@ function HistoryPage() {
           )}
         </>
       )}
+
+      {/* The 2+ total bases record, below the game-outcome models and never
+          merged with them. Those are one call per game — did the model pick the
+          winner, at a base rate near 50%. This is one call per HITTER at a base
+          rate of 35%, and a site accuracy averaging the two would mean nothing.
+          Its own heading, its own claim, its own charts. */}
+      <TdTrackRecord sport="mlb" />
     </AppShell>
   );
 }

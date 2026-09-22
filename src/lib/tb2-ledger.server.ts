@@ -64,6 +64,14 @@ export const TB2_CLAIM = {
   anyHit: claim.anyHit,
   gameHit: claim.gameHit,
   source: "held out on 2026, research/mlb-tb2/board_claim_tb2.py",
+  // WORTH READING BEFORE THE LIVE NUMBERS ARRIVE: on the held-out season these
+  // are 0.431, 0.418, 0.430 — flat. The board's ordering WITHIN a game carries
+  // essentially no information at the top three, which is not the same as the
+  // model carrying none: the best hitter on the whole slate got there 53.5% of
+  // the time against a 35% base rate. The signal is across games, not within
+  // one, and that is exactly why the parlay draws its legs from the whole slate
+  // rather than one per game.
+  byRank: claim.byRank as Record<string, number>,
 };
 
 export function canTrackTb2(): boolean {

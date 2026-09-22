@@ -5,7 +5,7 @@ import { AccuracyTrend, ChartCard, EmptyChart } from "@/components/LedgerCharts"
 import { CalibrationTable } from "@/components/CalibrationTable";
 import { Note } from "@/components/AppShell";
 import { ParlayRecord } from "@/components/ParlayRecord";
-import { getTdLedger } from "@/lib/tracking.functions";
+import { getTb2Ledger, getTdLedger } from "@/lib/tracking.functions";
 
 /**
  * The touchdown-scorer record, as an analytics section on the Track Record page.
@@ -32,8 +32,83 @@ import { getTdLedger } from "@/lib/tracking.functions";
 /** Below this many settled picks, a hit rate is a fortnight's luck. */
 const MEANINGFUL_N = 150;
 
-const pct = (x: number | null | undefined, d = 1) =>
-  x == null ? "—" : `${(x * 100).toFixed(d)}%`;
+type Board = "cfb" | "nfl" | "mlb";
+
+/**
+ * The words, per board. The arithmetic below is identical for all three — a
+ * forward ledger of named picks against a held-out claim — and only the nouns
+ * differ, so they live here rather than in three copies of the component.
+ *
+ * The row labels are not interchangeable and that is why they are spelled out.
+ * Football's card leads with the man most likely to score in a game; baseball's
+ * leads with the hitter most likely to reach two bases in one. "Lead pick" is
+ * accurate for both and tells a baseball reader nothing, so each board says
+ * what its own lead pick is.
+ */
+const COPY: Record<
+  Board,
+  {
+    heading: string;
+    intro: string;
+    unit: string;
+    verb: string;
+    leadLabel: string;
+    leadNote: string;
+    anyLabel: string;
+    anyNote: string;
+    gameNote: string;
+    calibrationSubtitle: string;
+    slateNoun: string;
+  }
+> = {
+  cfb: {
+    heading: "Touchdown scorers",
+    intro:
+      "A separate ledger from the one above: that one records one call per game — did the model pick the winner — and this one records every name the touchdown board printed, scored from the box score afterwards. Different markets with different base rates, so they are never averaged into a single figure for the site.",
+    unit: "picks",
+    verb: "scored",
+    leadLabel: "Lead pick scored",
+    leadNote: "the name the card leads with",
+    anyLabel: "Any shown pick scored",
+    anyNote: "every name on the card, lead and tail together",
+    gameNote: "at least one of the card's names scored",
+    calibrationSubtitle:
+      "Picks grouped by the number printed next to them, against how often that group actually scored. The groups run lower than the game chart above because a touchdown pick is not the favoured side of anything — the lead name on a card is about 65%, the fourth about 35%.",
+    slateNoun: "slate",
+  },
+  nfl: {
+    heading: "Touchdown scorers",
+    intro:
+      "A separate ledger from the one above: that one records one call per game — did the model pick the winner — and this one records every name the touchdown board printed, scored from the box score afterwards. Different markets with different base rates, so they are never averaged into a single figure for the site.",
+    unit: "picks",
+    verb: "scored",
+    leadLabel: "Lead pick scored",
+    leadNote: "the name the card leads with",
+    anyLabel: "Any shown pick scored",
+    anyNote: "every name on the card, lead and tail together",
+    gameNote: "at least one of the card's names scored",
+    calibrationSubtitle:
+      "Picks grouped by the number printed next to them, against how often that group actually scored. The groups run lower than the game chart above because a touchdown pick is not the favoured side of anything — the lead name on a card is about 65%, the fourth about 35%.",
+    slateNoun: "slate",
+  },
+  mlb: {
+    heading: "2+ total bases",
+    intro:
+      "A separate ledger from the one above: that one records one call per game — did the model pick the winner — and this one records every hitter the 2+ bases board printed, scored from the box score afterwards. Two or more total bases means a double, a home run, or two hits. Different markets with different base rates, so they are never averaged into a single figure for the site.",
+    unit: "hitters",
+    verb: "got there",
+    leadLabel: "Best hitter in the game",
+    leadNote: "the name the game card leads with",
+    anyLabel: "Any of the three shown",
+    anyNote: "all three hitters the card prints, together",
+    gameNote: "at least one of the card's three got two bases",
+    calibrationSubtitle:
+      "Hitters grouped by the number printed next to them, against how often that group actually got two bases. Every group sits near a coin flip because this model's whole range is 18% to 62% — it is a harder event than scoring a touchdown, and a projection above 50% is rare.",
+    slateNoun: "day",
+  },
+};
+
+const pct = (x: number | null | undefined, d = 1) => (x == null ? "—" : `${(x * 100).toFixed(d)}%`);
 const num = (x: number | null | undefined, d = 4) => (x == null ? "—" : x.toFixed(d));
 
 function Row({
@@ -62,14 +137,17 @@ function Row({
   );
 }
 
-export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
-  const run = useServerFn(getTdLedger);
+export function TdTrackRecord({ sport }: { sport: Board }) {
+  const runTd = useServerFn(getTdLedger);
+  const runTb2 = useServerFn(getTb2Ledger);
   const { data, isLoading, isError } = useQuery({
-    queryKey: [sport, "td-ledger"],
-    queryFn: () => run({ data: { sport } }),
+    queryKey: [sport, "player-ledger"],
+    queryFn: () =>
+      sport === "mlb" ? runTb2({}) : runTd({ data: { sport: sport as "cfb" | "nfl" } }),
     staleTime: 5 * 60_000,
   });
 
+  const copy = COPY[sport];
   const s = data?.summary;
   const claim = data?.claim;
   const n = s?.n ?? 0;
@@ -79,13 +157,8 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
   return (
     <section className="mt-16">
       <div className="mb-4 border-t border-border pt-8">
-        <h2 className="font-display text-3xl">Touchdown scorers</h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          A separate ledger from the one above: that one records one call per game — did the model
-          pick the winner — and this one records every <em>name</em> the touchdown board printed,
-          scored from the box score afterwards. Different markets with different base rates, so they
-          are never averaged into a single figure for the site.
-        </p>
+        <h2 className="font-display text-3xl">{copy.heading}</h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{copy.intro}</p>
       </div>
 
       {/* The whole section in one sentence, before any chart. A reader who
@@ -93,16 +166,23 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
       {!isLoading && data?.status === "ok" && n > 0 && (
         <div className="mb-6 border border-border bg-card px-5 py-4">
           <p className="text-lg leading-relaxed">
-            Of the{" "}
-            <span className="font-display text-2xl text-foreground">{n}</span> picks settled so
-            far, <span className="font-display text-2xl text-foreground">{s!.hits}</span> scored —{" "}
-            <span className="text-foreground">{pct(s!.hitRate, 0)}</span>. The backtest said{" "}
-            <span className="text-foreground">{pct(claim?.anyHit, 0)}</span>.
+            Of the <span className="font-display text-2xl text-foreground">{n}</span> {copy.unit}{" "}
+            settled so far, <span className="font-display text-2xl text-foreground">{s!.hits}</span>{" "}
+            {copy.verb} — <span className="text-foreground">{pct(s!.hitRate, 0)}</span>. The
+            backtest said <span className="text-foreground">{pct(claim?.anyHit, 0)}</span>.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
             {enough
               ? "Enough settled picks for that comparison to mean something."
-              : `Below ${MEANINGFUL_N} settled picks the two numbers will differ by a few points for no reason at all, so treat the gap as noise until the count catches up.`}
+              : `Below ${MEANINGFUL_N} settled ${copy.unit} the two numbers will differ by a few points for no reason at all, so treat the gap as noise until the count catches up.`}
+            {(s?.voided ?? 0) > 0 && (
+              <>
+                {" "}
+                A further {s!.voided} {s!.voided === 1 ? "pick" : "picks"} voided — the hitter never
+                came to the plate, which a sportsbook refunds rather than loses, so counting them as
+                misses would punish the board for a lineup card.
+              </>
+            )}
           </p>
         </div>
       )}
@@ -122,16 +202,16 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
           <strong className="text-foreground">Touchdown picks are not being recorded.</strong> The{" "}
           <code className="font-mono text-[11px]">player_predictions</code> table does not exist, so
           nothing has ever been stored and nothing will be until{" "}
-          <code className="font-mono text-[11px]">supabase/SETUP.sql</code> is applied. A setup step,
-          not something that resolves by waiting.
+          <code className="font-mono text-[11px]">supabase/SETUP.sql</code> is applied. A setup
+          step, not something that resolves by waiting.
         </Note>
       )}
 
       {!isLoading && data?.status === "unreadable" && (
         <Note>
           <strong className="text-foreground">The touchdown record could not be read.</strong> The
-          table exists but the request failed, so this section is blank for a reason that has nothing
-          to do with the model.
+          table exists but the request failed, so this section is blank for a reason that has
+          nothing to do with the model.
         </Note>
       )}
 
@@ -154,8 +234,9 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
       {!isLoading && n > 0 && !enough && (
         <Note>
           <strong className="text-foreground">Too early to read anything into this.</strong> {n}{" "}
-          settled {n === 1 ? "pick" : "picks"} is short of the {MEANINGFUL_N} it takes for a hit rate
-          to separate a good model from a good fortnight. Shown because hiding it would be worse.
+          settled {n === 1 ? "pick" : "picks"} is short of the {MEANINGFUL_N} it takes for a hit
+          rate to separate a good model from a good fortnight. Shown because hiding it would be
+          worse.
         </Note>
       )}
 
@@ -182,22 +263,22 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
               </thead>
               <tbody>
                 <Row
-                  label="Lead pick scored"
-                  note="the name the card leads with"
+                  label={copy.leadLabel}
+                  note={copy.leadNote}
                   claimed={pct(claim.leadHit)}
                   live={enough ? pct(lead?.hitRate) : "—"}
                   sample={lead ? String(lead.n) : "0"}
                 />
                 <Row
-                  label="Any shown pick scored"
-                  note="every name on the card, lead and tail together"
+                  label={copy.anyLabel}
+                  note={copy.anyNote}
                   claimed={pct(claim.anyHit)}
                   live={enough ? pct(s?.hitRate) : "—"}
                   sample={String(n)}
                 />
                 <Row
                   label="Games with a hit"
-                  note="at least one of the card's names scored"
+                  note={copy.gameNote}
                   claimed={pct(claim.gameHit)}
                   live={enough ? pct(s?.gameHitRate) : "—"}
                   sample={String(s?.games ?? 0)}
@@ -243,19 +324,17 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
                 seriesName="live hit rate, all shown picks"
               />
             ) : (
-              <EmptyChart>
-                Nothing has settled yet, so there is no line to draw.
-              </EmptyChart>
+              <EmptyChart>Nothing has settled yet, so there is no line to draw.</EmptyChart>
             )}
           </ChartCard>
 
           <ChartCard
             title="When it says 60%, do 60% score?"
-            subtitle="Picks grouped by the number printed next to them, against how often that group actually scored. The groups run lower than the game chart above because a touchdown pick is not the favoured side of anything — the lead name on a card is about 65%, the fourth about 35%."
+            subtitle={copy.calibrationSubtitle}
             footer="Two dots on one line per group: the hollow one is what the board claimed, the filled one is what happened. Close together means the percentage on the card can be taken at face value."
           >
             {(data?.calibration.length ?? 0) > 0 ? (
-              <CalibrationTable rows={data!.calibration} unit="picks" />
+              <CalibrationTable rows={data!.calibration} unit={copy.unit} />
             ) : (
               <EmptyChart>
                 This needs settled picks spread across a few probability groups. Nothing to show
@@ -267,34 +346,37 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
           <ChartCard
             title="Day by day"
             subtitle="What each slate contributed. This was a bar chart with the hit rate drawn over it on a second scale, which meant comparing bar heights against a line that shared no units with them — the numbers say it better."
-            footer="One slate is almost never a meaningful sample on its own. The point of this table is the running total, not any single row."
+            footer={`One ${copy.slateNoun} is almost never a meaningful sample on its own. The point of this table is the running total, not any single row.`}
           >
             {(data?.daily.length ?? 0) > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[420px] border-collapse font-mono text-[11px]">
                   <thead>
                     <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
-                      <th className="py-2 pr-3 font-normal">Slate</th>
+                      <th className="py-2 pr-3 font-normal">{copy.slateNoun}</th>
                       <th className="py-2 pr-3 text-right font-normal">Settled</th>
                       <th className="py-2 pr-3 text-right font-normal">Scored</th>
                       <th className="py-2 text-right font-normal">That day</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[...data!.daily].reverse().slice(0, 12).map((d) => (
-                      <tr key={d.date} className="border-b border-border/60 last:border-b-0">
-                        <td className="py-2.5 pr-3 tabular-nums text-foreground">{d.date}</td>
-                        <td className="py-2.5 pr-3 text-right tabular-nums text-muted-foreground">
-                          {d.n}
-                        </td>
-                        <td className="py-2.5 pr-3 text-right tabular-nums text-muted-foreground">
-                          {d.correct}
-                        </td>
-                        <td className="py-2.5 text-right tabular-nums text-foreground">
-                          {pct(d.accuracy, 0)}
-                        </td>
-                      </tr>
-                    ))}
+                    {[...data!.daily]
+                      .reverse()
+                      .slice(0, 12)
+                      .map((d) => (
+                        <tr key={d.date} className="border-b border-border/60 last:border-b-0">
+                          <td className="py-2.5 pr-3 tabular-nums text-foreground">{d.date}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums text-muted-foreground">
+                            {d.n}
+                          </td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums text-muted-foreground">
+                            {d.correct}
+                          </td>
+                          <td className="py-2.5 text-right tabular-nums text-foreground">
+                            {pct(d.accuracy, 0)}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -311,8 +393,24 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
               <div className="border-b border-border px-5 py-4">
                 <h3 className="font-display text-2xl">Does the order mean anything?</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  The board ranks the names it prints. If pick 1 does not beat pick 2, the ranking is
-                  decoration — this is the check.
+                  The board ranks the names it prints. If pick 1 does not beat pick 2, the ranking
+                  is decoration — this is the check.
+                  {claim?.byRank && (
+                    <>
+                      {" "}
+                      On the held-out season it came out{" "}
+                      <span className="text-foreground">
+                        {Object.values(claim.byRank)
+                          .map((v) => pct(v, 0))
+                          .join(" / ")}
+                      </span>{" "}
+                      — flat, so within one game the order is close to decoration. That is not the
+                      model saying nothing: the best hitter on the <em>whole slate</em> got two
+                      bases {pct(0.535, 0)} of the time against a {pct(0.35, 0)} base rate. The
+                      signal is across games rather than inside one, which is why a slip takes its
+                      legs from the whole board.
+                    </>
+                  )}
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -320,18 +418,24 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
                   <thead>
                     <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
                       <th className="px-5 py-3 font-normal">Pick</th>
-                      <th className="px-3 py-3 text-right font-normal">Scored</th>
+                      <th className="px-3 py-3 text-right font-normal">Backtest</th>
+                      <th className="px-3 py-3 text-right font-normal">Hit</th>
                       <th className="px-3 py-3 text-right font-normal">Settled</th>
-                      <th className="px-5 py-3 text-right font-normal">Hit rate</th>
+                      <th className="px-5 py-3 text-right font-normal">Live rate</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data!.byRank.map((r) => (
                       <tr key={r.label} className="border-b border-border/60 last:border-b-0">
                         <td className="px-5 py-3">{r.label}</td>
+                        <td className="px-3 py-3 text-right text-muted-foreground">
+                          {pct(claim?.byRank?.[r.label.replace("Pick ", "")], 0)}
+                        </td>
                         <td className="px-3 py-3 text-right text-muted-foreground">{r.hits}</td>
                         <td className="px-3 py-3 text-right text-muted-foreground">{r.n}</td>
-                        <td className="px-5 py-3 text-right text-foreground">{pct(r.hitRate, 0)}</td>
+                        <td className="px-5 py-3 text-right text-foreground">
+                          {pct(r.hitRate, 0)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -339,8 +443,8 @@ export function TdTrackRecord({ sport }: { sport: "cfb" | "nfl" }) {
               </div>
               {!enough && (
                 <div className="border-t border-border px-5 py-4 font-mono text-[11px] text-muted-foreground">
-                  With {n} settled the ordering here is not yet evidence of anything — it is shown so
-                  it can be watched, not concluded from.
+                  With {n} settled the ordering here is not yet evidence of anything — it is shown
+                  so it can be watched, not concluded from.
                 </div>
               )}
             </div>

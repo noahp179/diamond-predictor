@@ -27,12 +27,21 @@ import { SIZE_EVIDENCE } from "@/lib/td-parlay";
  * reading and one that is not, and it is visible immediately.
  */
 
-const pct = (x: number | null | undefined, d = 2) =>
-  x == null ? "—" : `${(x * 100).toFixed(d)}%`;
+const pct = (x: number | null | undefined, d = 2) => (x == null ? "—" : `${(x * 100).toFixed(d)}%`);
 const oneIn = (p: number | null | undefined) =>
   p == null || p <= 0 ? "—" : `1 in ${Math.round(1 / p).toLocaleString()}`;
 
-export function ParlayRecord({ sport }: { sport: "cfb" | "nfl" }) {
+/** "five, ten, fifteen and twenty-leg" — written out, from whatever sizes the
+ *  board actually offers, so a sport that stops at fifteen does not describe
+ *  itself with a twenty-leg slip it has never built. */
+const WORD: Record<number, string> = { 5: "five", 10: "ten", 15: "fifteen", 20: "twenty" };
+function sizeList(sizes: number[]): string {
+  const words = sizes.map((n) => WORD[n] ?? String(n));
+  if (words.length <= 1) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+export function ParlayRecord({ sport }: { sport: "cfb" | "nfl" | "mlb" }) {
   const run = useServerFn(getParlayLedger);
   const { data, isLoading, isError } = useQuery({
     queryKey: [sport, "parlay-ledger"],
@@ -43,15 +52,25 @@ export function ParlayRecord({ sport }: { sport: "cfb" | "nfl" }) {
   const evidence = SIZE_EVIDENCE[sport] ?? {};
   const t = data?.totals;
   const anySettled = (t?.slips ?? 0) > 0;
+  const sizes = (data?.bySize ?? []).map((r) => r.size);
+  const legName = sport === "mlb" ? "hitter" : "scorer";
 
   return (
     <div className="mb-8 border border-border bg-card">
       <div className="border-b border-border px-5 py-4">
         <h3 className="font-display text-2xl">The slips themselves</h3>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Each day's five, ten, fifteen and twenty-leg slips, frozen as the board offered them and
-          scored once every leg has a result. A slip wins only if all of its legs do, so it is
-          settled from the same pick ledger above — the two cannot disagree.
+          Each day's {sizes.length ? sizeList(sizes) : "five, ten and fifteen"}-leg slips, frozen as
+          the board offered them and scored once every leg has a result. A slip wins only if all of
+          its legs do, so it is settled from the same pick ledger above — the two cannot disagree.
+          {sport === "mlb" && (
+            <>
+              {" "}
+              A slip carrying a {legName} who never came to the plate is voided rather than lost: a
+              sportsbook would re-price it over the legs that stood, and this record has no way to
+              say what that slip was worth.
+            </>
+          )}
         </p>
       </div>
 
@@ -95,7 +114,8 @@ export function ParlayRecord({ sport }: { sport: "cfb" | "nfl" }) {
                   <th className="px-3 py-3 text-right font-normal">Settled</th>
                   <th className="px-3 py-3 text-right font-normal">Won</th>
                   <th className="px-3 py-3 text-right font-normal">Expected</th>
-                  <th className="px-5 py-3 text-right font-normal">Legs hit</th>
+                  <th className="px-3 py-3 text-right font-normal">Legs hit</th>
+                  <th className="px-5 py-3 text-right font-normal">Backtest legs</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,18 +132,23 @@ export function ParlayRecord({ sport }: { sport: "cfb" | "nfl" }) {
                       </td>
                       <td className="px-3 py-3 text-right text-muted-foreground">
                         {r.slips}
-                        {r.pending > 0 && (
-                          <span className="ml-1 opacity-60">+{r.pending}</span>
-                        )}
+                        {r.pending > 0 && <span className="ml-1 opacity-60">+{r.pending}</span>}
                       </td>
                       <td className="px-3 py-3 text-right text-foreground">{r.won}</td>
                       <td className="px-3 py-3 text-right text-muted-foreground">
                         {r.expected.toFixed(r.expected < 1 ? 3 : 1)}
                       </td>
-                      <td className="px-5 py-3 text-right text-muted-foreground">
+                      <td className="px-3 py-3 text-right text-foreground">
                         {r.meanLegsHit != null && r.meanLegs != null
                           ? `${r.meanLegsHit.toFixed(1)} / ${r.meanLegs.toFixed(0)}`
                           : "—"}
+                      </td>
+                      {/* What the same construction averaged on held-out days.
+                          At ten legs and up this is the only column with a real
+                          sample in it: wins are zero by arithmetic, legs landed
+                          is measured every single day. */}
+                      <td className="px-5 py-3 text-right text-muted-foreground">
+                        {ev?.meanLegs != null ? `${ev.meanLegs.toFixed(1)} / ${r.size}` : "—"}
                       </td>
                     </tr>
                   );

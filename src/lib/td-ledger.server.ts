@@ -376,7 +376,17 @@ export type TdLedgerView = {
    */
   status: "ok" | "not-provisioned" | "unreadable";
   writable: boolean;
-  claim: { leadHit: number; anyHit: number; gameHit: number; source: string };
+  claim: {
+    leadHit: number;
+    anyHit: number;
+    gameHit: number;
+    source: string;
+    /** Held-out hit rate per card position, where the backtest measured one.
+     *  The check on whether the board's own ordering means anything — and on
+     *  baseball it already says no, which the page is better off saying than
+     *  waiting a season to discover. */
+    byRank?: Record<string, number>;
+  };
   summary: {
     n: number;
     hits: number;
@@ -458,7 +468,7 @@ export async function readPlayerLedger(opts: {
   sport: PlayerSport;
   market: string;
   modelVersion: string;
-  claim: { leadHit: number; anyHit: number; gameHit: number; source: string };
+  claim: TdLedgerView["claim"];
   countLabel: string;
   /** Pick ranks the board actually shows, in card order. */
   rankOrder?: string[];
