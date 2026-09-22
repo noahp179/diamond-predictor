@@ -433,7 +433,15 @@ export async function runTrackingCycle(today: string) {
   // settler because the feed and the event differ, not because the discipline
   // does. Unlike football it has something to record almost every day.
   const { snapshotTb2Picks, settleTb2Picks } = await import("./tb2-ledger.server");
-  const tb2 = (await snapshotTb2Picks(today)) + (await snapshotTb2Picks(next));
+  // TODAY ONLY, unlike football. Baseball plays every day, so this cron always
+  // lands on a slate — there is no Tuesday to skip over. And recording
+  // tomorrow's board a day early would be worse than skipping it: the unique
+  // constraint makes the ledger write-once, so a projection frozen before
+  // tomorrow's lineup cards and weather exist would be the one kept, and the
+  // better one this cron writes tomorrow morning would be discarded as a
+  // duplicate. It also halves the StatsAPI work in a cycle that already builds
+  // five sports.
+  const tb2 = await snapshotTb2Picks(today);
   const tb2Settled = await settleTb2Picks(today);
 
   // Slips are frozen AFTER the picks that make them up, and settled AFTER
@@ -443,7 +451,10 @@ export async function runTrackingCycle(today: string) {
   const { snapshotParlays, settleParlays } = await import("./parlay-ledger.server");
   const parCfb = (await snapshotParlays("cfb", today)) + (await snapshotParlays("cfb", next));
   const parNfl = (await snapshotParlays("nfl", today)) + (await snapshotParlays("nfl", next));
-  const parMlb = (await snapshotParlays("mlb", today)) + (await snapshotParlays("mlb", next));
+  // Today only, for the same reason as the picks above — and it must be the
+  // same day as them, or a slip would be frozen against legs that were never
+  // recorded and could never settle.
+  const parMlb = await snapshotParlays("mlb", today);
   const parSettled = await settleParlays(today);
 
   const settled = await settlePending(today);
