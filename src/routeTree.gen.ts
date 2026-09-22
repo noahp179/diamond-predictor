@@ -44,6 +44,7 @@ import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
 import { Route as MlbStacksRouteImport } from './routes/mlb.stacks'
 import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
 import { Route as MlbPropsRouteImport } from './routes/mlb.props'
+import { Route as MlbParlaysRouteImport } from './routes/mlb.parlays'
 import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
 import { Route as CfbTrackRecordRouteImport } from './routes/cfb.track-record'
 import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
@@ -235,6 +236,11 @@ const MlbPropsRoute = MlbPropsRouteImport.update({
   path: '/props',
   getParentRoute: () => MlbRoute,
 } as any)
+const MlbParlaysRoute = MlbParlaysRouteImport.update({
+  id: '/parlays',
+  path: '/parlays',
+  getParentRoute: () => MlbRoute,
+} as any)
 const MlbBestOddsRoute = MlbBestOddsRouteImport.update({
   id: '/best-odds',
   path: '/best-odds',
@@ -333,6 +339,7 @@ export interface FileRoutesByFullPath {
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
+  '/mlb/parlays': typeof MlbParlaysRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
   '/mlb/stacks': typeof MlbStacksRoute
@@ -379,6 +386,7 @@ export interface FileRoutesByTo {
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
+  '/mlb/parlays': typeof MlbParlaysRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
   '/mlb/stacks': typeof MlbStacksRoute
@@ -430,6 +438,7 @@ export interface FileRoutesById {
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
+  '/mlb/parlays': typeof MlbParlaysRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
   '/mlb/stacks': typeof MlbStacksRoute
@@ -484,6 +493,7 @@ export interface FileRouteTypes {
     | '/cfb/td-scorers'
     | '/cfb/track-record'
     | '/mlb/best-odds'
+    | '/mlb/parlays'
     | '/mlb/props'
     | '/mlb/recommended'
     | '/mlb/stacks'
@@ -530,6 +540,7 @@ export interface FileRouteTypes {
     | '/cfb/td-scorers'
     | '/cfb/track-record'
     | '/mlb/best-odds'
+    | '/mlb/parlays'
     | '/mlb/props'
     | '/mlb/recommended'
     | '/mlb/stacks'
@@ -580,6 +591,7 @@ export interface FileRouteTypes {
     | '/cfb/td-scorers'
     | '/cfb/track-record'
     | '/mlb/best-odds'
+    | '/mlb/parlays'
     | '/mlb/props'
     | '/mlb/recommended'
     | '/mlb/stacks'
@@ -878,6 +890,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MlbPropsRouteImport
       parentRoute: typeof MlbRoute
     }
+    '/mlb/parlays': {
+      id: '/mlb/parlays'
+      path: '/parlays'
+      fullPath: '/mlb/parlays'
+      preLoaderRoute: typeof MlbParlaysRouteImport
+      parentRoute: typeof MlbRoute
+    }
     '/mlb/best-odds': {
       id: '/mlb/best-odds'
       path: '/best-odds'
@@ -1008,6 +1027,7 @@ const CfbRouteWithChildren = CfbRoute._addFileChildren(CfbRouteChildren)
 
 interface MlbRouteChildren {
   MlbBestOddsRoute: typeof MlbBestOddsRoute
+  MlbParlaysRoute: typeof MlbParlaysRoute
   MlbPropsRoute: typeof MlbPropsRoute
   MlbRecommendedRoute: typeof MlbRecommendedRoute
   MlbStacksRoute: typeof MlbStacksRoute
@@ -1018,6 +1038,7 @@ interface MlbRouteChildren {
 
 const MlbRouteChildren: MlbRouteChildren = {
   MlbBestOddsRoute: MlbBestOddsRoute,
+  MlbParlaysRoute: MlbParlaysRoute,
   MlbPropsRoute: MlbPropsRoute,
   MlbRecommendedRoute: MlbRecommendedRoute,
   MlbStacksRoute: MlbStacksRoute,

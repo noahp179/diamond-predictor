@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { todayET } from "./date";
+import { addDays, todayET } from "./date";
 import {
   bestOddsSlate,
   nextPlayableDate,
@@ -232,6 +232,140 @@ export const getMlbStacks = createServerFn({ method: "GET" })
   });
 
 // ------------------------------------------------------------- MLB 2+ Bases
+
+/**
+ * The 5, 10 and 15-leg slips built from the 2+ total bases board.
+ *
+ * Reuses the touchdown parlay builder rather than growing a third one: the
+ * relaxation passes, the correlation correction and the below-floor reporting
+ * are the same problem, and the only things that differ per sport are the
+ * floors and the pair factors, which live as data in td-parlay.ts.
+ */
+/**
+ * Five, ten and fifteen hitters to get two or more total bases, on one slip.
+ *
+ * Reuses the football parlay builder rather than growing a third one — the
+ * construction problem is identical (take the best legs, respect a per-game
+ * cap and a floor, price the same-game pairs) and only the numbers differ.
+ * What is baseball's own is in td-parlay.ts under the `mlb` key: the floors,
+ * which are far lower because the model's whole range is, and the pair factors,
+ * which say stacking a lineup is neither rewarded nor punished.
+ *
+ * Two things this has to do that the 2+ bases BOARD does not. A board can show
+ * a game already under way — the projection is still the projection. A slip
+ * cannot: a leg on a hitter who has already batted twice is not a bet anyone
+ * can place. So started games are dropped, and when that empties the day the
+ * slip rolls to tomorrow and says so.
+ */
+export const getTwoBaseParlays = createServerFn({ method: "GET" })
+  .inputValidator(
+    z
+      .object({
+        date: z.string().optional(),
+        maxPerGame: z.number().int().min(0).max(10).optional(),
+      })
+      .optional(),
+  )
+  .handler(async ({ data }) => {
+    const asked = data?.date ?? todayET();
+    const SIZES = [5, 10, 15];
+    const { buildTdParlay, SIZE_CAP, SIZE_EVIDENCE } = await import("./td-parlay");
+    const evidence = SIZE_EVIDENCE.mlb ?? {};
+
+    // How many legs one game may contribute, per size.
+    //
+    // Left unset, each size gets the cap the construction sweep chose for it:
+    // unrestricted at five and ten, three per game at fifteen. That is not a
+    // detail — an unrestricted fifteen-leg slip piles nine legs into one game,
+    // and the eighteen opposed pairs cost more than the stronger legs are
+    // worth. Set explicitly, the reader's choice applies at every size, and 0
+    // means unrestricted because Infinity does not survive the wire.
+    const capFor = (size: number): number =>
+      data?.maxPerGame == null
+        ? (SIZE_CAP.mlb?.[size] ?? Infinity)
+        : data.maxPerGame === 0
+          ? Infinity
+          : data.maxPerGame;
+    try {
+      const { twoBaseSlate } = await import("./mlb-tb2.server");
+
+      // A fifteen-leg slip needs a day with hitters left to bet on. Look at the
+      // asked-for day first and roll forward only if it is spent — baseball
+      // plays nearly every day, so one step is almost always enough and two is
+      // the whole All-Star break.
+      const now = Date.now();
+      let date = asked;
+      let slate = await twoBaseSlate(asked);
+      let live = slate.picks.filter((p) => Date.parse(p.startsAt) > now);
+      let startedGames = new Set(
+        slate.picks.filter((p) => Date.parse(p.startsAt) <= now).map((p) => p.gameId),
+      ).size;
+      for (let i = 0; i < 2 && live.length < Math.min(...SIZES); i++) {
+        date = addDays(date, 1);
+        slate = await twoBaseSlate(date);
+        live = slate.picks.filter((p) => Date.parse(p.startsAt) > now);
+        startedGames = 0;
+      }
+
+      const candidates: ParlayCandidate[] = live.map((p) => ({
+        playerId: String(p.playerId),
+        player: p.player,
+        position: null,
+        team: p.team,
+        gameId: p.gameId,
+        matchup: p.matchup,
+        prob: p.prob,
+        tier: p.tier,
+        tierHit: p.tierHitRate,
+        // The board already explains every projection in its own words; the
+        // slip quotes that rather than inventing a second explanation.
+        reasons: p.up.slice(0, 3).map((r) => r.detail || r.label),
+        against: p.down[0]?.detail ?? p.down[0]?.label ?? null,
+      }));
+      const games = new Set(candidates.map((c) => c.gameId)).size;
+      return {
+        date,
+        /** What the reader asked for, so the page can say plainly when the
+         *  slip has moved them to another day. */
+        requestedDate: asked,
+        sport: "mlb" as const,
+        sizes: SIZES,
+        games,
+        /** Games on the asked-for day that had already started, so the page can
+         *  explain a slate that is smaller than the one on the board. */
+        startedGames,
+        /** Lineup cards are posted about two hours before first pitch. Until
+         *  they are, the batting order is last game's, and a leg can be on a
+         *  hitter who is not in tonight's nine. */
+        lineupsPosted: slate.lineupsPosted,
+        candidates: candidates.length,
+        /** null when each size is using its own backtested cap; otherwise the
+         *  reader's choice, 0 meaning unrestricted. */
+        maxPerGame: data?.maxPerGame ?? null,
+        parlays: SIZES.map((size) => buildTdParlay(candidates, size, capFor(size), "mlb")),
+        evidence,
+        source: "live" as const,
+        note: null as string | null,
+      };
+    } catch (err) {
+      console.error(`[twoBaseParlays] ${asked} failed:`, err);
+      return {
+        date: asked,
+        requestedDate: asked,
+        sport: "mlb" as const,
+        sizes: SIZES,
+        games: 0,
+        startedGames: 0,
+        lineupsPosted: 0,
+        candidates: 0,
+        maxPerGame: data?.maxPerGame ?? null,
+        parlays: [] as ReturnType<typeof import("./td-parlay").buildTdParlay>[],
+        evidence,
+        source: "error" as const,
+        note: "The MLB Stats API is unreachable right now. Try refreshing in a moment.",
+      };
+    }
+  });
 
 export const getMlbTwoBases = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
@@ -497,9 +631,7 @@ export const getTdParlays = createServerFn({ method: "GET" })
               }
             : {},
         ),
-        evidence: M
-          ? M.MARKET_EVIDENCE[market as "td1" | "td2"]
-          : (SIZE_EVIDENCE[sport] ?? {}),
+        evidence: M ? M.MARKET_EVIDENCE[market as "td1" | "td2"] : (SIZE_EVIDENCE[sport] ?? {}),
         heldout: M ? M.MARKET_HELDOUT[market as "td1" | "td2"] : null,
         note: offseasonNote(sport, date),
         source: "live" as const,

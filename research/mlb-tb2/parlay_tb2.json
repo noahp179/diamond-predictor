@@ -1,0 +1,82 @@
+{
+ "pair_factor": {
+  "sameTeam": 1.021201344685229,
+  "opposed": 0.937285841029679
+ },
+ "control": 0.9679571580897192,
+ "chosen": {
+  "5": {
+   "cap": 99,
+   "floor": 0.45,
+   "days": 80,
+   "stated": 0.03051960205639469,
+   "won": 2,
+   "realised": 0.025,
+   "ratio": 0.8191456741082185
+  },
+  "10": {
+   "cap": 99,
+   "floor": 0.42,
+   "days": 85,
+   "stated": 0.0006416636852762122,
+   "won": 0,
+   "realised": 0.0,
+   "ratio": 0.0
+  },
+  "15": {
+   "cap": 3,
+   "floor": 0.42,
+   "days": 73,
+   "stated": 1.2978486795040245e-05,
+   "won": 0,
+   "realised": 0.0,
+   "ratio": 0.0
+  }
+ },
+ "evidence": {
+  "5": {
+   "cap": 99,
+   "floor": 0.45,
+   "days": 77,
+   "stated": 0.033990332258985644,
+   "oneIn": 29,
+   "won": 4,
+   "expected": 2.6172555839418945,
+   "realised": 0.05194805194805195,
+   "mean_legs_hit": 2.5974025974025974,
+   "mean_correction": 1.0170349695192065,
+   "mean_stacked_pairs": 3.74025974025974
+  },
+  "10": {
+   "cap": 99,
+   "floor": 0.42,
+   "days": 82,
+   "stated": 0.0007183687276545479,
+   "oneIn": 1392,
+   "won": 0,
+   "expected": 0.058906235667672925,
+   "realised": 0.0,
+   "mean_legs_hit": 4.7560975609756095,
+   "mean_correction": 0.918288840426637,
+   "mean_stacked_pairs": 10.939024390243903
+  },
+  "15": {
+   "cap": 3,
+   "floor": 0.42,
+   "days": 70,
+   "stated": 1.4193718853557561e-05,
+   "oneIn": 70454,
+   "won": 0,
+   "expected": 0.0009935603197490292,
+   "realised": 0.0,
+   "mean_legs_hit": 6.957142857142857,
+   "mean_correction": 0.9757036056823627,
+   "mean_stacked_pairs": 9.357142857142858
+  }
+ },
+ "split": {
+  "cut": "2026-06-23",
+  "pick_days": 88,
+  "test_days": 89
+ }
+}

@@ -82,7 +82,7 @@ export const SPORTS: SportNav[] = [
     label: "MLB",
     phrase: "MLB",
     blurb:
-      "Win probabilities, the day's parlay, player props, 2+ base projections and correlated team stacks.",
+      "Win probabilities, player props, 2+ base projections, 5/10/15-leg base parlays and correlated team stacks.",
     href: "/mlb",
     leagued: false,
   },
@@ -156,7 +156,7 @@ const LABELS: Record<ViewKey, string> = {
 };
 
 const VIEWS: Record<SportKey, ViewKey[]> = {
-  mlb: ["slate", "recommended", "bestOdds", "props", "twoBases", "stacks", "trackRecord"],
+  mlb: ["slate", "recommended", "bestOdds", "props", "twoBases", "parlay", "stacks", "trackRecord"],
   nfl: ["slate", "recommended", "bestOdds", "props", "tdScorers", "parlay", "trackRecord"],
   cfb: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
   nba: ["slate", "recommended", "bestOdds", "trackRecord"],
@@ -178,10 +178,19 @@ const SEGMENT: Record<ViewKey, string> = {
   model: "model",
 };
 
-/** "Slate" is a North American word; both of these sports call it something else. */
-const SLATE_LABEL: Partial<Record<SportKey, string>> = {
-  soccer: "Matches",
-  tennis: "Draw",
+/**
+ * Per-sport label overrides.
+ *
+ * A view key names what a page DOES, not what a sport calls it. "Slate" is a
+ * North American word that soccer and tennis do not use, and `parlay` is the
+ * same page in three sports betting on three different things — touchdown
+ * scorers in football, two-base hitters in baseball. The key stays shared so
+ * the route and the tab logic stay shared; only the word on the tab changes.
+ */
+const VIEW_LABEL: Partial<Record<SportKey, Partial<Record<ViewKey, string>>>> = {
+  soccer: { slate: "Matches" },
+  tennis: { slate: "Draw" },
+  mlb: { parlay: "Base Parlays" },
 };
 
 /**
@@ -200,7 +209,7 @@ export function viewHref(sport: SportKey, view: ViewKey, division?: DivisionSlug
 export function viewsFor(sport: SportKey, division?: DivisionSlug): NavItem[] {
   return VIEWS[sport].map((key) => ({
     key,
-    label: (key === "slate" ? SLATE_LABEL[sport] : undefined) ?? LABELS[key],
+    label: VIEW_LABEL[sport]?.[key] ?? LABELS[key],
     href: viewHref(sport, key, division),
   }));
 }

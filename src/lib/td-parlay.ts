@@ -161,8 +161,34 @@ export type TdParlay = {
 export const SIZE_FLOOR: Record<string, Record<number, number>> = {
   cfb: { 5: 0.55, 10: 0.45, 15: 0.45, 20: 0.45 },
   nfl: { 5: 0.45, 10: 0.4, 15: 0.35, 20: 0.3 },
+  // Baseball's 2+ total bases. The floors are far lower because the MODEL'S
+  // WHOLE RANGE is lower: it runs 0.18 to 0.62 and only 594 of ~37,000
+  // batter-games clear 0.50 at all. A 0.55 floor would empty the board every
+  // night. Chosen by research/mlb-tb2/parlay_tb2.py on the first half of 2026
+  // as the best stated probability among constructions that fill 70% of days.
+  mlb: { 5: 0.45, 10: 0.42, 15: 0.42 },
 };
 export const PARLAY_SIZES = [5, 10, 15, 20];
+
+/**
+ * Legs from one game the construction sweep chose at each size, where that
+ * answer is not the same at every size.
+ *
+ * Only baseball has one, and only because baseball is the board where the
+ * per-game cap is a real trade rather than an obvious call. Football penalises
+ * a same-game pair hard enough (0.76-0.88) that stacking is a last resort;
+ * baseball's same-lineup factor is 1.021, so at five and ten legs the best legs
+ * wherever they are is simply the best slip. Fifteen is different: the slate
+ * runs out of hitters clearing the floor, an unrestricted slip piles nine legs
+ * into one game, and the eighteen opposed pairs that come with it cost more
+ * than the stronger legs are worth. Three per game states a better number.
+ *
+ * This is the DEFAULT, not a limit. A reader who picks a cap gets that cap at
+ * every size, and the card says which one is in force.
+ */
+export const SIZE_CAP: Record<string, Record<number, number>> = {
+  mlb: { 5: Infinity, 10: Infinity, 15: 3 },
+};
 const DEFAULT_FLOOR = 0.45;
 
 /**
@@ -180,7 +206,24 @@ export const MAX_PER_GAME_CHOICES = [1, 2, 3, Infinity];
  *  kept next to `expected` so a zero cannot be read as a verdict. */
 export const SIZE_EVIDENCE: Record<
   string,
-  Record<number, { stated: number; oneIn: number; observed: string; note?: string }>
+  Record<
+    number,
+    {
+      stated: number;
+      oneIn: number;
+      observed: string;
+      note?: string;
+      /** Mean legs that landed on a losing-or-winning slip, out of `size`. On a
+       *  slip this long this is the only number with a real sample behind it:
+       *  wins are zero by construction, but "7.0 of 15 legs landed" is measured
+       *  on every held-out day and says how close the slips came. */
+      meanLegs?: number;
+      /** Legs from one game the construction sweep chose at this size, so the
+       *  page can say when the reader is looking at a slip built differently
+       *  from the one these numbers describe. Infinity means unrestricted. */
+      cap?: number;
+    }
+  >
 > = {
   cfb: {
     5: {
@@ -202,6 +245,34 @@ export const SIZE_EVIDENCE: Record<
       stated: 0.000418,
       oneIn: 2391,
       observed: "0 of 16 (0.01 expected)",
+    },
+  },
+  // Baseball, on the second half of 2026 — days the construction never saw.
+  // `stated` here is the CORRECTED number, the one the board quotes, not the
+  // plain product: reporting the product while the page quoted the corrected
+  // figure had the card citing evidence computed a different way than the
+  // number printed above it, and at fifteen legs that gap was a factor of two.
+  mlb: {
+    5: {
+      stated: 0.03399,
+      oneIn: 29,
+      observed: "4 of 77 held-out days (2.62 expected)",
+      meanLegs: 2.6,
+      cap: Infinity,
+    },
+    10: {
+      stated: 0.00071837,
+      oneIn: 1392,
+      observed: "0 of 82 held-out days (0.06 expected)",
+      meanLegs: 4.76,
+      cap: Infinity,
+    },
+    15: {
+      stated: 0.000014194,
+      oneIn: 70454,
+      observed: "0 of 70 held-out days (0.00 expected)",
+      meanLegs: 6.96,
+      cap: 3,
     },
   },
   nfl: {
@@ -275,6 +346,29 @@ export const SIZE_EVIDENCE: Record<
 export const PAIR_FACTOR: Record<string, { sameTeam: number; opposed: number }> = {
   cfb: { sameTeam: 0.842, opposed: 0.758 },
   nfl: { sameTeam: 0.826, opposed: 0.883 },
+  // Baseball, and the interesting row. Football penalises a same-team stack
+  // because two backs compete for a finite number of goal-line carries. Two
+  // hitters in one lineup do not compete — they share a starting pitcher and a
+  // ballpark — so the expectation going in was a clear POSITIVE correlation
+  // that would make stacking attractive.
+  //
+  // Measured, it is neither: 1.021 against the control, which is nothing. The
+  // reason is that 2+ total bases is mostly an individual event — one double
+  // does it — so a hitter's own power and plate appearances swamp whatever the
+  // offence does collectively. The opposed figure (0.937) is a mild real
+  // penalty, presumably the game script that lets one side's starter cruise.
+  //
+  // The practical consequence depends on how long the slip is, and that is
+  // worth being precise about because it decides the construction. A 1.021
+  // same-lineup factor is free: stack a lineup and the number barely moves. A
+  // 0.937 opposed factor is nearly free ONCE, and it is not free eighteen
+  // times — an unrestricted fifteen-leg slip concentrates into a few games and
+  // carries about that many opposed pairs, where the same arithmetic says 0.83
+  // and the slip is worth a sixth less than its product. So five and ten legs
+  // are built unrestricted and fifteen is capped at three per game; see
+  // SIZE_CAP. Both are what the sweep in research/mlb-tb2/parlay_tb2.py chose
+  // once the correction was applied to the number it was choosing on.
+  mlb: { sameTeam: 1.021, opposed: 0.937 },
 };
 const DEFAULT_PAIR_FACTOR = PAIR_FACTOR.cfb;
 
