@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TennisRouteImport } from './routes/tennis'
 import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as SoccerRouteImport } from './routes/soccer'
+import { Route as SimRouteImport } from './routes/sim'
 import { Route as PropsRouteImport } from './routes/props'
 import { Route as NflRouteImport } from './routes/nfl'
 import { Route as NbaRouteImport } from './routes/nba'
@@ -24,12 +25,14 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TennisIndexRouteImport } from './routes/tennis.index'
 import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
+import { Route as SimIndexRouteImport } from './routes/sim.index'
 import { Route as NflIndexRouteImport } from './routes/nfl.index'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
 import { Route as MlbIndexRouteImport } from './routes/mlb.index'
 import { Route as CfbIndexRouteImport } from './routes/cfb.index'
 import { Route as TennisTourRouteImport } from './routes/tennis.$tour'
 import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
+import { Route as SimLeagueRouteImport } from './routes/sim.$league'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
 import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
@@ -74,6 +77,11 @@ const TeamsRoute = TeamsRouteImport.update({
 const SoccerRoute = SoccerRouteImport.update({
   id: '/soccer',
   path: '/soccer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SimRoute = SimRouteImport.update({
+  id: '/sim',
+  path: '/sim',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PropsRoute = PropsRouteImport.update({
@@ -136,6 +144,11 @@ const SoccerIndexRoute = SoccerIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SoccerRoute,
 } as any)
+const SimIndexRoute = SimIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SimRoute,
+} as any)
 const NflIndexRoute = NflIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -165,6 +178,11 @@ const SoccerLeagueRoute = SoccerLeagueRouteImport.update({
   id: '/$league',
   path: '/$league',
   getParentRoute: () => SoccerRoute,
+} as any)
+const SimLeagueRoute = SimLeagueRouteImport.update({
+  id: '/$league',
+  path: '/$league',
+  getParentRoute: () => SimRoute,
 } as any)
 const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
   id: '/track-record',
@@ -330,6 +348,7 @@ export interface FileRoutesByFullPath {
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
   '/props': typeof PropsRoute
+  '/sim': typeof SimRouteWithChildren
   '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
   '/tennis': typeof TennisRouteWithChildren
@@ -354,12 +373,14 @@ export interface FileRoutesByFullPath {
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/sim/$league': typeof SimLeagueRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/tennis/$tour': typeof TennisTourRouteWithChildren
   '/cfb/': typeof CfbIndexRoute
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
+  '/sim/': typeof SimIndexRoute
   '/soccer/': typeof SoccerIndexRoute
   '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
@@ -401,10 +422,12 @@ export interface FileRoutesByTo {
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/sim/$league': typeof SimLeagueRoute
   '/cfb': typeof CfbIndexRoute
   '/mlb': typeof MlbIndexRoute
   '/nba': typeof NbaIndexRoute
   '/nfl': typeof NflIndexRoute
+  '/sim': typeof SimIndexRoute
   '/soccer': typeof SoccerIndexRoute
   '/tennis': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
@@ -429,6 +452,7 @@ export interface FileRoutesById {
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
   '/props': typeof PropsRoute
+  '/sim': typeof SimRouteWithChildren
   '/soccer': typeof SoccerRouteWithChildren
   '/teams': typeof TeamsRoute
   '/tennis': typeof TennisRouteWithChildren
@@ -453,12 +477,14 @@ export interface FileRoutesById {
   '/nfl/recommended': typeof NflRecommendedRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/sim/$league': typeof SimLeagueRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/tennis/$tour': typeof TennisTourRouteWithChildren
   '/cfb/': typeof CfbIndexRoute
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
+  '/sim/': typeof SimIndexRoute
   '/soccer/': typeof SoccerIndexRoute
   '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
@@ -484,6 +510,7 @@ export interface FileRouteTypes {
     | '/nba'
     | '/nfl'
     | '/props'
+    | '/sim'
     | '/soccer'
     | '/teams'
     | '/tennis'
@@ -508,12 +535,14 @@ export interface FileRouteTypes {
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/sim/$league'
     | '/soccer/$league'
     | '/tennis/$tour'
     | '/cfb/'
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
+    | '/sim/'
     | '/soccer/'
     | '/tennis/'
     | '/soccer/$league/model'
@@ -555,10 +584,12 @@ export interface FileRouteTypes {
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/sim/$league'
     | '/cfb'
     | '/mlb'
     | '/nba'
     | '/nfl'
+    | '/sim'
     | '/soccer'
     | '/tennis'
     | '/soccer/$league/model'
@@ -582,6 +613,7 @@ export interface FileRouteTypes {
     | '/nba'
     | '/nfl'
     | '/props'
+    | '/sim'
     | '/soccer'
     | '/teams'
     | '/tennis'
@@ -606,12 +638,14 @@ export interface FileRouteTypes {
     | '/nfl/recommended'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/sim/$league'
     | '/soccer/$league'
     | '/tennis/$tour'
     | '/cfb/'
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
+    | '/sim/'
     | '/soccer/'
     | '/tennis/'
     | '/soccer/$league/model'
@@ -636,6 +670,7 @@ export interface RootRouteChildren {
   NbaRoute: typeof NbaRouteWithChildren
   NflRoute: typeof NflRouteWithChildren
   PropsRoute: typeof PropsRoute
+  SimRoute: typeof SimRouteWithChildren
   SoccerRoute: typeof SoccerRouteWithChildren
   TeamsRoute: typeof TeamsRoute
   TennisRoute: typeof TennisRouteWithChildren
@@ -664,6 +699,13 @@ declare module '@tanstack/react-router' {
       path: '/soccer'
       fullPath: '/soccer'
       preLoaderRoute: typeof SoccerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sim': {
+      id: '/sim'
+      path: '/sim'
+      fullPath: '/sim'
+      preLoaderRoute: typeof SimRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/props': {
@@ -750,6 +792,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SoccerIndexRouteImport
       parentRoute: typeof SoccerRoute
     }
+    '/sim/': {
+      id: '/sim/'
+      path: '/'
+      fullPath: '/sim/'
+      preLoaderRoute: typeof SimIndexRouteImport
+      parentRoute: typeof SimRoute
+    }
     '/nfl/': {
       id: '/nfl/'
       path: '/'
@@ -791,6 +840,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/soccer/$league'
       preLoaderRoute: typeof SoccerLeagueRouteImport
       parentRoute: typeof SoccerRoute
+    }
+    '/sim/$league': {
+      id: '/sim/$league'
+      path: '/$league'
+      fullPath: '/sim/$league'
+      preLoaderRoute: typeof SimLeagueRouteImport
+      parentRoute: typeof SimRoute
     }
     '/nfl/track-record': {
       id: '/nfl/track-record'
@@ -1087,6 +1143,18 @@ const NflRouteChildren: NflRouteChildren = {
 
 const NflRouteWithChildren = NflRoute._addFileChildren(NflRouteChildren)
 
+interface SimRouteChildren {
+  SimLeagueRoute: typeof SimLeagueRoute
+  SimIndexRoute: typeof SimIndexRoute
+}
+
+const SimRouteChildren: SimRouteChildren = {
+  SimLeagueRoute: SimLeagueRoute,
+  SimIndexRoute: SimIndexRoute,
+}
+
+const SimRouteWithChildren = SimRoute._addFileChildren(SimRouteChildren)
+
 interface SoccerLeagueRouteChildren {
   SoccerLeagueModelRoute: typeof SoccerLeagueModelRoute
   SoccerLeaguePropsRoute: typeof SoccerLeaguePropsRoute
@@ -1158,6 +1226,7 @@ const rootRouteChildren: RootRouteChildren = {
   NbaRoute: NbaRouteWithChildren,
   NflRoute: NflRouteWithChildren,
   PropsRoute: PropsRoute,
+  SimRoute: SimRouteWithChildren,
   SoccerRoute: SoccerRouteWithChildren,
   TeamsRoute: TeamsRoute,
   TennisRoute: TennisRouteWithChildren,

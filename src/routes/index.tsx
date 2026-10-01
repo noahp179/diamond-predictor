@@ -50,6 +50,26 @@ export function Hub() {
       blurb="Win probabilities, player props and parlays across four sports and five soccer leagues. Every model here was scored on seasons it never trained on, and every page shows that number — including where the model loses."
       footerNote="Data · MLB Stats API · ESPN · Not affiliated with any league"
     >
+      <Link
+        to="/sim"
+        className="group mb-6 block border border-primary/50 bg-card p-5 transition-colors hover:border-primary sm:p-6"
+      >
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <span className="font-display text-3xl group-hover:text-primary">Game Simulator</span>
+          <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            NFL · NBA · NHL · MLB
+          </span>
+        </div>
+        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+          Play any game out one play at a time from the players&apos; real season numbers. Watch a
+          single game unfold with a live box score, or run ten thousand and get the win probability,
+          the score distribution against the line, and every player&apos;s projected stat line.
+        </p>
+        <span className="mt-3 inline-block font-mono text-[11px] uppercase tracking-widest text-primary">
+          Open the simulator →
+        </span>
+      </Link>
+
       <div className="grid gap-4 md:grid-cols-2">
         {SPORTS.map((s) => (
           <SportCard key={s.key} sport={s.key} label={s.label} blurb={s.blurb} />

@@ -44,6 +44,7 @@ function TeamsPage() {
 
   return (
     <AppShell
+      section="teams"
       eyebrow="Diamond Edge · Team Index"
       title="Clubhouse Ledger"
       blurb={`Records, run differential, and how well the model has predicted each team's settled games since ${data?.trackingSince ?? "the tracking reset"} (the current-model era). Model version ${data?.modelVersion ?? "—"}.`}

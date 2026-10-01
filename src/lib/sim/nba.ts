@@ -1,0 +1,550 @@
+/**
+ * nba.ts — a possession-by-possession basketball engine.
+ *
+ * Every possession, the clock runs a sampled number of seconds and then one of
+ * the five players on the floor "uses" it: a two, a three, a trip to the line
+ * or a turnover, chosen in proportion to how often each of those players does
+ * each of those things per minute. A miss goes to a rebound battle decided by
+ * the offensive rebounding of the five on offense against the defensive
+ * rebounding of the five on defense; an offensive board keeps the possession
+ * alive and someone uses it again.
+ *
+ * That one rule — usage in proportion to per-minute rates — is what makes the
+ * box scores come out right. A player who takes a fifth of his team's shots in
+ * real life takes about a fifth of them here, and when a star sits, the shots
+ * flow to whoever replaces him rather than disappearing.
+ *
+ * Around it: a rotation that tracks each player's minutes against his season
+ * average, starters at the start of halves, closers in a close fourth quarter,
+ * the bench in a blowout, foul trouble and foul-outs, intentional fouling when
+ * trailing late, and overtime until somebody wins.
+ */
+
+import { available, Box, clock, finish, Log, ordinal, Rng, sideIdx } from "./core";
+import { NBA } from "./columns";
+import type {
+  GameResult,
+  NbaEnv,
+  NbaPlayer,
+  NbaTeam,
+  SimMatchup,
+  SimOverrides,
+  Side,
+} from "./types";
+
+type NbaMatchup = Extract<SimMatchup, { league: "nba" }>;
+
+// Calibration. Tuned so two league-average rosters on a neutral floor score
+// the league's points per game at its pace, and an average home team wins
+// ~55% (the NBA's rate over the last five seasons). See SIMULATOR.md.
+const MAKE_CAL = 1.006;
+const PACE_CAL = 1.015;
+const HOME_EDGE = 0.0125; // make-probability bump for the home side
+const DEF_WEIGHT = 0.8; // how much of a defense's points-allowed gap is real
+const CRUNCH_MARGIN = 10;
+/**
+ * Score effects: a team ahead plays a little worse and a team behind a little
+ * better (rest, effort, the opponent's urgency). Without it the simulated
+ * margins spread far wider than real ones — about 16.5 points around the
+ * expectation instead of the ~13 the NBA actually shows. Per point of lead,
+ * capped at twenty.
+ */
+const SCORE_EFFECT = 0.0035;
+/** Game-to-game pace swings both teams share. */
+const PACE_NOISE = 0.035;
+
+interface TeamPrep {
+  side: Side;
+  team: NbaTeam;
+  /** Indices into team.players of everyone who can play. */
+  roster: number[];
+  /** Target seconds per player (by roster index into team.players). */
+  target: number[];
+  starters: number[];
+  /** Multiplier on the opponent's make probability. */
+  defF: number;
+  makeF: number;
+}
+
+export interface NbaPrep {
+  m: NbaMatchup;
+  teams: [TeamPrep, TeamPrep];
+  env: NbaEnv;
+  pace: number;
+  playoff: boolean;
+}
+
+function prepTeam(
+  side: Side,
+  team: NbaTeam,
+  o: SimOverrides,
+  m: NbaMatchup,
+  neutral: boolean,
+): TeamPrep {
+  const benched = new Set(o.benched);
+  const activated = new Set(o.activated);
+  let roster = team.players
+    .map((p, i) => (available(p, benched, activated) ? i : -1))
+    .filter((i) => i >= 0);
+  // Fewer than eight available would make a farce of the rotation; dress
+  // whoever is left on the injury report before playing four-on-five.
+  if (roster.length < 8) {
+    const extra = team.players
+      .map((p, i) => i)
+      .filter((i) => !roster.includes(i) && !benched.has(team.players[i].id));
+    roster = roster.concat(extra.slice(0, 8 - roster.length));
+  }
+  // A rotation is nine or ten deep. Everyone's season minutes describe the
+  // role he had — often on another team, often while someone else was hurt —
+  // so the roster is ranked, the top nine keep their minutes, the tenth man
+  // half of his, and the end of the bench plays only when a game is decided.
+  // The rotation's minutes are then scaled to fill exactly 240, capping anyone
+  // at 40 and pouring the excess back over the rest in proportion.
+  const target = new Array<number>(team.players.length).fill(0);
+  roster.sort((a, b) => team.players[b].mpg - team.players[a].mpg);
+  const base = roster.map((i, rank) => {
+    const mpg = Math.max(1, team.players[i].mpg);
+    return rank < 9 ? mpg : rank === 9 ? mpg * 0.5 : 0;
+  });
+  let mins = base.slice();
+  for (let iter = 0; iter < 8; iter++) {
+    const sum = mins.reduce((a, b) => a + b, 0);
+    mins = mins.map((x) => (x * 240) / sum);
+    const over = mins.some((x) => x > 40.5);
+    if (!over) break;
+    mins = mins.map((x) => Math.min(40, x));
+  }
+  roster.forEach((i, k) => (target[i] = mins[k] * 60));
+  const starters = roster
+    .slice()
+    .sort((a, b) => target[b] - target[a])
+    .slice(0, 5);
+  const defF = 1 + DEF_WEIGHT * (team.pa / m.env.ppg - 1);
+  const homeEdge = neutral ? 0 : side === "home" ? HOME_EDGE : -HOME_EDGE;
+  return { side, team, roster, target, starters, defF, makeF: MAKE_CAL * (1 + homeEdge) };
+}
+
+/** Possessions per 48 for this matchup: the league pace nudged by how
+ *  possession-hungry each roster's main rotation is. */
+function matchupPace(m: NbaMatchup, teams: [TeamPrep, TeamPrep]): number {
+  const env = m.env;
+  const lgUse = 5 * (0.32 + 0.12 + 0.264 * 0.44 + 0.1); // rough per-5 usage scale
+  const f = teams.map((t) => {
+    let use = 0;
+    for (const i of t.roster) {
+      const p = t.team.players[i];
+      use += (t.target[i] / 14400) * 5 * (p.fg2a + p.fg3a + 0.44 * p.fta + p.tov - p.oreb);
+    }
+    return use / Math.max(0.1, lgUse);
+  });
+  const rel = (f[0] + f[1]) / 2;
+  // Mostly league pace; a quarter of the roster signal, clamped.
+  const adj = Math.max(0.94, Math.min(1.06, 1 + 0.25 * (rel - 1)));
+  return env.pace * PACE_CAL * adj;
+}
+
+export function prepareNba(m: NbaMatchup, o: SimOverrides): NbaPrep {
+  const neutral = o.neutral ?? m.ctx.neutral;
+  const teams: [TeamPrep, TeamPrep] = [
+    prepTeam("home", m.home, o, m, neutral),
+    prepTeam("away", m.away, o, m, neutral),
+  ];
+  return { m, teams, env: m.env, pace: matchupPace(m, teams), playoff: o.playoff ?? m.ctx.playoff };
+}
+
+// ------------------------------------------------------------------ game
+
+const REG = 4;
+const QUARTER = 720;
+const OT_LEN = 300;
+
+export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResult {
+  const rng = new Rng(seed);
+  // Words only — see nhl.ts. Keeps a recorded game identical to the same seed
+  // played silently in a batch.
+  const flavor = new Rng(seed ^ 0x5bd1e995);
+  const [H, A] = prep.teams;
+  const box = new Box(H.team.players.length, A.team.players.length, NBA.N, record);
+  const log = new Log(record, box);
+  const score = [0, 0];
+  const periods = { home: [] as number[], away: [] as number[] };
+  const T = prep.teams;
+  const played = [new Float64Array(H.team.players.length), new Float64Array(A.team.players.length)];
+  const fouls = [new Int8Array(H.team.players.length), new Int8Array(A.team.players.length)];
+  const lineup: number[][] = [H.starters.slice(), A.starters.slice()];
+  for (let s = 0; s < 2; s++) for (const p of lineup[s]) box.add(s, p, NBA.START, 1);
+  const name = (s: number, p: number) => T[s].team.players[p].short;
+  const meanPoss = 2880 / (2 * prep.pace * Math.max(0.85, 1 + rng.normal(0, PACE_NOISE)));
+
+  let period = 1;
+  let clk = QUARTER;
+  let lastSub = 0;
+  let elapsedTotal = 0;
+  const tipWinner = rng.chance(0.5) ? 0 : 1;
+  let off = tipWinner;
+
+  const periodScore = [0, 0];
+  const isOT = () => period > REG;
+  const regElapsed = () => Math.min(2880, elapsedTotal);
+
+  const add = (s: number, pts: number) => {
+    score[s] += pts;
+    periodScore[s] += pts;
+    for (const p of lineup[s]) box.add(s, p, NBA.PM, pts);
+    for (const p of lineup[1 - s]) box.add(1 - s, p, NBA.PM, -pts);
+  };
+
+  const tick = (sec: number) => {
+    const t = Math.min(sec, clk);
+    clk -= t;
+    elapsedTotal += t;
+    for (let s = 0; s < 2; s++)
+      for (const p of lineup[s]) {
+        played[s][p] += t;
+        box.add(s, p, NBA.SEC, t);
+      }
+  };
+
+  const ev = (
+    side: number | null,
+    text: string,
+    extra: { scoring?: boolean; big?: boolean } = {},
+  ) =>
+    log.push({
+      period,
+      clock: clock(clk),
+      side: side === null ? null : side === 0 ? "home" : "away",
+      text,
+      home: score[0],
+      away: score[1],
+      ...extra,
+    });
+
+  // ---------------------------------------------------------- rotation
+
+  const fouledOut = (s: number, p: number) => fouls[s][p] >= 6;
+
+  const rotate = (s: number, force: boolean) => {
+    const t = T[s];
+    const margin = score[s] - score[1 - s];
+    const avail = t.roster.filter((p) => !fouledOut(s, p));
+    if (avail.length < 5) return;
+    const lateQ4 = period === REG && clk < 300;
+    if ((lateQ4 && Math.abs(margin) <= CRUNCH_MARGIN) || isOT()) {
+      // Closing time: the five who play the most.
+      const best = avail
+        .slice()
+        .sort((a, b) => t.target[b] - t.target[a])
+        .slice(0, 5);
+      setLineup(s, best);
+      return;
+    }
+    if (period === REG && clk < 400 && Math.abs(margin) >= 20) {
+      const garbage = avail
+        .slice()
+        .sort((a, b) => t.target[a] - t.target[b])
+        .slice(0, 5);
+      setLineup(s, garbage);
+      return;
+    }
+    const frac = Math.min(1, (regElapsed() + 150) / 2880);
+    const need = (p: number) => {
+      let d = t.target[p] * frac - played[s][p];
+      // Foul trouble: two in the first, three in the second, and so on.
+      if (fouls[s][p] >= Math.min(5, period + 1) && period <= REG) d -= 400;
+      return d;
+    };
+    const cur = lineup[s].slice();
+    for (let k = 0; k < (force ? 5 : 2); k++) {
+      const bench = avail.filter((p) => !cur.includes(p));
+      if (!bench.length) break;
+      const out = cur.reduce((a, b) => (need(b) < need(a) ? b : a));
+      const inn = bench.reduce((a, b) => (need(b) > need(a) ? b : a));
+      if (need(inn) - need(out) > 150 || fouledOut(s, out)) cur[cur.indexOf(out)] = inn;
+      else break;
+    }
+    setLineup(s, cur);
+  };
+
+  const setLineup = (s: number, next: number[]) => {
+    const cur = lineup[s];
+    const outs = cur.filter((p) => !next.includes(p));
+    const ins = next.filter((p) => !cur.includes(p));
+    if (!outs.length) return;
+    lineup[s] = next.slice();
+    if (log.on)
+      ev(
+        s,
+        outs.length === 1
+          ? `Substitution: ${name(s, ins[0])} in for ${name(s, outs[0])}`
+          : `Substitution: ${ins.map((p) => name(s, p)).join(", ")} in`,
+      );
+  };
+
+  const startPeriod = () => {
+    if (period === 1 || period === 3) {
+      for (let s = 0; s < 2; s++) {
+        const avail = T[s].roster.filter((p) => !fouledOut(s, p));
+        const st = T[s].starters.filter((p) => avail.includes(p));
+        const fill = avail
+          .filter((p) => !st.includes(p))
+          .sort((a, b) => T[s].target[b] - T[s].target[a]);
+        setLineup(s, st.concat(fill).slice(0, 5));
+      }
+    } else {
+      rotate(0, true);
+      rotate(1, true);
+    }
+  };
+
+  // ---------------------------------------------------------- actions
+
+  const pickActor = (s: number, w: (p: NbaPlayer) => number) => {
+    const ps = lineup[s];
+    const weights = ps.map((i) => w(T[s].team.players[i]));
+    return ps[rng.pick(weights)];
+  };
+
+  const foul = (d: number, shooting: boolean) => {
+    const p = pickActor(d, (x) => x.pf);
+    fouls[d][p]++;
+    box.add(d, p, NBA.PF, 1);
+    if (log.on && !shooting) ev(d, `Personal foul: ${name(d, p)}`);
+    if (fouledOut(d, p)) {
+      if (log.on) ev(d, `${name(d, p)} fouls out`);
+      rotate(d, true);
+    }
+    return p;
+  };
+
+  /** Free throws. Returns true if possession changes (last one made, or the
+   *  defense rebounds the miss). */
+  const freeThrows = (s: number, p: number, n: number): boolean => {
+    const pl = T[s].team.players[p];
+    let lastMade = false;
+    for (let k = 1; k <= n; k++) {
+      lastMade = rng.chance(pl.ftp);
+      box.add(s, p, NBA.FTA, 1);
+      if (lastMade) {
+        box.add(s, p, NBA.FTM, 1);
+        box.add(s, p, NBA.PTS, 1);
+        add(s, 1);
+      }
+      if (log.on)
+        ev(s, `${pl.short} ${lastMade ? "makes" : "misses"} free throw ${k} of ${n}`, {
+          scoring: lastMade,
+        });
+    }
+    if (lastMade) return true;
+    return !rebound(s, 0.45);
+  };
+
+  /** A rebound after a miss. Returns true if the offense keeps it. */
+  const rebound = (s: number, scale: number): boolean => {
+    let o = 0;
+    let d = 0;
+    for (const p of lineup[s]) o += T[s].team.players[p].oreb;
+    for (const p of lineup[1 - s]) d += T[1 - s].team.players[p].dreb;
+    const pOff = scale * (o / Math.max(1e-6, o + d));
+    if (rng.chance(pOff)) {
+      const r = pickActor(s, (x) => x.oreb);
+      box.add(s, r, NBA.OREB, 1);
+      if (log.on) ev(s, `${name(s, r)} offensive rebound`);
+      return true;
+    }
+    const r = pickActor(1 - s, (x) => x.dreb);
+    box.add(1 - s, r, NBA.DREB, 1);
+    if (log.on) ev(1 - s, `${name(1 - s, r)} defensive rebound`);
+    return false;
+  };
+
+  const shotText = (pl: NbaPlayer, three: boolean): string => {
+    if (three) return `${flavor.int(23, 28)}-foot three point jumper`;
+    const big = pl.pos.includes("C");
+    const r = flavor.next();
+    if (r < (big ? 0.28 : 0.12)) return "dunk";
+    if (r < (big ? 0.62 : 0.45)) return flavor.chance(0.5) ? "driving layup" : "layup";
+    if (r < (big ? 0.75 : 0.6)) return big ? "hook shot" : "floater";
+    return `${flavor.int(10, 21)}-foot jumper`;
+  };
+
+  /** One player uses the possession. Returns true if it ends. */
+  const action = (s: number, buzzer: boolean, heave: boolean): boolean => {
+    const d = 1 - s;
+    const tp = T[s];
+    const dp = T[d];
+    const p = pickActor(s, (x) => x.fg2a + x.fg3a + 0.44 * x.fta + x.tov);
+    const pl = tp.team.players[p];
+    const shots = pl.fg2a + pl.fg3a;
+    const total = shots + 0.44 * pl.fta + pl.tov;
+    let r = rng.next() * total;
+    if (!buzzer && r < pl.tov) {
+      box.add(s, p, NBA.TOV, 1);
+      let steal = 0;
+      for (const q of lineup[d]) steal += dp.team.players[q].stl;
+      if (rng.chance(Math.min(0.85, 0.62 * (steal / (5 * prep.env.stl))))) {
+        const st = pickActor(d, (x) => x.stl);
+        box.add(d, st, NBA.STL, 1);
+        if (log.on) ev(s, `${pl.short} bad pass (${name(d, st)} steals)`);
+      } else if (log.on)
+        ev(s, `${pl.short} ${flavor.chance(0.5) ? "lost ball" : "traveling"} turnover`);
+      return true;
+    }
+    r -= pl.tov;
+    if (!buzzer && r < 0.44 * pl.fta) {
+      const fouler = foul(d, true);
+      const n = rng.chance(0.08) ? 3 : 2;
+      if (log.on) ev(d, `Shooting foul: ${name(d, fouler)}`);
+      return freeThrows(s, p, n);
+    }
+    // A field-goal attempt.
+    // Down three late, nobody shoots a two; down two, most teams play for the
+    // tie rather than the win.
+    const behind = score[d] - score[s];
+    const late = period >= REG && clk < 20;
+    const three =
+      (late && behind === 3) ||
+      (!(late && behind === 2 && rng.chance(0.7)) && rng.chance(pl.fg3a / Math.max(1e-6, shots)));
+    const lead = Math.max(-20, Math.min(20, score[s] - score[d]));
+    let pMake = (three ? pl.fg3p : pl.fg2p) * dp.defF * tp.makeF * (1 - SCORE_EFFECT * lead);
+    if (heave) pMake *= 0.25;
+    const made = rng.chance(Math.min(0.92, pMake));
+    box.add(s, p, NBA.FGA, 1);
+    if (three) box.add(s, p, NBA.TPA, 1);
+    const what = log.on ? shotText(pl, three) : "";
+    if (made) {
+      const pts = three ? 3 : 2;
+      box.add(s, p, NBA.FGM, 1);
+      if (three) box.add(s, p, NBA.TPM, 1);
+      box.add(s, p, NBA.PTS, pts);
+      add(s, pts);
+      // Assisted on ~62% of makes, more for a passing lineup.
+      let ast = 0;
+      for (const q of lineup[s]) if (q !== p) ast += tp.team.players[q].ast;
+      const pAst = Math.min(
+        0.85,
+        Math.max(0.35, 0.62 * (ast / (4 * prep.env.ast)) * (three ? 1.2 : 0.92)),
+      );
+      let assister = -1;
+      if (rng.chance(pAst)) {
+        const mates = lineup[s].filter((q) => q !== p);
+        assister = mates[rng.pick(mates.map((q) => tp.team.players[q].ast))];
+        box.add(s, assister, NBA.AST, 1);
+      }
+      if (log.on)
+        ev(
+          s,
+          `${pl.short} makes ${what}${assister >= 0 ? ` (${name(s, assister)} assists)` : ""}`,
+          { scoring: true, big: three && Math.abs(score[0] - score[1]) <= 3 && period >= REG },
+        );
+      // And-one.
+      if (!buzzer && rng.chance(three ? 0.004 : 0.035)) {
+        const fouler = foul(d, true);
+        if (log.on) ev(d, `Shooting foul: ${name(d, fouler)} — and one`);
+        return freeThrows(s, p, 1);
+      }
+      return true;
+    }
+    // Missed. Blocked?
+    let blk = 0;
+    for (const q of lineup[d]) blk += dp.team.players[q].blk;
+    const pBlk = Math.min(0.3, (blk / (5 * prep.env.blk)) * (three ? 0.04 : 0.175));
+    if (rng.chance(pBlk)) {
+      const b = pickActor(d, (x) => x.blk);
+      box.add(d, b, NBA.BLK, 1);
+      if (log.on) ev(s, `${pl.short} misses ${what} (${name(d, b)} blocks)`);
+    } else if (log.on) ev(s, `${pl.short} misses ${what}`);
+    if (buzzer && clk <= 0) return true;
+    return !rebound(s, three ? 1.05 : 0.95);
+  };
+
+  // ---------------------------------------------------------- the loop
+
+  const lengthFor = (s: number): number => {
+    const lead = score[s] - score[1 - s];
+    const late = period >= REG && clk <= 24;
+    if (late && lead > 0) return Math.min(clk, rng.uniform(20, 24));
+    if (late && lead <= 0) return Math.max(0.5, clk - rng.uniform(1, 4));
+    // Trailing late: hurry.
+    if (period >= REG && clk < 120 && lead < 0)
+      return Math.max(3, rng.gamma(3, (meanPoss * 0.6) / 3));
+    return Math.min(24, Math.max(3, 2 + rng.gamma(2.6, (meanPoss - 2) / 2.6)));
+  };
+
+  if (log.on) ev(tipWinner, `Jump ball: ${T[tipWinner].team.name} gain possession`);
+
+  for (;;) {
+    startPeriod();
+    periodScore[0] = 0;
+    periodScore[1] = 0;
+    while (clk > 0) {
+      const s = off;
+      const d = 1 - s;
+      // Intentional foul: the defense is behind in the last half-minute.
+      const deficit = score[s] - score[d];
+      if (period >= REG && clk < 32 && deficit >= 1 && deficit <= 6) {
+        tick(rng.uniform(1.5, 4));
+        const fouler = foul(d, false);
+        const target = pickActor(s, (x) => (x.fg2a + x.fg3a + x.fta + 0.05) * x.ftp * x.ftp);
+        if (log.on) ev(d, `${name(d, fouler)} fouls ${name(s, target)} intentionally`);
+        if (freeThrows(s, target, 2)) off = d;
+        continue;
+      }
+      if (elapsedTotal - lastSub > 100 && clk > 20) {
+        rotate(0, false);
+        rotate(1, false);
+        lastSub = elapsedTotal;
+      }
+      // Common fouls don't end possessions but they do fill a box score.
+      if (rng.chance(0.075)) foul(d, false);
+      let len = lengthFor(s);
+      let ended = false;
+      let guard = 0;
+      while (!ended && guard++ < 8) {
+        const buzzer = len >= clk;
+        const heave = buzzer && clk < 2.5;
+        tick(len);
+        ended = action(s, buzzer, heave) || clk <= 0;
+        len = Math.min(clk, rng.uniform(3, 9));
+        if (clk <= 0) break;
+      }
+      off = d;
+    }
+    periods.home.push(periodScore[0]);
+    periods.away.push(periodScore[1]);
+    if (log.on)
+      ev(
+        null,
+        `End of ${period > REG ? (period === REG + 1 ? "OT" : `${period - REG}OT`) : `${ordinal(period)} quarter`}`,
+      );
+    if (period >= REG && score[0] !== score[1]) break;
+    if (period > REG + 6) break; // safety: six overtimes and we call it
+    period++;
+    clk = period > REG ? OT_LEN : QUARTER;
+    // Q2 and Q3 go to the team that lost the tip, Q4 to the one that won it.
+    off = period > REG ? (rng.chance(0.5) ? 0 : 1) : period === 4 ? tipWinner : 1 - tipWinner;
+  }
+
+  const ot = period > REG;
+  return finish(score[0], score[1], periods, box, log, {
+    ot,
+    tie: false,
+    status: ot ? (period === REG + 1 ? "Final/OT" : `Final/${period - REG}OT`) : "Final",
+  });
+}
+
+export function simulateNba(
+  m: NbaMatchup,
+  o: SimOverrides,
+  seed: number,
+  record: boolean,
+): GameResult {
+  return playNba(prepareNba(m, o), seed, record);
+}
+
+/** Map of box index → player, for the UI. */
+export function nbaRoster(m: NbaMatchup, side: Side): NbaPlayer[] {
+  return m[side].players;
+}
+
+export const nbaSide = sideIdx;
