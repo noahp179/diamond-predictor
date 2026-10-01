@@ -23,7 +23,7 @@ export const Route = createFileRoute("/teams")({
   component: TeamsPage,
   errorComponent: ({ error }) => (
     <div className="p-10 font-mono text-sm text-destructive">
-      Couldn't load teams: {error.message}
+      Couldn't load teams: {error instanceof Error ? error.message : String(error)}
     </div>
   ),
 });

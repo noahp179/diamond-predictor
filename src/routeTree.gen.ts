@@ -9,119 +9,64 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TennisRouteImport } from './routes/tennis'
-import { Route as TeamsRouteImport } from './routes/teams'
-import { Route as SoccerRouteImport } from './routes/soccer'
-import { Route as SimRouteImport } from './routes/sim'
-import { Route as PropsRouteImport } from './routes/props'
-import { Route as NflRouteImport } from './routes/nfl'
-import { Route as NbaRouteImport } from './routes/nba'
-import { Route as ModelRouteImport } from './routes/model'
-import { Route as MlbRouteImport } from './routes/mlb'
-import { Route as HistoryRouteImport } from './routes/history'
-import { Route as CfbRouteImport } from './routes/cfb'
-import { Route as BestOddsRouteImport } from './routes/best-odds'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as TennisIndexRouteImport } from './routes/tennis.index'
-import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
-import { Route as SimIndexRouteImport } from './routes/sim.index'
-import { Route as NflIndexRouteImport } from './routes/nfl.index'
-import { Route as NbaIndexRouteImport } from './routes/nba.index'
-import { Route as MlbIndexRouteImport } from './routes/mlb.index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as BestOddsRouteImport } from './routes/best-odds'
+import { Route as CfbRouteImport } from './routes/cfb'
+import { Route as HistoryRouteImport } from './routes/history'
+import { Route as MlbRouteImport } from './routes/mlb'
+import { Route as ModelRouteImport } from './routes/model'
+import { Route as NbaRouteImport } from './routes/nba'
+import { Route as NflRouteImport } from './routes/nfl'
+import { Route as PropsRouteImport } from './routes/props'
+import { Route as SimRouteImport } from './routes/sim'
+import { Route as SoccerRouteImport } from './routes/soccer'
+import { Route as TeamsRouteImport } from './routes/teams'
+import { Route as TennisRouteImport } from './routes/tennis'
 import { Route as CfbIndexRouteImport } from './routes/cfb.index'
-import { Route as TennisTourRouteImport } from './routes/tennis.$tour'
-import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
-import { Route as SimLeagueRouteImport } from './routes/sim.$league'
-import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
-import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
-import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
-import { Route as NflPropsRouteImport } from './routes/nfl.props'
-import { Route as NflParlaysRouteImport } from './routes/nfl.parlays'
-import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
-import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
-import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
-import { Route as NbaBestOddsRouteImport } from './routes/nba.best-odds'
-import { Route as MlbTwoBasesRouteImport } from './routes/mlb.two-bases'
-import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
-import { Route as MlbStacksRouteImport } from './routes/mlb.stacks'
-import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
-import { Route as MlbPropsRouteImport } from './routes/mlb.props'
-import { Route as MlbParlaysRouteImport } from './routes/mlb.parlays'
-import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
-import { Route as CfbTrackRecordRouteImport } from './routes/cfb.track-record'
-import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
-import { Route as CfbRecommendedRouteImport } from './routes/cfb.recommended'
-import { Route as CfbParlaysRouteImport } from './routes/cfb.parlays'
 import { Route as CfbBestOddsRouteImport } from './routes/cfb.best-odds'
-import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
+import { Route as CfbParlaysRouteImport } from './routes/cfb.parlays'
+import { Route as CfbRecommendedRouteImport } from './routes/cfb.recommended'
+import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
+import { Route as CfbTrackRecordRouteImport } from './routes/cfb.track-record'
+import { Route as MlbIndexRouteImport } from './routes/mlb.index'
+import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
+import { Route as MlbParlaysRouteImport } from './routes/mlb.parlays'
+import { Route as MlbPropsRouteImport } from './routes/mlb.props'
+import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
+import { Route as MlbStacksRouteImport } from './routes/mlb.stacks'
+import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
+import { Route as MlbTwoBasesRouteImport } from './routes/mlb.two-bases'
+import { Route as NbaIndexRouteImport } from './routes/nba.index'
+import { Route as NbaBestOddsRouteImport } from './routes/nba.best-odds'
+import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
+import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
+import { Route as NflIndexRouteImport } from './routes/nfl.index'
+import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
+import { Route as NflParlaysRouteImport } from './routes/nfl.parlays'
+import { Route as NflPropsRouteImport } from './routes/nfl.props'
+import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
+import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
+import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
+import { Route as SimIndexRouteImport } from './routes/sim.index'
+import { Route as SimLeagueRouteImport } from './routes/sim.$league'
+import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
+import { Route as SoccerLeagueRouteImport } from './routes/soccer.$league'
+import { Route as TennisIndexRouteImport } from './routes/tennis.index'
+import { Route as TennisTourRouteImport } from './routes/tennis.$tour'
 import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
-import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
-import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model'
-import { Route as SoccerLeagueTrackRecordRouteImport } from './routes/soccer.$league.track-record'
-import { Route as SoccerLeaguePropsRouteImport } from './routes/soccer.$league.props'
 import { Route as SoccerLeagueModelRouteImport } from './routes/soccer.$league.model'
-import { Route as ApiPublicHooksTrackPredictionsRouteImport } from './routes/api/public/hooks/track-predictions'
+import { Route as SoccerLeaguePropsRouteImport } from './routes/soccer.$league.props'
+import { Route as SoccerLeagueTrackRecordRouteImport } from './routes/soccer.$league.track-record'
+import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
+import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model'
+import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
+import { Route as ApiPublicHooksTrackPredictionsRouteImport } from './routes/api/public/hooks/track-predictions'
 
-const TennisRoute = TennisRouteImport.update({
-  id: '/tennis',
-  path: '/tennis',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TeamsRoute = TeamsRouteImport.update({
-  id: '/teams',
-  path: '/teams',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SoccerRoute = SoccerRouteImport.update({
-  id: '/soccer',
-  path: '/soccer',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SimRoute = SimRouteImport.update({
-  id: '/sim',
-  path: '/sim',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PropsRoute = PropsRouteImport.update({
-  id: '/props',
-  path: '/props',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NflRoute = NflRouteImport.update({
-  id: '/nfl',
-  path: '/nfl',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NbaRoute = NbaRouteImport.update({
-  id: '/nba',
-  path: '/nba',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ModelRoute = ModelRouteImport.update({
-  id: '/model',
-  path: '/model',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MlbRoute = MlbRouteImport.update({
-  id: '/mlb',
-  path: '/mlb',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HistoryRoute = HistoryRouteImport.update({
-  id: '/history',
-  path: '/history',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CfbRoute = CfbRouteImport.update({
-  id: '/cfb',
-  path: '/cfb',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BestOddsRoute = BestOddsRouteImport.update({
-  id: '/best-odds',
-  path: '/best-odds',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -129,159 +74,69 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const BestOddsRoute = BestOddsRouteImport.update({
+  id: '/best-odds',
+  path: '/best-odds',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TennisIndexRoute = TennisIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => TennisRoute,
+const CfbRoute = CfbRouteImport.update({
+  id: '/cfb',
+  path: '/cfb',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const SoccerIndexRoute = SoccerIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SoccerRoute,
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const SimIndexRoute = SimIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SimRoute,
+const MlbRoute = MlbRouteImport.update({
+  id: '/mlb',
+  path: '/mlb',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const NflIndexRoute = NflIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => NflRoute,
+const ModelRoute = ModelRouteImport.update({
+  id: '/model',
+  path: '/model',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const NbaIndexRoute = NbaIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => NbaRoute,
+const NbaRoute = NbaRouteImport.update({
+  id: '/nba',
+  path: '/nba',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const MlbIndexRoute = MlbIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => MlbRoute,
+const NflRoute = NflRouteImport.update({
+  id: '/nfl',
+  path: '/nfl',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PropsRoute = PropsRouteImport.update({
+  id: '/props',
+  path: '/props',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SimRoute = SimRouteImport.update({
+  id: '/sim',
+  path: '/sim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SoccerRoute = SoccerRouteImport.update({
+  id: '/soccer',
+  path: '/soccer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TeamsRoute = TeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TennisRoute = TennisRouteImport.update({
+  id: '/tennis',
+  path: '/tennis',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CfbIndexRoute = CfbIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => CfbRoute,
-} as any)
-const TennisTourRoute = TennisTourRouteImport.update({
-  id: '/$tour',
-  path: '/$tour',
-  getParentRoute: () => TennisRoute,
-} as any)
-const SoccerLeagueRoute = SoccerLeagueRouteImport.update({
-  id: '/$league',
-  path: '/$league',
-  getParentRoute: () => SoccerRoute,
-} as any)
-const SimLeagueRoute = SimLeagueRouteImport.update({
-  id: '/$league',
-  path: '/$league',
-  getParentRoute: () => SimRoute,
-} as any)
-const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
-  id: '/track-record',
-  path: '/track-record',
-  getParentRoute: () => NflRoute,
-} as any)
-const NflTdScorersRoute = NflTdScorersRouteImport.update({
-  id: '/td-scorers',
-  path: '/td-scorers',
-  getParentRoute: () => NflRoute,
-} as any)
-const NflRecommendedRoute = NflRecommendedRouteImport.update({
-  id: '/recommended',
-  path: '/recommended',
-  getParentRoute: () => NflRoute,
-} as any)
-const NflPropsRoute = NflPropsRouteImport.update({
-  id: '/props',
-  path: '/props',
-  getParentRoute: () => NflRoute,
-} as any)
-const NflParlaysRoute = NflParlaysRouteImport.update({
-  id: '/parlays',
-  path: '/parlays',
-  getParentRoute: () => NflRoute,
-} as any)
-const NflBestOddsRoute = NflBestOddsRouteImport.update({
-  id: '/best-odds',
-  path: '/best-odds',
-  getParentRoute: () => NflRoute,
-} as any)
-const NbaTrackRecordRoute = NbaTrackRecordRouteImport.update({
-  id: '/track-record',
-  path: '/track-record',
-  getParentRoute: () => NbaRoute,
-} as any)
-const NbaRecommendedRoute = NbaRecommendedRouteImport.update({
-  id: '/recommended',
-  path: '/recommended',
-  getParentRoute: () => NbaRoute,
-} as any)
-const NbaBestOddsRoute = NbaBestOddsRouteImport.update({
-  id: '/best-odds',
-  path: '/best-odds',
-  getParentRoute: () => NbaRoute,
-} as any)
-const MlbTwoBasesRoute = MlbTwoBasesRouteImport.update({
-  id: '/two-bases',
-  path: '/two-bases',
-  getParentRoute: () => MlbRoute,
-} as any)
-const MlbTrackRecordRoute = MlbTrackRecordRouteImport.update({
-  id: '/track-record',
-  path: '/track-record',
-  getParentRoute: () => MlbRoute,
-} as any)
-const MlbStacksRoute = MlbStacksRouteImport.update({
-  id: '/stacks',
-  path: '/stacks',
-  getParentRoute: () => MlbRoute,
-} as any)
-const MlbRecommendedRoute = MlbRecommendedRouteImport.update({
-  id: '/recommended',
-  path: '/recommended',
-  getParentRoute: () => MlbRoute,
-} as any)
-const MlbPropsRoute = MlbPropsRouteImport.update({
-  id: '/props',
-  path: '/props',
-  getParentRoute: () => MlbRoute,
-} as any)
-const MlbParlaysRoute = MlbParlaysRouteImport.update({
-  id: '/parlays',
-  path: '/parlays',
-  getParentRoute: () => MlbRoute,
-} as any)
-const MlbBestOddsRoute = MlbBestOddsRouteImport.update({
-  id: '/best-odds',
-  path: '/best-odds',
-  getParentRoute: () => MlbRoute,
-} as any)
-const CfbTrackRecordRoute = CfbTrackRecordRouteImport.update({
-  id: '/track-record',
-  path: '/track-record',
-  getParentRoute: () => CfbRoute,
-} as any)
-const CfbTdScorersRoute = CfbTdScorersRouteImport.update({
-  id: '/td-scorers',
-  path: '/td-scorers',
-  getParentRoute: () => CfbRoute,
-} as any)
-const CfbRecommendedRoute = CfbRecommendedRouteImport.update({
-  id: '/recommended',
-  path: '/recommended',
-  getParentRoute: () => CfbRoute,
-} as any)
-const CfbParlaysRoute = CfbParlaysRouteImport.update({
-  id: '/parlays',
-  path: '/parlays',
   getParentRoute: () => CfbRoute,
 } as any)
 const CfbBestOddsRoute = CfbBestOddsRouteImport.update({
@@ -289,34 +144,154 @@ const CfbBestOddsRoute = CfbBestOddsRouteImport.update({
   path: '/best-odds',
   getParentRoute: () => CfbRoute,
 } as any)
-const TennisTourIndexRoute = TennisTourIndexRouteImport.update({
+const CfbParlaysRoute = CfbParlaysRouteImport.update({
+  id: '/parlays',
+  path: '/parlays',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbRecommendedRoute = CfbRecommendedRouteImport.update({
+  id: '/recommended',
+  path: '/recommended',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbTdScorersRoute = CfbTdScorersRouteImport.update({
+  id: '/td-scorers',
+  path: '/td-scorers',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbTrackRecordRoute = CfbTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => CfbRoute,
+} as any)
+const MlbIndexRoute = MlbIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => TennisTourRoute,
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbBestOddsRoute = MlbBestOddsRouteImport.update({
+  id: '/best-odds',
+  path: '/best-odds',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbParlaysRoute = MlbParlaysRouteImport.update({
+  id: '/parlays',
+  path: '/parlays',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbPropsRoute = MlbPropsRouteImport.update({
+  id: '/props',
+  path: '/props',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbRecommendedRoute = MlbRecommendedRouteImport.update({
+  id: '/recommended',
+  path: '/recommended',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbStacksRoute = MlbStacksRouteImport.update({
+  id: '/stacks',
+  path: '/stacks',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbTrackRecordRoute = MlbTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => MlbRoute,
+} as any)
+const MlbTwoBasesRoute = MlbTwoBasesRouteImport.update({
+  id: '/two-bases',
+  path: '/two-bases',
+  getParentRoute: () => MlbRoute,
+} as any)
+const NbaIndexRoute = NbaIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => NbaRoute,
+} as any)
+const NbaBestOddsRoute = NbaBestOddsRouteImport.update({
+  id: '/best-odds',
+  path: '/best-odds',
+  getParentRoute: () => NbaRoute,
+} as any)
+const NbaRecommendedRoute = NbaRecommendedRouteImport.update({
+  id: '/recommended',
+  path: '/recommended',
+  getParentRoute: () => NbaRoute,
+} as any)
+const NbaTrackRecordRoute = NbaTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => NbaRoute,
+} as any)
+const NflIndexRoute = NflIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflBestOddsRoute = NflBestOddsRouteImport.update({
+  id: '/best-odds',
+  path: '/best-odds',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflParlaysRoute = NflParlaysRouteImport.update({
+  id: '/parlays',
+  path: '/parlays',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflPropsRoute = NflPropsRouteImport.update({
+  id: '/props',
+  path: '/props',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflRecommendedRoute = NflRecommendedRouteImport.update({
+  id: '/recommended',
+  path: '/recommended',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflTdScorersRoute = NflTdScorersRouteImport.update({
+  id: '/td-scorers',
+  path: '/td-scorers',
+  getParentRoute: () => NflRoute,
+} as any)
+const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => NflRoute,
+} as any)
+const SimIndexRoute = SimIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SimRoute,
+} as any)
+const SimLeagueRoute = SimLeagueRouteImport.update({
+  id: '/$league',
+  path: '/$league',
+  getParentRoute: () => SimRoute,
+} as any)
+const SoccerIndexRoute = SoccerIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SoccerRoute,
+} as any)
+const SoccerLeagueRoute = SoccerLeagueRouteImport.update({
+  id: '/$league',
+  path: '/$league',
+  getParentRoute: () => SoccerRoute,
+} as any)
+const TennisIndexRoute = TennisIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TennisRoute,
+} as any)
+const TennisTourRoute = TennisTourRouteImport.update({
+  id: '/$tour',
+  path: '/$tour',
+  getParentRoute: () => TennisRoute,
 } as any)
 const SoccerLeagueIndexRoute = SoccerLeagueIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => SoccerLeagueRoute,
-} as any)
-const TennisTourTrackRecordRoute = TennisTourTrackRecordRouteImport.update({
-  id: '/track-record',
-  path: '/track-record',
-  getParentRoute: () => TennisTourRoute,
-} as any)
-const TennisTourModelRoute = TennisTourModelRouteImport.update({
-  id: '/model',
-  path: '/model',
-  getParentRoute: () => TennisTourRoute,
-} as any)
-const SoccerLeagueTrackRecordRoute = SoccerLeagueTrackRecordRouteImport.update({
-  id: '/track-record',
-  path: '/track-record',
-  getParentRoute: () => SoccerLeagueRoute,
-} as any)
-const SoccerLeaguePropsRoute = SoccerLeaguePropsRouteImport.update({
-  id: '/props',
-  path: '/props',
   getParentRoute: () => SoccerLeagueRoute,
 } as any)
 const SoccerLeagueModelRoute = SoccerLeagueModelRouteImport.update({
@@ -324,16 +299,41 @@ const SoccerLeagueModelRoute = SoccerLeagueModelRouteImport.update({
   path: '/model',
   getParentRoute: () => SoccerLeagueRoute,
 } as any)
-const ApiPublicHooksTrackPredictionsRoute =
-  ApiPublicHooksTrackPredictionsRouteImport.update({
-    id: '/api/public/hooks/track-predictions',
-    path: '/api/public/hooks/track-predictions',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const SoccerLeaguePropsRoute = SoccerLeaguePropsRouteImport.update({
+  id: '/props',
+  path: '/props',
+  getParentRoute: () => SoccerLeagueRoute,
+} as any)
+const SoccerLeagueTrackRecordRoute = SoccerLeagueTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => SoccerLeagueRoute,
+} as any)
+const TennisTourIndexRoute = TennisTourIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TennisTourRoute,
+} as any)
+const TennisTourModelRoute = TennisTourModelRouteImport.update({
+  id: '/model',
+  path: '/model',
+  getParentRoute: () => TennisTourRoute,
+} as any)
+const TennisTourTrackRecordRoute = TennisTourTrackRecordRouteImport.update({
+  id: '/track-record',
+  path: '/track-record',
+  getParentRoute: () => TennisTourRoute,
+} as any)
 const ApiPublicHooksRunPipelineRoute =
   ApiPublicHooksRunPipelineRouteImport.update({
     id: '/api/public/hooks/run-pipeline',
     path: '/api/public/hooks/run-pipeline',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksTrackPredictionsRoute =
+  ApiPublicHooksTrackPredictionsRouteImport.update({
+    id: '/api/public/hooks/track-predictions',
+    path: '/api/public/hooks/track-predictions',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -680,88 +680,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/tennis': {
-      id: '/tennis'
-      path: '/tennis'
-      fullPath: '/tennis'
-      preLoaderRoute: typeof TennisRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/teams': {
-      id: '/teams'
-      path: '/teams'
-      fullPath: '/teams'
-      preLoaderRoute: typeof TeamsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/soccer': {
-      id: '/soccer'
-      path: '/soccer'
-      fullPath: '/soccer'
-      preLoaderRoute: typeof SoccerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sim': {
-      id: '/sim'
-      path: '/sim'
-      fullPath: '/sim'
-      preLoaderRoute: typeof SimRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/props': {
-      id: '/props'
-      path: '/props'
-      fullPath: '/props'
-      preLoaderRoute: typeof PropsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/nfl': {
-      id: '/nfl'
-      path: '/nfl'
-      fullPath: '/nfl'
-      preLoaderRoute: typeof NflRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/nba': {
-      id: '/nba'
-      path: '/nba'
-      fullPath: '/nba'
-      preLoaderRoute: typeof NbaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/model': {
-      id: '/model'
-      path: '/model'
-      fullPath: '/model'
-      preLoaderRoute: typeof ModelRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mlb': {
-      id: '/mlb'
-      path: '/mlb'
-      fullPath: '/mlb'
-      preLoaderRoute: typeof MlbRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/history': {
-      id: '/history'
-      path: '/history'
-      fullPath: '/history'
-      preLoaderRoute: typeof HistoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cfb': {
-      id: '/cfb'
-      path: '/cfb'
-      fullPath: '/cfb'
-      preLoaderRoute: typeof CfbRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/best-odds': {
-      id: '/best-odds'
-      path: '/best-odds'
-      fullPath: '/best-odds'
-      preLoaderRoute: typeof BestOddsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -771,221 +694,95 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/best-odds': {
+      id: '/best-odds'
+      path: '/best-odds'
+      fullPath: '/best-odds'
+      preLoaderRoute: typeof BestOddsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/tennis/': {
-      id: '/tennis/'
-      path: '/'
-      fullPath: '/tennis/'
-      preLoaderRoute: typeof TennisIndexRouteImport
-      parentRoute: typeof TennisRoute
+    '/cfb': {
+      id: '/cfb'
+      path: '/cfb'
+      fullPath: '/cfb'
+      preLoaderRoute: typeof CfbRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/soccer/': {
-      id: '/soccer/'
-      path: '/'
-      fullPath: '/soccer/'
-      preLoaderRoute: typeof SoccerIndexRouteImport
-      parentRoute: typeof SoccerRoute
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/sim/': {
-      id: '/sim/'
-      path: '/'
-      fullPath: '/sim/'
-      preLoaderRoute: typeof SimIndexRouteImport
-      parentRoute: typeof SimRoute
+    '/mlb': {
+      id: '/mlb'
+      path: '/mlb'
+      fullPath: '/mlb'
+      preLoaderRoute: typeof MlbRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/nfl/': {
-      id: '/nfl/'
-      path: '/'
-      fullPath: '/nfl/'
-      preLoaderRoute: typeof NflIndexRouteImport
-      parentRoute: typeof NflRoute
+    '/model': {
+      id: '/model'
+      path: '/model'
+      fullPath: '/model'
+      preLoaderRoute: typeof ModelRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/nba/': {
-      id: '/nba/'
-      path: '/'
-      fullPath: '/nba/'
-      preLoaderRoute: typeof NbaIndexRouteImport
-      parentRoute: typeof NbaRoute
+    '/nba': {
+      id: '/nba'
+      path: '/nba'
+      fullPath: '/nba'
+      preLoaderRoute: typeof NbaRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/mlb/': {
-      id: '/mlb/'
-      path: '/'
-      fullPath: '/mlb/'
-      preLoaderRoute: typeof MlbIndexRouteImport
-      parentRoute: typeof MlbRoute
+    '/nfl': {
+      id: '/nfl'
+      path: '/nfl'
+      fullPath: '/nfl'
+      preLoaderRoute: typeof NflRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/props': {
+      id: '/props'
+      path: '/props'
+      fullPath: '/props'
+      preLoaderRoute: typeof PropsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sim': {
+      id: '/sim'
+      path: '/sim'
+      fullPath: '/sim'
+      preLoaderRoute: typeof SimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/soccer': {
+      id: '/soccer'
+      path: '/soccer'
+      fullPath: '/soccer'
+      preLoaderRoute: typeof SoccerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/teams': {
+      id: '/teams'
+      path: '/teams'
+      fullPath: '/teams'
+      preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tennis': {
+      id: '/tennis'
+      path: '/tennis'
+      fullPath: '/tennis'
+      preLoaderRoute: typeof TennisRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/cfb/': {
       id: '/cfb/'
       path: '/'
       fullPath: '/cfb/'
       preLoaderRoute: typeof CfbIndexRouteImport
-      parentRoute: typeof CfbRoute
-    }
-    '/tennis/$tour': {
-      id: '/tennis/$tour'
-      path: '/$tour'
-      fullPath: '/tennis/$tour'
-      preLoaderRoute: typeof TennisTourRouteImport
-      parentRoute: typeof TennisRoute
-    }
-    '/soccer/$league': {
-      id: '/soccer/$league'
-      path: '/$league'
-      fullPath: '/soccer/$league'
-      preLoaderRoute: typeof SoccerLeagueRouteImport
-      parentRoute: typeof SoccerRoute
-    }
-    '/sim/$league': {
-      id: '/sim/$league'
-      path: '/$league'
-      fullPath: '/sim/$league'
-      preLoaderRoute: typeof SimLeagueRouteImport
-      parentRoute: typeof SimRoute
-    }
-    '/nfl/track-record': {
-      id: '/nfl/track-record'
-      path: '/track-record'
-      fullPath: '/nfl/track-record'
-      preLoaderRoute: typeof NflTrackRecordRouteImport
-      parentRoute: typeof NflRoute
-    }
-    '/nfl/td-scorers': {
-      id: '/nfl/td-scorers'
-      path: '/td-scorers'
-      fullPath: '/nfl/td-scorers'
-      preLoaderRoute: typeof NflTdScorersRouteImport
-      parentRoute: typeof NflRoute
-    }
-    '/nfl/recommended': {
-      id: '/nfl/recommended'
-      path: '/recommended'
-      fullPath: '/nfl/recommended'
-      preLoaderRoute: typeof NflRecommendedRouteImport
-      parentRoute: typeof NflRoute
-    }
-    '/nfl/props': {
-      id: '/nfl/props'
-      path: '/props'
-      fullPath: '/nfl/props'
-      preLoaderRoute: typeof NflPropsRouteImport
-      parentRoute: typeof NflRoute
-    }
-    '/nfl/parlays': {
-      id: '/nfl/parlays'
-      path: '/parlays'
-      fullPath: '/nfl/parlays'
-      preLoaderRoute: typeof NflParlaysRouteImport
-      parentRoute: typeof NflRoute
-    }
-    '/nfl/best-odds': {
-      id: '/nfl/best-odds'
-      path: '/best-odds'
-      fullPath: '/nfl/best-odds'
-      preLoaderRoute: typeof NflBestOddsRouteImport
-      parentRoute: typeof NflRoute
-    }
-    '/nba/track-record': {
-      id: '/nba/track-record'
-      path: '/track-record'
-      fullPath: '/nba/track-record'
-      preLoaderRoute: typeof NbaTrackRecordRouteImport
-      parentRoute: typeof NbaRoute
-    }
-    '/nba/recommended': {
-      id: '/nba/recommended'
-      path: '/recommended'
-      fullPath: '/nba/recommended'
-      preLoaderRoute: typeof NbaRecommendedRouteImport
-      parentRoute: typeof NbaRoute
-    }
-    '/nba/best-odds': {
-      id: '/nba/best-odds'
-      path: '/best-odds'
-      fullPath: '/nba/best-odds'
-      preLoaderRoute: typeof NbaBestOddsRouteImport
-      parentRoute: typeof NbaRoute
-    }
-    '/mlb/two-bases': {
-      id: '/mlb/two-bases'
-      path: '/two-bases'
-      fullPath: '/mlb/two-bases'
-      preLoaderRoute: typeof MlbTwoBasesRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/mlb/track-record': {
-      id: '/mlb/track-record'
-      path: '/track-record'
-      fullPath: '/mlb/track-record'
-      preLoaderRoute: typeof MlbTrackRecordRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/mlb/stacks': {
-      id: '/mlb/stacks'
-      path: '/stacks'
-      fullPath: '/mlb/stacks'
-      preLoaderRoute: typeof MlbStacksRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/mlb/recommended': {
-      id: '/mlb/recommended'
-      path: '/recommended'
-      fullPath: '/mlb/recommended'
-      preLoaderRoute: typeof MlbRecommendedRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/mlb/props': {
-      id: '/mlb/props'
-      path: '/props'
-      fullPath: '/mlb/props'
-      preLoaderRoute: typeof MlbPropsRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/mlb/parlays': {
-      id: '/mlb/parlays'
-      path: '/parlays'
-      fullPath: '/mlb/parlays'
-      preLoaderRoute: typeof MlbParlaysRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/mlb/best-odds': {
-      id: '/mlb/best-odds'
-      path: '/best-odds'
-      fullPath: '/mlb/best-odds'
-      preLoaderRoute: typeof MlbBestOddsRouteImport
-      parentRoute: typeof MlbRoute
-    }
-    '/cfb/track-record': {
-      id: '/cfb/track-record'
-      path: '/track-record'
-      fullPath: '/cfb/track-record'
-      preLoaderRoute: typeof CfbTrackRecordRouteImport
-      parentRoute: typeof CfbRoute
-    }
-    '/cfb/td-scorers': {
-      id: '/cfb/td-scorers'
-      path: '/td-scorers'
-      fullPath: '/cfb/td-scorers'
-      preLoaderRoute: typeof CfbTdScorersRouteImport
-      parentRoute: typeof CfbRoute
-    }
-    '/cfb/recommended': {
-      id: '/cfb/recommended'
-      path: '/recommended'
-      fullPath: '/cfb/recommended'
-      preLoaderRoute: typeof CfbRecommendedRouteImport
-      parentRoute: typeof CfbRoute
-    }
-    '/cfb/parlays': {
-      id: '/cfb/parlays'
-      path: '/parlays'
-      fullPath: '/cfb/parlays'
-      preLoaderRoute: typeof CfbParlaysRouteImport
       parentRoute: typeof CfbRoute
     }
     '/cfb/best-odds': {
@@ -995,46 +792,214 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CfbBestOddsRouteImport
       parentRoute: typeof CfbRoute
     }
-    '/tennis/$tour/': {
-      id: '/tennis/$tour/'
+    '/cfb/parlays': {
+      id: '/cfb/parlays'
+      path: '/parlays'
+      fullPath: '/cfb/parlays'
+      preLoaderRoute: typeof CfbParlaysRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/recommended': {
+      id: '/cfb/recommended'
+      path: '/recommended'
+      fullPath: '/cfb/recommended'
+      preLoaderRoute: typeof CfbRecommendedRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/td-scorers': {
+      id: '/cfb/td-scorers'
+      path: '/td-scorers'
+      fullPath: '/cfb/td-scorers'
+      preLoaderRoute: typeof CfbTdScorersRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/track-record': {
+      id: '/cfb/track-record'
+      path: '/track-record'
+      fullPath: '/cfb/track-record'
+      preLoaderRoute: typeof CfbTrackRecordRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/mlb/': {
+      id: '/mlb/'
       path: '/'
-      fullPath: '/tennis/$tour/'
-      preLoaderRoute: typeof TennisTourIndexRouteImport
-      parentRoute: typeof TennisTourRoute
+      fullPath: '/mlb/'
+      preLoaderRoute: typeof MlbIndexRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/best-odds': {
+      id: '/mlb/best-odds'
+      path: '/best-odds'
+      fullPath: '/mlb/best-odds'
+      preLoaderRoute: typeof MlbBestOddsRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/parlays': {
+      id: '/mlb/parlays'
+      path: '/parlays'
+      fullPath: '/mlb/parlays'
+      preLoaderRoute: typeof MlbParlaysRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/props': {
+      id: '/mlb/props'
+      path: '/props'
+      fullPath: '/mlb/props'
+      preLoaderRoute: typeof MlbPropsRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/recommended': {
+      id: '/mlb/recommended'
+      path: '/recommended'
+      fullPath: '/mlb/recommended'
+      preLoaderRoute: typeof MlbRecommendedRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/stacks': {
+      id: '/mlb/stacks'
+      path: '/stacks'
+      fullPath: '/mlb/stacks'
+      preLoaderRoute: typeof MlbStacksRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/track-record': {
+      id: '/mlb/track-record'
+      path: '/track-record'
+      fullPath: '/mlb/track-record'
+      preLoaderRoute: typeof MlbTrackRecordRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/mlb/two-bases': {
+      id: '/mlb/two-bases'
+      path: '/two-bases'
+      fullPath: '/mlb/two-bases'
+      preLoaderRoute: typeof MlbTwoBasesRouteImport
+      parentRoute: typeof MlbRoute
+    }
+    '/nba/': {
+      id: '/nba/'
+      path: '/'
+      fullPath: '/nba/'
+      preLoaderRoute: typeof NbaIndexRouteImport
+      parentRoute: typeof NbaRoute
+    }
+    '/nba/best-odds': {
+      id: '/nba/best-odds'
+      path: '/best-odds'
+      fullPath: '/nba/best-odds'
+      preLoaderRoute: typeof NbaBestOddsRouteImport
+      parentRoute: typeof NbaRoute
+    }
+    '/nba/recommended': {
+      id: '/nba/recommended'
+      path: '/recommended'
+      fullPath: '/nba/recommended'
+      preLoaderRoute: typeof NbaRecommendedRouteImport
+      parentRoute: typeof NbaRoute
+    }
+    '/nba/track-record': {
+      id: '/nba/track-record'
+      path: '/track-record'
+      fullPath: '/nba/track-record'
+      preLoaderRoute: typeof NbaTrackRecordRouteImport
+      parentRoute: typeof NbaRoute
+    }
+    '/nfl/': {
+      id: '/nfl/'
+      path: '/'
+      fullPath: '/nfl/'
+      preLoaderRoute: typeof NflIndexRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/best-odds': {
+      id: '/nfl/best-odds'
+      path: '/best-odds'
+      fullPath: '/nfl/best-odds'
+      preLoaderRoute: typeof NflBestOddsRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/parlays': {
+      id: '/nfl/parlays'
+      path: '/parlays'
+      fullPath: '/nfl/parlays'
+      preLoaderRoute: typeof NflParlaysRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/props': {
+      id: '/nfl/props'
+      path: '/props'
+      fullPath: '/nfl/props'
+      preLoaderRoute: typeof NflPropsRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/recommended': {
+      id: '/nfl/recommended'
+      path: '/recommended'
+      fullPath: '/nfl/recommended'
+      preLoaderRoute: typeof NflRecommendedRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/td-scorers': {
+      id: '/nfl/td-scorers'
+      path: '/td-scorers'
+      fullPath: '/nfl/td-scorers'
+      preLoaderRoute: typeof NflTdScorersRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/nfl/track-record': {
+      id: '/nfl/track-record'
+      path: '/track-record'
+      fullPath: '/nfl/track-record'
+      preLoaderRoute: typeof NflTrackRecordRouteImport
+      parentRoute: typeof NflRoute
+    }
+    '/sim/': {
+      id: '/sim/'
+      path: '/'
+      fullPath: '/sim/'
+      preLoaderRoute: typeof SimIndexRouteImport
+      parentRoute: typeof SimRoute
+    }
+    '/sim/$league': {
+      id: '/sim/$league'
+      path: '/$league'
+      fullPath: '/sim/$league'
+      preLoaderRoute: typeof SimLeagueRouteImport
+      parentRoute: typeof SimRoute
+    }
+    '/soccer/': {
+      id: '/soccer/'
+      path: '/'
+      fullPath: '/soccer/'
+      preLoaderRoute: typeof SoccerIndexRouteImport
+      parentRoute: typeof SoccerRoute
+    }
+    '/soccer/$league': {
+      id: '/soccer/$league'
+      path: '/$league'
+      fullPath: '/soccer/$league'
+      preLoaderRoute: typeof SoccerLeagueRouteImport
+      parentRoute: typeof SoccerRoute
+    }
+    '/tennis/': {
+      id: '/tennis/'
+      path: '/'
+      fullPath: '/tennis/'
+      preLoaderRoute: typeof TennisIndexRouteImport
+      parentRoute: typeof TennisRoute
+    }
+    '/tennis/$tour': {
+      id: '/tennis/$tour'
+      path: '/$tour'
+      fullPath: '/tennis/$tour'
+      preLoaderRoute: typeof TennisTourRouteImport
+      parentRoute: typeof TennisRoute
     }
     '/soccer/$league/': {
       id: '/soccer/$league/'
       path: '/'
       fullPath: '/soccer/$league/'
       preLoaderRoute: typeof SoccerLeagueIndexRouteImport
-      parentRoute: typeof SoccerLeagueRoute
-    }
-    '/tennis/$tour/track-record': {
-      id: '/tennis/$tour/track-record'
-      path: '/track-record'
-      fullPath: '/tennis/$tour/track-record'
-      preLoaderRoute: typeof TennisTourTrackRecordRouteImport
-      parentRoute: typeof TennisTourRoute
-    }
-    '/tennis/$tour/model': {
-      id: '/tennis/$tour/model'
-      path: '/model'
-      fullPath: '/tennis/$tour/model'
-      preLoaderRoute: typeof TennisTourModelRouteImport
-      parentRoute: typeof TennisTourRoute
-    }
-    '/soccer/$league/track-record': {
-      id: '/soccer/$league/track-record'
-      path: '/track-record'
-      fullPath: '/soccer/$league/track-record'
-      preLoaderRoute: typeof SoccerLeagueTrackRecordRouteImport
-      parentRoute: typeof SoccerLeagueRoute
-    }
-    '/soccer/$league/props': {
-      id: '/soccer/$league/props'
-      path: '/props'
-      fullPath: '/soccer/$league/props'
-      preLoaderRoute: typeof SoccerLeaguePropsRouteImport
       parentRoute: typeof SoccerLeagueRoute
     }
     '/soccer/$league/model': {
@@ -1044,18 +1009,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SoccerLeagueModelRouteImport
       parentRoute: typeof SoccerLeagueRoute
     }
-    '/api/public/hooks/track-predictions': {
-      id: '/api/public/hooks/track-predictions'
-      path: '/api/public/hooks/track-predictions'
-      fullPath: '/api/public/hooks/track-predictions'
-      preLoaderRoute: typeof ApiPublicHooksTrackPredictionsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/soccer/$league/props': {
+      id: '/soccer/$league/props'
+      path: '/props'
+      fullPath: '/soccer/$league/props'
+      preLoaderRoute: typeof SoccerLeaguePropsRouteImport
+      parentRoute: typeof SoccerLeagueRoute
+    }
+    '/soccer/$league/track-record': {
+      id: '/soccer/$league/track-record'
+      path: '/track-record'
+      fullPath: '/soccer/$league/track-record'
+      preLoaderRoute: typeof SoccerLeagueTrackRecordRouteImport
+      parentRoute: typeof SoccerLeagueRoute
+    }
+    '/tennis/$tour/': {
+      id: '/tennis/$tour/'
+      path: '/'
+      fullPath: '/tennis/$tour/'
+      preLoaderRoute: typeof TennisTourIndexRouteImport
+      parentRoute: typeof TennisTourRoute
+    }
+    '/tennis/$tour/model': {
+      id: '/tennis/$tour/model'
+      path: '/model'
+      fullPath: '/tennis/$tour/model'
+      preLoaderRoute: typeof TennisTourModelRouteImport
+      parentRoute: typeof TennisTourRoute
+    }
+    '/tennis/$tour/track-record': {
+      id: '/tennis/$tour/track-record'
+      path: '/track-record'
+      fullPath: '/tennis/$tour/track-record'
+      preLoaderRoute: typeof TennisTourTrackRecordRouteImport
+      parentRoute: typeof TennisTourRoute
     }
     '/api/public/hooks/run-pipeline': {
       id: '/api/public/hooks/run-pipeline'
       path: '/api/public/hooks/run-pipeline'
       fullPath: '/api/public/hooks/run-pipeline'
       preLoaderRoute: typeof ApiPublicHooksRunPipelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/track-predictions': {
+      id: '/api/public/hooks/track-predictions'
+      path: '/api/public/hooks/track-predictions'
+      fullPath: '/api/public/hooks/track-predictions'
+      preLoaderRoute: typeof ApiPublicHooksTrackPredictionsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
