@@ -34,7 +34,7 @@ type NhlMatchup = Extract<SimMatchup, { league: "nhl" }>;
 
 // Calibration — two average teams reproduce the league's goals per game and
 // a home team wins ~54%. See SIMULATOR.md.
-const SHOT_CAL = 0.95;
+const SHOT_CAL = 0.985;
 const GOAL_CAL = 1.0;
 const HOME_SHOTS = 0.04;
 const EV_MULT = 0.94;
@@ -46,6 +46,10 @@ const EXTRA_ATTACKER = 1.6; // six skaters press for the tying goal
 const VS_EXTRA_ATTACKER = 0.75; // the other side mostly defends — and shoots at an empty net
 const OT_SH_BOOST = 1.25;
 const MINOR_SHARE = 0.68; // of PIM/2 that are minors that put a team down a man
+// Score effects: at even strength the trailing team pushes and the leading
+// team sits back, so shot share tilts ~6% per goal of deficit (up to two).
+const SCORE_SHOTS = 0.06;
+const D_ASSIST = 0.8;
 const PERIOD = 1200;
 const REG_OT = 300;
 const PLAYOFF_OT = 1200;
@@ -170,6 +174,18 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     return g ? (1 - g.svPct) / Math.max(0.02, lgSh) : (1 - env.svPct) / lgSh;
   };
   const gf = [goalieF(0), goalieF(1)];
+  // Special teams: this power play's season conversion against that penalty
+  // kill's, each relative to the league, split between the two (geometric
+  // mean) because the shooters' own percentages already carry some of it.
+  const special = (s: number): number => {
+    const pp = T[s].team.tend?.ppPct;
+    const pk = T[1 - s].team.tend?.pkPct;
+    if (!pp || !pk) return 1;
+    const f =
+      (pp.value / Math.max(1e-6, pp.league)) * ((1 - pk.value) / Math.max(1e-6, 1 - pk.league));
+    return Math.max(0.75, Math.min(1.3, Math.sqrt(f)));
+  };
+  const ppF = [special(0), special(1)];
 
   let period = 1;
   let t = 0; // seconds into the current period
@@ -308,6 +324,8 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     let mult = EV_MULT;
     if (me > them) mult = PP_MULT * per5;
     else if (me < them) mult = SH_MULT * per5;
+    else if (!ot() && !pulled[0] && !pulled[1])
+      mult *= 1 + SCORE_SHOTS * Math.max(-2, Math.min(2, score[1 - s] - score[s]));
     if (regOt()) mult = OT_SHOTS * per5 * (me > them ? 1.3 : 1);
     if (pulled[s]) mult *= EXTRA_ATTACKER;
     if (pulled[1 - s]) mult *= VS_EXTRA_ATTACKER;
@@ -324,18 +342,28 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
 
   const lead = (s: number) => score[s] - score[1 - s];
 
+  // Who gets the helpers: each teammate on the ice by his assist rate, with
+  // defencemen discounted — they are on the ice for more of the goals than
+  // any one forward, so raw rates hand them about a fifth too many.
+  const assistW = (i: number) => {
+    const p = sk(goalSide, i);
+    return (p.a60 + 0.03) * (p.kind === "D" ? D_ASSIST : 1);
+  };
+  let goalSide = 0;
+
   const goal = (s: number, shooter: number, pp: boolean, sh: boolean, en: boolean) => {
+    goalSide = s;
     score[s]++;
     periodScore[s]++;
     box.add(s, shooter, NHL.G, 1);
     const mates = onIce(s).filter((i) => i !== shooter);
     const assists: number[] = [];
     if (mates.length && rng.chance(en ? 0.75 : pp ? 0.97 : 0.91)) {
-      const a1 = mates[rng.pick(mates.map((i) => sk(s, i).a60 + 0.2))];
+      const a1 = mates[rng.pick(mates.map(assistW))];
       assists.push(a1);
       const rest = mates.filter((i) => i !== a1);
       if (rest.length && rng.chance(en ? 0.5 : pp ? 0.88 : 0.8))
-        assists.push(rest[rng.pick(rest.map((i) => sk(s, i).a60 + 0.2))]);
+        assists.push(rest[rng.pick(rest.map(assistW))]);
     }
     for (const a of assists) box.add(s, a, NHL.A, 1);
     if (pp) {
@@ -396,7 +424,7 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     // Shooter's percentage × how many more (or fewer) goals this goalie lets
     // in than the league's: (1 − sv%) / league shooting %.
     let p = sk(s, shooter).shPct * gf[d] * GOAL_CAL;
-    if (pp) p *= PP_SH_BOOST;
+    if (pp) p *= PP_SH_BOOST * ppF[s];
     if (regOt()) p *= OT_SH_BOOST;
     if (pulled[s]) p *= 1.08;
     if (rng.chance(Math.min(0.5, p))) return goal(s, shooter, pp, sh, false);

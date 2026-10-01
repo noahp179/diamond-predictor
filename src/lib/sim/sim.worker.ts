@@ -2,10 +2,11 @@
 /**
  * sim.worker.ts — runs the engines off the main thread.
  *
- * A batch of ten thousand games is a second or two of solid computation; on
+ * A batch of ten thousand games is a few seconds of solid computation; on
  * the main thread that is a frozen page. Here it runs in slices, posting
- * progress between them, and a newer request (or an explicit cancel) stops an
- * older batch at the next slice boundary.
+ * progress between them, and a cancel stops it at the next slice boundary.
+ * The page may run several of these at once, each on its share of a batch,
+ * and add their totals together.
  */
 
 import { Accumulator } from "./aggregate";
@@ -32,35 +33,23 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       post({ type: "single", id: req.id, result, seed: req.seed, ms: performance.now() - t0 });
       return;
     }
-    const t0 = performance.now();
     const play = runner(req.matchup, req.overrides);
-    const acc = new Accumulator(req.matchup, req.seed);
+    const acc = new Accumulator(req.matchup);
     const slice = 200;
     for (let i = 0; i < req.n; i++) {
-      const seed = seedFor(req.seed, i);
-      acc.add(play(seed, false), seed);
+      acc.add(play(seedFor(req.seed, i), false));
       if ((i + 1) % slice === 0 && i + 1 < req.n) {
         post({ type: "progress", id: req.id, done: i + 1, n: req.n });
         // Yield so a cancel message can land.
         await new Promise((r) => setTimeout(r, 0));
         if (cancelled.has(req.id)) {
           cancelled.delete(req.id);
-          post({
-            type: "batch",
-            id: req.id,
-            result: acc.summary(performance.now() - t0),
-            partial: true,
-          });
+          post({ type: "batch", id: req.id, state: acc.st, partial: true });
           return;
         }
       }
     }
-    post({
-      type: "batch",
-      id: req.id,
-      result: acc.summary(performance.now() - t0),
-      partial: false,
-    });
+    post({ type: "batch", id: req.id, state: acc.st, partial: false });
   } catch (err) {
     post({ type: "error", id: req.id, message: err instanceof Error ? err.message : String(err) });
   }

@@ -43,8 +43,14 @@ type NflMatchup = Extract<SimMatchup, { league: "nfl" }>;
 // A player's yards per carry and per catch already include the carries that
 // were stopped by the goal line; the engine stops them at the goal line again,
 // so its mean gains sit a little above the season averages they come from.
-const RUN_YDS = 1.09;
-const PASS_YDS = 1.062;
+const RUN_YDS = 1.1;
+/** Share of tackles made by two players, each credited (official totals). */
+const ASSISTED_TKL = 0.6;
+/** Concentration of tackles and sacks on the defenders who make them. */
+const DEF_POW = 1.3;
+/** Kneel-downs a starting quarterback's season carries hold per game. */
+const KNEELS_PER_GAME = 0.8;
+const PASS_YDS = 1.07;
 /**
  * Game-to-game form. The same two teams do not play the same game twice —
  * game plans, weather, the injuries that happen during it — and play-level
@@ -55,7 +61,8 @@ const PASS_YDS = 1.062;
 const FORM_SD = 0.075;
 const CMP_CAL = 1.0;
 const HOME_EDGE = 0.02;
-const DEF_WEIGHT = 0.35;
+/** Used only when a team's season splits are missing: points allowed, regressed. */
+const DEF_FALLBACK = 0.35;
 const RUNOFF = 36; // seconds between snaps with the clock running
 const PENALTY_RATE = 0.05;
 
@@ -65,6 +72,8 @@ interface TeamPrep {
   backupQb: number;
   rushers: number[];
   rushW: number[];
+  /** The starter's yards per designed run (his season line less kneels). */
+  qbYpc: number;
   targets: number[];
   targetW: number[];
   kicker: number;
@@ -75,11 +84,15 @@ interface TeamPrep {
   intW: number[];
   /** Offensive efficiency multiplier (home field). */
   off: number;
-  /** How much this defense inflates the opponent (1 = average). */
-  defF: number;
-  /** Pass rush and coverage relative to league, for the opponent's sacks and picks. */
-  rushF: number;
-  coverF: number;
+  /**
+   * What this defense does to the offense facing it, each relative to the
+   * league (1 = average): completion odds, yards per completion, sack odds,
+   * interception rate, yards per carry. From the season splits of what
+   * opponents did against it, nudged by today's pass rushers and ball-hawks.
+   */
+  vs: { cmpOdds: number; ypc: number; sackOdds: number; int: number; rush: number };
+  /** This offense's time between snaps relative to the league's (pace). */
+  tempo: number;
   maxFg: number;
 }
 
@@ -116,37 +129,66 @@ function prepTeam(
   const targets = idx.filter(
     (i) => ok(i) && P[i].targets > 0.05 && P[i].pos !== "QB" && P[i].unit !== "def",
   );
+  // A starting quarterback's season carries include the kneel-downs that end
+  // halves and games. The engine kneels on its own, so they come out of his
+  // designed runs, and his yards per carry is what he gains when he means it.
+  const q = P[qb];
+  const kneels = q && q.passAtt >= 15 ? Math.min(KNEELS_PER_GAME, 0.5 * q.carries) : 0;
+  const qbRuns = q ? Math.max(0.05, q.carries - kneels) : 0;
+  const qbYpc = q
+    ? Math.min(1.6 * q.ypc_r, (q.ypc_r * q.carries + kneels) / Math.max(0.05, qbRuns))
+    : 0;
   const kickers = idx.filter((i) => (P[i].pos === "PK" || P[i].pos === "K") && ok(i));
   const punters = idx.filter((i) => P[i].pos === "P" && ok(i));
   const kicker = kickers.sort((a, b) => P[b].sample - P[a].sample)[0] ?? -1;
   const punter = punters.sort((a, b) => P[b].sample - P[a].sample)[0] ?? -1;
   const def = idx.filter((i) => ok(i) && P[i].unit === "def");
   const env = m.env;
-  // The defense this team puts out: how many points it allows against the
-  // league, and the pass rush and ball-hawking of the players dressed today.
-  const dRaw = team.pa / Math.max(1, env.ppg);
+  // The defense this team puts out. Its season splits say what opponents have
+  // done against it; the players dressed today adjust the pass rush and the
+  // ball-hawking for whoever is missing (~2.6 sacks and ~0.8 picks a game is
+  // a full-strength defense).
+  const t = team.tend ?? {};
+  const ratio = (key: string) => (t[key] ? t[key].value / Math.max(1e-9, t[key].league) : null);
+  const oddsRatio = (key: string) =>
+    t[key] ? odds(t[key].value) / Math.max(1e-9, odds(t[key].league)) : null;
+  const fallback = 1 + DEF_FALLBACK * (team.pa / Math.max(1, env.ppg) - 1);
   const sackSum = def.reduce((a, i) => a + P[i].sacks, 0);
   const intSum = def.reduce((a, i) => a + P[i].ints, 0);
+  const rushF = Math.max(0.7, Math.min(1.35, 1 + 0.5 * (sackSum / 2.6 - 1)));
+  const coverF = Math.max(0.7, Math.min(1.35, 1 + 0.5 * (intSum / 0.8 - 1)));
+  const vs = {
+    cmpOdds: oddsRatio("defCmp") ?? Math.pow(fallback, 0.8),
+    ypc: ratio("defYpc") ?? fallback,
+    sackOdds:
+      Math.pow(oddsRatio("defSack") ?? 1 / Math.sqrt(fallback), 0.75) * Math.pow(rushF, 0.25),
+    int: Math.pow(ratio("defInt") ?? Math.pow(fallback, -0.7), 0.75) * Math.pow(coverF, 0.25),
+    rush: ratio("defYpcRush") ?? fallback,
+  };
+  const pace = t.pace;
+  const tempo = pace ? Math.max(0.85, Math.min(1.15, pace.league / Math.max(1, pace.value))) : 1;
   const k = kicker >= 0 ? P[kicker] : null;
   return {
     team,
     qb,
     backupQb,
     rushers,
-    rushW: rushers.map((i) => P[i].carries),
+    rushW: rushers.map((i) => (i === qb ? qbRuns : P[i].carries)),
+    qbYpc,
     targets,
     targetW: targets.map((i) => P[i].targets),
     kicker,
     punter,
     def,
-    tackleW: def.map((i) => P[i].tackles),
-    sackW: def.map((i) => P[i].sacks + 0.01),
+    // Raised to a power for the same reason as usage in nba.ts: per-game
+    // lines from deeper or different depth charts overlap, and the starters
+    // make the plays.
+    tackleW: def.map((i) => Math.pow(P[i].tackles, DEF_POW)),
+    sackW: def.map((i) => Math.pow(P[i].sacks + 0.01, DEF_POW)),
     intW: def.map((i) => P[i].ints + 0.005),
     off: neutral ? 1 : side === "home" ? 1 + HOME_EDGE : 1 - HOME_EDGE,
-    defF: 1 + DEF_WEIGHT * (dRaw - 1),
-    // ~2.5 sacks and ~0.75 picks a game is the league's norm for a defense.
-    rushF: Math.max(0.7, Math.min(1.35, 1 + 0.5 * (sackSum / 2.6 - 1))),
-    coverF: Math.max(0.7, Math.min(1.35, 1 + 0.5 * (intSum / 0.8 - 1))),
+    vs,
+    tempo,
     maxFg: k
       ? Math.max(50, Math.min(62, 53 + 25 * (k.fgSkill - 1) + (k.longFg >= 55 ? 3 : 0)))
       : 50,
@@ -308,7 +350,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     if (hurry(s)) return rng.uniform(10, 17);
     if (milk(s)) return rng.uniform(36, 40);
     if (ot()) return rng.uniform(18, 28);
-    return Math.max(10, rng.normal(RUNOFF, 4));
+    return Math.max(10, rng.normal(RUNOFF * T[s].tempo, 4));
   };
 
   // ------------------------------------------------------- possession
@@ -525,6 +567,20 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     return tp.targets[rng.pick(w)];
   };
 
+  /** Credit the tackle on a play: one man, and often a second sharing it —
+   *  official totals count an assisted tackle for each, which is what the
+   *  season lines being compared against hold. Returns the first. */
+  const tackle = (d: number): number => {
+    const t = tackler(d);
+    if (t < 0) return t;
+    box.add(d, t, NFL.TKL, 1);
+    if (rng.chance(ASSISTED_TKL)) {
+      const t2 = tackler(d);
+      if (t2 >= 0 && t2 !== t) box.add(d, t2, NFL.TKL, 1);
+    }
+    return t;
+  };
+
   const tackler = (d: number): number => {
     const tp = T[d];
     if (!tp.def.length) return -1;
@@ -617,7 +673,8 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const dist = 100 - yl;
     const r = pickRusher(s, dist <= 20);
     const pl = P(s, r);
-    const mean = pl.ypc_r * RUN_YDS * T[d].defF * T[s].off * form[s];
+    const ypc = r === T[s].qb ? T[s].qbYpc : pl.ypc_r;
+    const mean = ypc * RUN_YDS * T[d].vs.rush * T[s].off * form[s];
     let y = runYards(mean);
     if (y > dist) y = dist;
     team[s].PLAYS++;
@@ -659,8 +716,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       touchdown(s, r, "run");
       return;
     }
-    const t = tackler(d);
-    if (t >= 0) box.add(d, t, NFL.TKL, 1);
+    const t = tackle(d);
     burn(rng.uniform(4, 7));
     // Out of bounds stops the clock only late in a half.
     stopped =
@@ -682,9 +738,8 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const dist = 100 - yl;
     team[s].PLAYS++;
     // Sack?
-    // A defense that allows fewer points than the league (defF < 1) is better
-    // at everything: more sacks, more picks, fewer completions, fewer yards.
-    const pSack = Math.min(0.2, (qp.sackRate * T[d].rushF) / Math.sqrt(T[d].defF));
+    // The quarterback's sack rate against this pass rush, by odds ratio.
+    const pSack = Math.min(0.2, prob(odds(qp.sackRate) * T[d].vs.sackOdds));
     if (rng.chance(pSack)) {
       const loss = Math.max(1, Math.round(rng.normal(7, 2.5)));
       const sacker = T[d].def.length ? T[d].def[rng.pick(T[d].sackW)] : -1;
@@ -712,7 +767,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     box.add(s, q, NFL.ATT, 1);
     if (tgt >= 0) box.add(s, tgt, NFL.TGT, 1);
     // Interception?
-    const pInt = Math.min(0.12, (qp.intRate * T[d].coverF) / Math.pow(T[d].defF, 0.7));
+    const pInt = Math.min(0.12, qp.intRate * T[d].vs.int);
     const where = [
       "short left",
       "short middle",
@@ -761,7 +816,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
         CMP_CAL *
         T[s].off *
         form[s] *
-        Math.pow(T[d].defF, 0.8),
+        T[d].vs.cmpOdds,
     );
     if (!rng.chance(Math.min(0.92, pCmp))) {
       burn(rng.uniform(4, 7));
@@ -771,7 +826,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       return;
     }
     const mean =
-      rp.ypr * Math.pow(qp.ypc / env.ypc, 0.6) * PASS_YDS * T[d].defF * T[s].off * form[s];
+      rp.ypr * Math.pow(qp.ypc / env.ypc, 0.6) * PASS_YDS * T[d].vs.ypc * T[s].off * form[s];
     let y = catchYards(mean);
     if (y > dist) y = dist;
     if (yl + y <= 0) y = 1 - yl;
@@ -807,8 +862,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       touchdown(s, tgt, "pass");
       return;
     }
-    const t = tackler(d);
-    if (t >= 0) box.add(d, t, NFL.TKL, 1);
+    const t = tackle(d);
     burn(rng.uniform(5, 8));
     const oob = hurry(s) ? 0.35 : 0.12;
     stopped = (lateHalf() || (quarter === 4 && clk <= 300)) && rng.chance(oob);
@@ -873,7 +927,8 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       const canBurn = kneels * 40 - timeouts[d] * 38;
       if (clk <= canBurn && clk > 0) return true;
     }
-    if (quarter === 2 && clk <= 35 && yl < 40 && diff(s) >= -7 && !stopped) return true;
+    // Run out the half from deep in their own end rather than risk a turnover.
+    if (quarter === 2 && clk <= 25 && yl < 30 && diff(s) >= -3 && !stopped) return true;
     return false;
   };
 

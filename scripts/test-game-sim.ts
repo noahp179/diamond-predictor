@@ -7,8 +7,10 @@
  *      batting lines are internally consistent.
  *   2. A seed is a game — the same seed played silently (as in a batch) and
  *      recorded (as in the viewer) produces the identical game, and replaying
- *      the recorded box-score deltas rebuilds the final box exactly. This is
- *      what lets "watch this one" replay a game picked out of a batch.
+ *      the recorded box-score deltas rebuilds the final box exactly. The page
+ *      never reuses a seed (every run is fresh randomness), but determinism
+ *      is what lets these tests pin an engine's behaviour. And a batch split
+ *      across workers and merged sums to exactly the same totals as one run.
  *   3. The engines reproduce their leagues — two-way round robins among real
  *      rosters score within a few percent of the league's points per game,
  *      and the same roster on both sides wins at home 51–58% of the time.
@@ -18,6 +20,7 @@
  * most of it the first fetch of each league's season stats.
  */
 
+import { Accumulator } from "../src/lib/sim/aggregate";
 import { buildMatchup, listTeams } from "../src/lib/sim/build.server";
 import { MLB, NBA, NFL, NHL } from "../src/lib/sim/columns";
 import { runner } from "../src/lib/sim/engine";
@@ -144,6 +147,39 @@ async function league(lg: SimLeague) {
     replay === 0,
     replay ? `${replay} differ` : "",
   );
+
+  // A batch split in pieces (as across workers) merges to the whole.
+  {
+    const m = matchups[0];
+    const play = runner(m, none);
+    const whole = new Accumulator(m);
+    const parts = [new Accumulator(m), new Accumulator(m), new Accumulator(m)];
+    for (let s = 1; s <= 90; s++) {
+      const r = play(s * 7919, false);
+      whole.add(r);
+      parts[s % 3].add(r);
+    }
+    const merged = new Accumulator(m);
+    for (const p of parts) merged.merge(p.st);
+    const a = whole.summary(0);
+    const b = merged.summary(0);
+    // Histogram keys can be negative, which objects keep in insertion order.
+    const hist = (h: Record<number, number>) =>
+      JSON.stringify(Object.entries(h).sort((x, y) => Number(x[0]) - Number(y[0])));
+    // Ice time is continuous, so sums taken in a different order may differ
+    // in the last bits.
+    const flat = (r: typeof a) =>
+      r.players.flatMap((p) => [...p.avgBox, ...p.props.map((x) => x.mean)]);
+    const fa = flat(a);
+    const fb = flat(b);
+    const same =
+      a.n === b.n &&
+      a.homeWins === b.homeWins &&
+      hist(a.margin) === hist(b.margin) &&
+      fa.length === fb.length &&
+      fa.every((v, i) => Math.abs(v - fb[i]) <= 1e-9 * Math.max(1, Math.abs(v)));
+    check(`${lg}: a batch merged from pieces equals the whole`, same);
+  }
 
   // 3 — league level: every pairing both ways at a neutral site.
   const teamsAll = matchups.flatMap((m) => [m.home, m.away]);

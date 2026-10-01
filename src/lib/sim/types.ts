@@ -34,6 +34,31 @@ export interface BasePlayer {
   injury?: string;
   /** Games the rates rest on, after weighting last season. */
   sample: number;
+  /** Season per-game averages (seasons blended, not regressed), keyed like
+   *  the projections in props.ts — what the player usually does, for
+   *  comparing with what the simulation expects in this game. */
+  avg?: Record<string, number>;
+}
+
+/**
+ * One team tendency — an offensive habit or a defensive weakness — as the
+ * engines use it and as the page explains it.
+ *
+ * `value` is regressed toward the league by how many games stand behind it;
+ * `raw` is the season figure as it stands. The engines read `value` against
+ * `league`; the matchup panel shows all three.
+ */
+export interface Tendency {
+  label: string;
+  value: number;
+  raw: number;
+  league: number;
+  /** How to print it: a percentage, or a number with this many decimals. */
+  fmt: "pct" | 0 | 1 | 2 | 3;
+  /** Which way is good for the team that owns it: "high" (more is better for
+   *  them), "low" (less is better — e.g. yards allowed), or "style" (neither:
+   *  pace, pass rate). */
+  good: "high" | "low" | "style";
 }
 
 export interface TeamInfo {
@@ -49,6 +74,9 @@ export interface TeamInfo {
   /** Points (runs, goals) scored and allowed per game, seasons blended. */
   pf: number;
   pa: number;
+  /** Offensive and defensive tendencies from the team's season (see
+   *  Tendency). Keys are per league; build.server.ts documents them. */
+  tend: Record<string, Tendency>;
 }
 
 // ------------------------------------------------------------------- NBA
@@ -144,8 +172,12 @@ export interface PaRates {
   b1: number;
 }
 
+export type Hand = "L" | "R" | "S";
+
 export interface MlbBatter extends BasePlayer {
   kind: "B";
+  /** Bats: left, right or switch. */
+  bats: Hand;
   pa: number;
   rates: PaRates;
   /** Stolen-base attempts per time on first with second open. */
@@ -156,6 +188,7 @@ export interface MlbBatter extends BasePlayer {
 
 export interface MlbPitcher extends BasePlayer {
   kind: "P";
+  throws: "L" | "R";
   bf: number;
   rates: PaRates;
   starts: number;

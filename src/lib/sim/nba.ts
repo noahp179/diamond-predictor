@@ -37,10 +37,11 @@ type NbaMatchup = Extract<SimMatchup, { league: "nba" }>;
 // Calibration. Tuned so two league-average rosters on a neutral floor score
 // the league's points per game at its pace, and an average home team wins
 // ~55% (the NBA's rate over the last five seasons). See SIMULATOR.md.
-const MAKE_CAL = 1.006;
-const PACE_CAL = 1.015;
+const MAKE_CAL = 0.997;
+const PACE_CAL = 0.966;
 const HOME_EDGE = 0.0125; // make-probability bump for the home side
-const DEF_WEIGHT = 0.8; // how much of a defense's points-allowed gap is real
+/** Used only when a team's season splits are missing: points allowed, regressed. */
+const DEF_FALLBACK = 0.8;
 const CRUNCH_MARGIN = 10;
 /**
  * Score effects: a team ahead plays a little worse and a team behind a little
@@ -50,6 +51,19 @@ const CRUNCH_MARGIN = 10;
  * capped at twenty.
  */
 const SCORE_EFFECT = 0.0035;
+/**
+ * Who uses a possession, grabs a rebound or makes the pass, among the five on
+ * the floor: each by his own per-minute rate, raised to this power. Season
+ * rates were earned next to different teammates, and five of them usually add
+ * up to more than one team's possessions; real role players defer to the
+ * star rather than every player giving up the same share. 1 would scale
+ * everyone down alike and leave stars ~12% short of their season lines;
+ * 1.5 keeps points per minute level from the stars to the bench.
+ */
+const ROLE_POW = 1.5;
+/** The same for rebounds, which concentrate less: a big's rate was earned
+ *  next to other bigs too. */
+const REB_POW = 1.3;
 /** Game-to-game pace swings both teams share. */
 const PACE_NOISE = 0.035;
 
@@ -61,8 +75,14 @@ interface TeamPrep {
   /** Target seconds per player (by roster index into team.players). */
   target: number[];
   starters: number[];
-  /** Multiplier on the opponent's make probability. */
-  defF: number;
+  /**
+   * What this defense does to the offense facing it, relative to the league
+   * (1 = average), from what opponents did against it over the season: odds
+   * multipliers on twos and threes going in, on a shot being a three and on
+   * the offense rebounding its miss; rate multipliers on trips to the line
+   * and on turnovers.
+   */
+  vs: { two: number; three: number; threeRate: number; ft: number; tov: number; orebOdds: number };
   makeF: number;
 }
 
@@ -119,15 +139,44 @@ function prepTeam(
     .slice()
     .sort((a, b) => target[b] - target[a])
     .slice(0, 5);
-  const defF = 1 + DEF_WEIGHT * (team.pa / m.env.ppg - 1);
+  const t = team.tend ?? {};
+  const ratio = (key: string) => (t[key] ? t[key].value / Math.max(1e-9, t[key].league) : null);
+  const oddsRatio = (key: string) =>
+    t[key] ? odds(t[key].value) / Math.max(1e-9, odds(t[key].league)) : null;
+  const fallback = 1 + DEF_FALLBACK * (team.pa / m.env.ppg - 1);
+  const dreb = t.defDreb;
+  const vs = {
+    two: oddsRatio("defOpp2p") ?? Math.pow(fallback, 1.3),
+    three: oddsRatio("defOpp3p") ?? Math.pow(fallback, 1.3),
+    threeRate: oddsRatio("defOpp3aRate") ?? 1,
+    ft: ratio("defOppFtRate") ?? 1,
+    tov: ratio("defForcedTov") ?? 1,
+    // Offensive rebound odds against this defense: the complement of its
+    // defensive-rebound rate, relative to the league's.
+    orebOdds: dreb ? odds(1 - dreb.value) / Math.max(1e-9, odds(1 - dreb.league)) : 1,
+  };
   const homeEdge = neutral ? 0 : side === "home" ? HOME_EDGE : -HOME_EDGE;
-  return { side, team, roster, target, starters, defF, makeF: MAKE_CAL * (1 + homeEdge) };
+  return { side, team, roster, target, starters, vs, makeF: MAKE_CAL * (1 + homeEdge) };
 }
 
-/** Possessions per 48 for this matchup: the league pace nudged by how
- *  possession-hungry each roster's main rotation is. */
+const odds = (p: number) => p / Math.max(1e-9, 1 - p);
+const prob = (o: number) => o / (1 + o);
+
+/**
+ * Possessions per 48 for this matchup. Both teams' season paces, combined the
+ * way pace combines (a fast team against a slow one plays near the league
+ * average; two fast teams play faster than either usually does):
+ * league × (home / league) × (away / league). Without team splits, the
+ * league pace nudged by how possession-hungry each rotation is.
+ */
 function matchupPace(m: NbaMatchup, teams: [TeamPrep, TeamPrep]): number {
   const env = m.env;
+  const ph = m.home.tend?.pace;
+  const pa = m.away.tend?.pace;
+  if (ph && pa) {
+    const rel = (ph.value / ph.league) * (pa.value / pa.league);
+    return env.pace * PACE_CAL * Math.max(0.9, Math.min(1.1, rel));
+  }
   const lgUse = 5 * (0.32 + 0.12 + 0.264 * 0.44 + 0.1); // rough per-5 usage scale
   const f = teams.map((t) => {
     let use = 0;
@@ -299,9 +348,9 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
 
   // ---------------------------------------------------------- actions
 
-  const pickActor = (s: number, w: (p: NbaPlayer) => number) => {
+  const pickActor = (s: number, w: (p: NbaPlayer) => number, pow = 1) => {
     const ps = lineup[s];
-    const weights = ps.map((i) => w(T[s].team.players[i]));
+    const weights = ps.map((i) => Math.pow(w(T[s].team.players[i]), pow));
     return ps[rng.pick(weights)];
   };
 
@@ -345,14 +394,14 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
     let d = 0;
     for (const p of lineup[s]) o += T[s].team.players[p].oreb;
     for (const p of lineup[1 - s]) d += T[1 - s].team.players[p].dreb;
-    const pOff = scale * (o / Math.max(1e-6, o + d));
+    const pOff = prob(odds(scale * (o / Math.max(1e-6, o + d))) * T[1 - s].vs.orebOdds);
     if (rng.chance(pOff)) {
-      const r = pickActor(s, (x) => x.oreb);
+      const r = pickActor(s, (x) => x.oreb, REB_POW);
       box.add(s, r, NBA.OREB, 1);
       if (log.on) ev(s, `${name(s, r)} offensive rebound`);
       return true;
     }
-    const r = pickActor(1 - s, (x) => x.dreb);
+    const r = pickActor(1 - s, (x) => x.dreb, REB_POW);
     box.add(1 - s, r, NBA.DREB, 1);
     if (log.on) ev(1 - s, `${name(1 - s, r)} defensive rebound`);
     return false;
@@ -373,12 +422,15 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
     const d = 1 - s;
     const tp = T[s];
     const dp = T[d];
-    const p = pickActor(s, (x) => x.fg2a + x.fg3a + 0.44 * x.fta + x.tov);
+    // This defense draws fouls and forces turnovers at its own rates.
+    const ftW = 0.44 * dp.vs.ft;
+    const tovW = dp.vs.tov;
+    const p = pickActor(s, (x) => x.fg2a + x.fg3a + ftW * x.fta + tovW * x.tov, ROLE_POW);
     const pl = tp.team.players[p];
     const shots = pl.fg2a + pl.fg3a;
-    const total = shots + 0.44 * pl.fta + pl.tov;
+    const total = shots + ftW * pl.fta + tovW * pl.tov;
     let r = rng.next() * total;
-    if (!buzzer && r < pl.tov) {
+    if (!buzzer && r < tovW * pl.tov) {
       box.add(s, p, NBA.TOV, 1);
       let steal = 0;
       for (const q of lineup[d]) steal += dp.team.players[q].stl;
@@ -390,8 +442,8 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
         ev(s, `${pl.short} ${flavor.chance(0.5) ? "lost ball" : "traveling"} turnover`);
       return true;
     }
-    r -= pl.tov;
-    if (!buzzer && r < 0.44 * pl.fta) {
+    r -= tovW * pl.tov;
+    if (!buzzer && r < ftW * pl.fta) {
       const fouler = foul(d, true);
       const n = rng.chance(0.08) ? 3 : 2;
       if (log.on) ev(d, `Shooting foul: ${name(d, fouler)}`);
@@ -404,9 +456,12 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
     const late = period >= REG && clk < 20;
     const three =
       (late && behind === 3) ||
-      (!(late && behind === 2 && rng.chance(0.7)) && rng.chance(pl.fg3a / Math.max(1e-6, shots)));
+      (!(late && behind === 2 && rng.chance(0.7)) &&
+        rng.chance(prob(odds(pl.fg3a / Math.max(1e-6, shots)) * dp.vs.threeRate)));
     const lead = Math.max(-20, Math.min(20, score[s] - score[d]));
-    let pMake = (three ? pl.fg3p : pl.fg2p) * dp.defF * tp.makeF * (1 - SCORE_EFFECT * lead);
+    // The shooter's percentage against this defense, by odds ratio.
+    const base = prob(odds(three ? pl.fg3p : pl.fg2p) * (three ? dp.vs.three : dp.vs.two));
+    let pMake = base * tp.makeF * (1 - SCORE_EFFECT * lead);
     if (heave) pMake *= 0.25;
     const made = rng.chance(Math.min(0.92, pMake));
     box.add(s, p, NBA.FGA, 1);
@@ -428,7 +483,7 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
       let assister = -1;
       if (rng.chance(pAst)) {
         const mates = lineup[s].filter((q) => q !== p);
-        assister = mates[rng.pick(mates.map((q) => tp.team.players[q].ast))];
+        assister = mates[rng.pick(mates.map((q) => Math.pow(tp.team.players[q].ast, ROLE_POW)))];
         box.add(s, assister, NBA.AST, 1);
       }
       if (log.on)

@@ -38,6 +38,9 @@ type MlbMatchup = Extract<SimMatchup, { league: "mlb" }>;
 const RUN_CAL = 1.01;
 const HOME_ONBASE = 0.012;
 const TTO_MULT = 1.05; // third time through the order
+const ROE = 0.016;
+/** Share of free passes that are hit batsmen rather than walks. */
+const HBP_SHARE = 0.11; // reached on error, per out in play, average defense
 const MAX_PITCHES = 108;
 
 interface TeamPrep {
@@ -54,6 +57,10 @@ interface TeamPrep {
   middle: number[];
   long: number[];
   homeF: number;
+  /** Each batter's rates against a left- and a right-handed pitcher. */
+  split: { L: PaRates; R: PaRates }[];
+  /** Reached-on-error chance on an out in play against this defense. */
+  roe: number;
 }
 
 export interface MlbPrep {
@@ -63,6 +70,35 @@ export interface MlbPrep {
   park: number;
   playoff: boolean;
   nBatters: [number, number];
+}
+
+/**
+ * Platoon splits. A season line mixes plate appearances against both hands;
+ * against a same-handed pitcher a hitter strikes out more and walks and
+ * homers less. League-wide same-side ÷ opposite-side ratios (2015–2024), and
+ * the share of each kind of hitter's plate appearances that come against a
+ * right-hander, unmix a season line into its two halves:
+ *   opposite = season / (share_opp + share_same × ratio), same = ratio × opposite.
+ * Switch hitters always bat from the opposite side, so their line stands.
+ */
+const PLATOON: Record<"L" | "R", { vsR: number; same: PaRates }> = {
+  L: { vsR: 0.74, same: { so: 1.2, bb: 0.8, hr: 0.72, b3: 0.85, b2: 0.88, b1: 0.96 } },
+  R: { vsR: 0.7, same: { so: 1.1, bb: 0.85, hr: 0.86, b3: 0.9, b2: 0.94, b1: 0.98 } },
+};
+
+function platoon(b: MlbBatter): { L: PaRates; R: PaRates } {
+  if (b.bats === "S") return { L: b.rates, R: b.rates };
+  const pl = PLATOON[b.bats];
+  // Share of this hitter's PAs against same-handed pitching.
+  const sameShare = b.bats === "R" ? pl.vsR : 1 - pl.vsR;
+  const opp = {} as PaRates;
+  const same = {} as PaRates;
+  for (const k of KEYS) {
+    const r = pl.same[k];
+    opp[k] = b.rates[k] / (1 - sameShare + sameShare * r);
+    same[k] = r * opp[k];
+  }
+  return b.bats === "L" ? { L: same, R: opp } : { L: opp, R: same };
 }
 
 const quality = (p: MlbPitcher) => p.rates.so - p.rates.bb - 3 * p.rates.hr;
@@ -128,7 +164,11 @@ function prepTeam(team: MlbTeam, side: Side, o: SimOverrides, neutral: boolean):
     )
     .map(({ i }) => i);
   const homeF = neutral ? 1 : side === "home" ? 1 + HOME_ONBASE : 1 - HOME_ONBASE;
-  return { team, order, starter, rotation, closer, setup, middle, long, homeF };
+  const split = team.batters.map(platoon);
+  // A sloppy defense turns more outs into runners on base.
+  const e = team.tend?.errors;
+  const roe = ROE * (e ? Math.max(0.6, Math.min(1.6, e.value / Math.max(1e-6, e.league))) : 1);
+  return { team, order, starter, rotation, closer, setup, middle, long, homeF, split, roe };
 }
 
 export function prepareMlb(m: MlbMatchup, o: SimOverrides): MlbPrep {
@@ -398,7 +438,7 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
     const p = pit(f);
     const tto = appearances[f] === 1 && faced[f] >= 18 ? TTO_MULT : 1;
     const probs = paProbs(
-      batter.rates,
+      p ? T[s].split[b][p.throws] : batter.rates,
       p?.rates ?? env.pRates,
       env,
       T[s].homeF * tto * RUN_CAL,
@@ -474,8 +514,14 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
     const before = score[s];
 
     if (o === "bb") {
-      box.add(s, b, MLB.BB, 1);
-      box.add(f, pi, MLB.PBB, 1);
+      // The "bb" outcome is a free pass of either kind (see build.server's
+      // mlbPa); about one in nine is a hit batsman, which no box score counts
+      // as a walk.
+      const hbp = rng.chance(HBP_SHARE);
+      if (!hbp) {
+        box.add(s, b, MLB.BB, 1);
+        box.add(f, pi, MLB.PBB, 1);
+      }
       // Forced advances only.
       if (bases[0] >= 0) {
         if (bases[1] >= 0) {
@@ -486,9 +532,13 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
       }
       place(0, b);
       if (log.on)
-        ev(s, before < score[s] ? `${who} walks, forcing in a run` : `${who} walks`, {
-          scoring: score[s] > before,
-        });
+        ev(
+          s,
+          `${who} ${hbp ? "is hit by a pitch" : "walks"}${before < score[s] ? ", forcing in a run" : ""}`,
+          {
+            scoring: score[s] > before,
+          },
+        );
       return;
     }
     box.add(s, b, MLB.AB, 1);
@@ -573,7 +623,7 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
     const r = rng.next();
     const kind = r < 0.44 ? "ground" : r < 0.8 ? "fly" : r < 0.93 ? "line" : "pop";
     // Reached on error, ~1.5% of balls in play that would be outs.
-    if (rng.chance(0.016)) {
+    if (rng.chance(T[f].roe)) {
       errors[f]++;
       if (bases[2] >= 0) home(s, 2, -1, false);
       if (bases[1] >= 0) move(1, 2);

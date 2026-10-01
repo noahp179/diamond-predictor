@@ -36,15 +36,25 @@ export interface BoxPlayer {
   pos: string;
   jersey: string;
   group: Group;
+  /** Season per-game averages, keyed like PROPS, where the feed had them. */
+  avg?: Record<string, number>;
 }
 
 export function boxPlayers(m: SimMatchup, side: Side): BoxPlayer[] {
-  const base = (p: { id: string; name: string; short: string; pos: string; jersey: string }) => ({
+  const base = (p: {
+    id: string;
+    name: string;
+    short: string;
+    pos: string;
+    jersey: string;
+    avg?: Record<string, number>;
+  }) => ({
     id: p.id,
     name: p.name,
     short: p.short,
     pos: p.pos,
     jersey: p.jersey,
+    avg: p.avg,
   });
   switch (m.league) {
     case "nba":
@@ -294,6 +304,218 @@ export const BOX: Record<SimLeague, BoxSection[]> = {
         { label: "SACK", get: (r) => r[NFL.DSK] },
         { label: "INT", get: (r) => r[NFL.DINT] },
         { label: "TD", get: (r) => r[NFL.DTD] },
+      ],
+    },
+  ],
+};
+
+// ------------------------------------------------------- average box
+
+/**
+ * The box score averaged over a batch. Its own layout because an average is
+ * not a game: "8.3-17.1" shooting reads fine, but a decision (W/L) or a long
+ * gain has no meaningful average, and innings pitched average as plain
+ * decimals rather than baseball's ".1 = one out".
+ */
+export interface AvgColumn {
+  label: string;
+  title?: string;
+  get: (r: number[]) => number;
+  /** Decimal places; default 1. */
+  digits?: number;
+  /** Prefix positives with "+". */
+  signed?: boolean;
+  /** A rate or a time, which does not add up across players. */
+  noTotal?: boolean;
+}
+
+export interface AvgSection {
+  title: string;
+  groups: Group[];
+  /** Shown when the averaged row passes (e.g. plays real minutes). */
+  show: (r: number[]) => boolean;
+  sort: (r: number[]) => number;
+  cols: AvgColumn[];
+}
+
+const per = (a: number, b: number) => (b > 0 ? a / b : 0);
+
+export const AVG_BOX: Record<SimLeague, AvgSection[]> = {
+  nba: [
+    {
+      title: "Players",
+      groups: ["player"],
+      show: (r) => r[NBA.SEC] >= 60,
+      sort: (r) => r[NBA.SEC],
+      cols: [
+        { label: "MIN", get: (r) => r[NBA.SEC] / 60 },
+        { label: "PTS", get: (r) => r[NBA.PTS] },
+        { label: "REB", get: (r) => r[NBA.OREB] + r[NBA.DREB] },
+        { label: "AST", get: (r) => r[NBA.AST] },
+        { label: "FGM", get: (r) => r[NBA.FGM] },
+        { label: "FGA", get: (r) => r[NBA.FGA] },
+        { label: "3PM", get: (r) => r[NBA.TPM] },
+        { label: "3PA", get: (r) => r[NBA.TPA] },
+        { label: "FTM", get: (r) => r[NBA.FTM] },
+        { label: "FTA", get: (r) => r[NBA.FTA] },
+        { label: "STL", get: (r) => r[NBA.STL] },
+        { label: "BLK", get: (r) => r[NBA.BLK] },
+        { label: "TO", get: (r) => r[NBA.TOV] },
+        { label: "+/-", get: (r) => r[NBA.PM], signed: true, noTotal: true },
+      ],
+    },
+  ],
+  nhl: [
+    {
+      title: "Skaters",
+      groups: ["skater"],
+      show: (r) => r[NHL.SEC] >= 60,
+      sort: (r) => r[NHL.SEC],
+      cols: [
+        { label: "G", get: (r) => r[NHL.G], digits: 2 },
+        { label: "A", get: (r) => r[NHL.A], digits: 2 },
+        { label: "PTS", get: (r) => r[NHL.G] + r[NHL.A], digits: 2 },
+        { label: "SOG", get: (r) => r[NHL.SOG] },
+        { label: "PPP", get: (r) => r[NHL.PPP], digits: 2 },
+        { label: "PIM", get: (r) => r[NHL.PIM] },
+        { label: "+/-", get: (r) => r[NHL.PM], digits: 2, signed: true, noTotal: true },
+        { label: "TOI", title: "Minutes on ice", get: (r) => r[NHL.SEC] / 60, noTotal: true },
+      ],
+    },
+    {
+      title: "Goalies",
+      groups: ["goalie"],
+      show: (r) => r[NHL.SEC] >= 60,
+      sort: (r) => r[NHL.SEC],
+      cols: [
+        { label: "SA", get: (r) => r[NHL.SA] },
+        { label: "SV", get: (r) => r[NHL.SA] - r[NHL.GA] },
+        { label: "GA", get: (r) => r[NHL.GA], digits: 2 },
+        {
+          label: "SV%",
+          get: (r) => per(r[NHL.SA] - r[NHL.GA], r[NHL.SA]),
+          digits: 3,
+          noTotal: true,
+        },
+        { label: "TOI", title: "Minutes in net", get: (r) => r[NHL.SEC] / 60 },
+      ],
+    },
+  ],
+  mlb: [
+    {
+      title: "Batting",
+      groups: ["batter"],
+      show: (r) => r[MLB.PA] >= 0.5,
+      sort: (r) => r[MLB.PA] * 10 - r[MLB.ORDER],
+      cols: [
+        { label: "PA", get: (r) => r[MLB.PA] },
+        { label: "AB", get: (r) => r[MLB.AB] },
+        { label: "R", get: (r) => r[MLB.R], digits: 2 },
+        { label: "H", get: (r) => r[MLB.H], digits: 2 },
+        { label: "2B", get: (r) => r[MLB.D2], digits: 2 },
+        { label: "3B", get: (r) => r[MLB.D3], digits: 2 },
+        { label: "HR", get: (r) => r[MLB.HR], digits: 2 },
+        { label: "RBI", get: (r) => r[MLB.RBI], digits: 2 },
+        { label: "BB", get: (r) => r[MLB.BB], digits: 2 },
+        { label: "SO", get: (r) => r[MLB.SO], digits: 2 },
+        { label: "SB", get: (r) => r[MLB.SB], digits: 2 },
+        {
+          label: "TB",
+          title: "Total bases",
+          get: (r) => r[MLB.H] + r[MLB.D2] + 2 * r[MLB.D3] + 3 * r[MLB.HR],
+          digits: 2,
+        },
+      ],
+    },
+    {
+      title: "Pitching",
+      groups: ["pitcher"],
+      show: (r) => r[MLB.BF] >= 1,
+      sort: (r) => r[MLB.OUTS],
+      cols: [
+        { label: "IP", title: "Innings, as a decimal", get: (r) => r[MLB.OUTS] / 3 },
+        { label: "H", get: (r) => r[MLB.PH] },
+        { label: "R", get: (r) => r[MLB.PR] },
+        { label: "ER", get: (r) => r[MLB.PER] },
+        { label: "BB", get: (r) => r[MLB.PBB] },
+        { label: "K", get: (r) => r[MLB.PSO] },
+        { label: "HR", get: (r) => r[MLB.PHR], digits: 2 },
+        { label: "PC", get: (r) => r[MLB.NP], digits: 0 },
+      ],
+    },
+  ],
+  nfl: [
+    {
+      title: "Passing",
+      groups: ["qb", "skill"],
+      show: (r) => r[NFL.ATT] >= 1,
+      sort: (r) => r[NFL.ATT],
+      cols: [
+        { label: "CMP", get: (r) => r[NFL.CMP] },
+        { label: "ATT", get: (r) => r[NFL.ATT] },
+        { label: "YDS", get: (r) => r[NFL.PYD] },
+        { label: "TD", get: (r) => r[NFL.PTD], digits: 2 },
+        { label: "INT", get: (r) => r[NFL.INT], digits: 2 },
+        { label: "SK", title: "Times sacked", get: (r) => r[NFL.SK] },
+      ],
+    },
+    {
+      title: "Rushing",
+      groups: ["qb", "skill"],
+      show: (r) => r[NFL.CAR] >= 0.5,
+      sort: (r) => r[NFL.CAR],
+      cols: [
+        { label: "CAR", get: (r) => r[NFL.CAR] },
+        { label: "YDS", get: (r) => r[NFL.RYD] },
+        {
+          label: "AVG",
+          title: "Yards per carry",
+          get: (r) => per(r[NFL.RYD], r[NFL.CAR]),
+          noTotal: true,
+        },
+        { label: "TD", get: (r) => r[NFL.RTD], digits: 2 },
+      ],
+    },
+    {
+      title: "Receiving",
+      groups: ["skill", "qb"],
+      show: (r) => r[NFL.TGT] >= 0.5,
+      sort: (r) => r[NFL.REYD],
+      cols: [
+        { label: "TGT", get: (r) => r[NFL.TGT] },
+        { label: "REC", get: (r) => r[NFL.REC] },
+        { label: "YDS", get: (r) => r[NFL.REYD] },
+        {
+          label: "AVG",
+          title: "Yards per catch",
+          get: (r) => per(r[NFL.REYD], r[NFL.REC]),
+          noTotal: true,
+        },
+        { label: "TD", get: (r) => r[NFL.RETD], digits: 2 },
+      ],
+    },
+    {
+      title: "Kicking",
+      groups: ["kicker", "punter"],
+      show: (r) => r[NFL.FGA] + r[NFL.XPA] + r[NFL.PUNT] >= 0.5,
+      sort: (r) => r[NFL.FGA] * 10 + r[NFL.XPA],
+      cols: [
+        { label: "FGM", get: (r) => r[NFL.FGM], digits: 2 },
+        { label: "FGA", get: (r) => r[NFL.FGA], digits: 2 },
+        { label: "XPM", get: (r) => r[NFL.XPM], digits: 2 },
+        { label: "PTS", get: (r) => 3 * r[NFL.FGM] + r[NFL.XPM] },
+        { label: "PUNTS", get: (r) => r[NFL.PUNT] },
+      ],
+    },
+    {
+      title: "Defense",
+      groups: ["def"],
+      show: (r) => r[NFL.TKL] + r[NFL.DSK] + r[NFL.DINT] >= 0.5,
+      sort: (r) => r[NFL.TKL] + 5 * r[NFL.DSK],
+      cols: [
+        { label: "TKL", get: (r) => r[NFL.TKL] },
+        { label: "SACK", get: (r) => r[NFL.DSK], digits: 2 },
+        { label: "INT", get: (r) => r[NFL.DINT], digits: 2 },
       ],
     },
   ],

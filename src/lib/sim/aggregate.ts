@@ -10,11 +10,14 @@
  *     covering the posted spread and going over the posted total;
  *   - for every player who saw the field, the distribution of each stat —
  *     mean, median, the 10th-to-90th percentile range, and the probability
- *     of clearing each common line.
+ *     of clearing each common line — and his average box-score line.
+ *
+ * The running totals are a plain object (`AccState`) so a batch can be split
+ * across several workers and the pieces added back together: the counts and
+ * histograms of two halves sum to those of the whole.
  */
 
 import { MLB, NBA, NHL } from "./columns";
-import { seedFor } from "./core";
 import { boxPlayers, PROPS, type BoxPlayer, type PropDef } from "./props";
 import type { GameResult, SimMatchup, Side } from "./types";
 
@@ -24,6 +27,8 @@ export type Hist = Record<number, number>;
 export interface PropSummary {
   key: string;
   mean: number;
+  /** Standard deviation across games (not of the mean). */
+  sd: number;
   median: number;
   p10: number;
   p90: number;
@@ -37,6 +42,8 @@ export interface PlayerSummary extends BoxPlayer {
   /** Share of games in which he recorded any playing time. */
   played: number;
   props: PropSummary[];
+  /** His box-score row averaged over every game (zeros when he sat). */
+  avgBox: number[];
 }
 
 export interface MassResult {
@@ -48,6 +55,8 @@ export interface MassResult {
   so: number;
   avgHome: number;
   avgAway: number;
+  /** Game-to-game standard deviations, for the Monte Carlo error. */
+  sd: { home: number; away: number; margin: number; total: number };
   margin: Hist; // home − away
   total: Hist;
   homeScore: Hist;
@@ -67,9 +76,6 @@ export interface MassResult {
   /** Team-level extras, averaged (shots, yards, hits…). */
   team: { home: Record<string, number>; away: Record<string, number> };
   players: PlayerSummary[];
-  /** Seeds worth replaying: a typical game, the biggest upset, a thriller. */
-  featured: { label: string; seed: number; home: number; away: number }[];
-  baseSeed: number;
   ms: number;
 }
 
@@ -96,36 +102,52 @@ function overProb(h: Hist, n: number, line: number): number {
   return c / n;
 }
 
+/** Everything a batch has counted so far. Plain data: it crosses a worker
+ *  boundary by structured clone, and two of them add. */
+export interface AccState {
+  n: number;
+  homeWins: number;
+  awayWins: number;
+  ties: number;
+  ot: number;
+  so: number;
+  sumH: number;
+  sumA: number;
+  margin: Hist;
+  total: Hist;
+  hs: Hist;
+  as: Hist;
+  exact: Record<string, number>;
+  teamSum: { home: Record<string, number>; away: Record<string, number> };
+  /** Per roster entry: games played, a histogram per prop, box-row sums. */
+  played: number[];
+  hists: Hist[][];
+  box: number[][];
+}
+
+const addHist = (into: Hist, from: Hist) => {
+  for (const [k, v] of Object.entries(from)) inc(into, Number(k), v);
+};
+
+function sdOf(h: Hist, n: number): number {
+  if (n < 2) return 0;
+  let s = 0;
+  let s2 = 0;
+  for (const [k, c] of Object.entries(h)) {
+    const v = Number(k);
+    s += v * c;
+    s2 += v * v * c;
+  }
+  const mean = s / n;
+  return Math.sqrt(Math.max(0, s2 / n - mean * mean));
+}
+
 /** Accumulates games one at a time; `summary()` can be called at any point. */
 export class Accumulator {
-  private n = 0;
-  private homeWins = 0;
-  private awayWins = 0;
-  private ties = 0;
-  private ot = 0;
-  private so = 0;
-  private sumH = 0;
-  private sumA = 0;
-  private margin: Hist = {};
-  private total: Hist = {};
-  private hs: Hist = {};
-  private as: Hist = {};
-  private exact = new Map<string, number>();
-  private teamSum = { home: {} as Record<string, number>, away: {} as Record<string, number> };
+  readonly st: AccState;
   private readonly roster: { side: Side; p: BoxPlayer; props: PropDef[] }[];
-  /** Per roster entry: games played, and per prop a histogram. */
-  private readonly played: number[];
-  private readonly hists: Hist[][];
-  private typical: { seed: number; home: number; away: number; dist: number } | null = null;
-  private upset: { seed: number; home: number; away: number; by: number } | null = null;
-  private thriller: { seed: number; home: number; away: number; score: number } | null = null;
-  private favourite: Side | null = null;
-  private expMargin = 0;
 
-  constructor(
-    private m: SimMatchup,
-    readonly baseSeed: number,
-  ) {
+  constructor(private m: SimMatchup) {
     const defs = PROPS[m.league];
     this.roster = (["home", "away"] as const).flatMap((side) =>
       boxPlayers(m, side).map((p) => ({
@@ -134,58 +156,88 @@ export class Accumulator {
         props: defs.filter((d) => d.groups.includes(p.group) && (!d.pos || d.pos.includes(p.pos))),
       })),
     );
-    this.played = this.roster.map(() => 0);
-    this.hists = this.roster.map((r) => r.props.map(() => ({})));
-    // Who the market (or failing that the season) has as the favourite, so an
-    // "upset" means something.
-    const sp = m.ctx.line?.spread;
-    this.expMargin = sp != null ? -sp : m.home.pf - m.home.pa - (m.away.pf - m.away.pa);
-    this.favourite = this.expMargin >= 0 ? "home" : "away";
+    this.st = {
+      n: 0,
+      homeWins: 0,
+      awayWins: 0,
+      ties: 0,
+      ot: 0,
+      so: 0,
+      sumH: 0,
+      sumA: 0,
+      margin: {},
+      total: {},
+      hs: {},
+      as: {},
+      exact: {},
+      teamSum: { home: {}, away: {} },
+      played: this.roster.map(() => 0),
+      hists: this.roster.map((r) => r.props.map(() => ({}))),
+      box: this.roster.map(() => []),
+    };
   }
 
-  add(r: GameResult, seed: number) {
-    this.n++;
-    if (r.home > r.away) this.homeWins++;
-    else if (r.away > r.home) this.awayWins++;
-    else this.ties++;
-    if (r.ot) this.ot++;
-    if (r.so) this.so++;
-    this.sumH += r.home;
-    this.sumA += r.away;
-    inc(this.margin, r.home - r.away);
-    inc(this.total, r.home + r.away);
-    inc(this.hs, r.home);
-    inc(this.as, r.away);
+  add(r: GameResult) {
+    const st = this.st;
+    st.n++;
+    if (r.home > r.away) st.homeWins++;
+    else if (r.away > r.home) st.awayWins++;
+    else st.ties++;
+    if (r.ot) st.ot++;
+    if (r.so) st.so++;
+    st.sumH += r.home;
+    st.sumA += r.away;
+    inc(st.margin, r.home - r.away);
+    inc(st.total, r.home + r.away);
+    inc(st.hs, r.home);
+    inc(st.as, r.away);
     const key = `${r.home}-${r.away}`;
-    this.exact.set(key, (this.exact.get(key) ?? 0) + 1);
+    st.exact[key] = (st.exact[key] ?? 0) + 1;
     for (const side of ["home", "away"] as const)
       for (const [k, v] of Object.entries(r.team[side]))
-        this.teamSum[side][k] = (this.teamSum[side][k] ?? 0) + v;
+        st.teamSum[side][k] = (st.teamSum[side][k] ?? 0) + v;
 
     for (let i = 0; i < this.roster.length; i++) {
       const { side, p, props } = this.roster[i];
       const row = r.box[side][p.idx];
       if (!row || !appeared(this.m.league, p.group, row)) continue;
-      this.played[i]++;
-      const hs = this.hists[i];
+      st.played[i]++;
+      const hs = st.hists[i];
       for (let k = 0; k < props.length; k++) inc(hs[k], props[k].get(row));
+      const sum = st.box[i];
+      for (let c = 0; c < row.length; c++) sum[c] = (sum[c] ?? 0) + row[c];
     }
+  }
 
-    // Featured games.
-    const margin = r.home - r.away;
-    const dist = Math.abs(margin - this.expMargin);
-    if (!this.typical || dist < this.typical.dist)
-      this.typical = { seed, home: r.home, away: r.away, dist };
-    const dogWonBy = this.favourite === "home" ? -margin : margin;
-    if (dogWonBy > 0 && (!this.upset || dogWonBy > this.upset.by))
-      this.upset = { seed, home: r.home, away: r.away, by: dogWonBy };
-    const excitement = (r.ot ? 100 : 0) + (r.home + r.away) - 5 * Math.abs(margin);
-    if (!this.thriller || excitement > this.thriller.score)
-      this.thriller = { seed, home: r.home, away: r.away, score: excitement };
+  /** Fold in another accumulator's totals for the same matchup. */
+  merge(o: AccState) {
+    const st = this.st;
+    st.n += o.n;
+    st.homeWins += o.homeWins;
+    st.awayWins += o.awayWins;
+    st.ties += o.ties;
+    st.ot += o.ot;
+    st.so += o.so;
+    st.sumH += o.sumH;
+    st.sumA += o.sumA;
+    addHist(st.margin, o.margin);
+    addHist(st.total, o.total);
+    addHist(st.hs, o.hs);
+    addHist(st.as, o.as);
+    for (const [k, v] of Object.entries(o.exact)) st.exact[k] = (st.exact[k] ?? 0) + v;
+    for (const side of ["home", "away"] as const)
+      for (const [k, v] of Object.entries(o.teamSum[side]))
+        st.teamSum[side][k] = (st.teamSum[side][k] ?? 0) + v;
+    for (let i = 0; i < st.played.length; i++) {
+      st.played[i] += o.played[i] ?? 0;
+      o.hists[i]?.forEach((h, k) => addHist(st.hists[i][k], h));
+      o.box[i]?.forEach((v, c) => (st.box[i][c] = (st.box[i][c] ?? 0) + v));
+    }
   }
 
   summary(ms: number): MassResult {
-    const n = Math.max(1, this.n);
+    const st = this.st;
+    const n = Math.max(1, st.n);
     const line = this.m.ctx.line;
     let lineOut: MassResult["line"] = null;
     if (line && (line.spread != null || line.total != null)) {
@@ -195,13 +247,13 @@ export class Accumulator {
       let under = 0;
       let tpush = 0;
       if (line.spread != null)
-        for (const [k, v] of Object.entries(this.margin)) {
+        for (const [k, v] of Object.entries(st.margin)) {
           const adj = Number(k) + line.spread;
           if (adj > 0) cover += v;
           else if (adj === 0) push += v;
         }
       if (line.total != null)
-        for (const [k, v] of Object.entries(this.total)) {
+        for (const [k, v] of Object.entries(st.total)) {
           if (Number(k) > line.total) over += v;
           else if (Number(k) < line.total) under += v;
           else tpush += v;
@@ -218,19 +270,20 @@ export class Accumulator {
     }
     const players: PlayerSummary[] = this.roster
       .map((r, i) => {
-        const games = this.played[i];
+        const games = st.played[i];
         const props: PropSummary[] = r.props
           .map((d, k) => {
-            const h = { ...this.hists[i][k] };
+            const h = { ...st.hists[i][k] };
             // Games he didn't play count as zeros: the projection is for the
             // game, not conditional on him appearing.
-            const zeros = this.n - games;
+            const zeros = st.n - games;
             if (zeros > 0) inc(h, 0, zeros);
             let sum = 0;
             for (const [v, c] of Object.entries(h)) sum += Number(v) * c;
             return {
               key: d.key,
               mean: sum / n,
+              sd: sdOf(h, n),
               median: quantile(h, n, 0.5),
               p10: quantile(h, n, 0.1),
               p90: quantile(h, n, 0.9),
@@ -239,30 +292,35 @@ export class Accumulator {
             };
           })
           .filter((s, k) => s.mean >= (r.props[k].minMean ?? 0));
-        return { ...r.p, side: r.side, played: games / n, props };
+        const avgBox = Array.from(st.box[i], (v) => (v ?? 0) / n);
+        return { ...r.p, side: r.side, played: games / n, props, avgBox };
       })
-      .filter((p) => p.played > 0.02 && p.props.length > 0);
+      // Players with no projected stat (a punter, a little-used defender)
+      // still belong in the average box score.
+      .filter((p) => p.played > 0.02);
     const team = { home: {} as Record<string, number>, away: {} as Record<string, number> };
     for (const side of ["home", "away"] as const)
-      for (const [k, v] of Object.entries(this.teamSum[side])) team[side][k] = v / n;
-    const featured: MassResult["featured"] = [];
-    if (this.typical) featured.push({ label: "Most typical result", ...pick(this.typical) });
-    if (this.upset) featured.push({ label: "Biggest upset", ...pick(this.upset) });
-    if (this.thriller) featured.push({ label: "Wildest game", ...pick(this.thriller) });
+      for (const [k, v] of Object.entries(st.teamSum[side])) team[side][k] = v / n;
     return {
-      n: this.n,
-      homeWins: this.homeWins / n,
-      awayWins: this.awayWins / n,
-      ties: this.ties / n,
-      ot: this.ot / n,
-      so: this.so / n,
-      avgHome: this.sumH / n,
-      avgAway: this.sumA / n,
-      margin: this.margin,
-      total: this.total,
-      homeScore: this.hs,
-      awayScore: this.as,
-      topScores: [...this.exact.entries()]
+      n: st.n,
+      homeWins: st.homeWins / n,
+      awayWins: st.awayWins / n,
+      ties: st.ties / n,
+      ot: st.ot / n,
+      so: st.so / n,
+      avgHome: st.sumH / n,
+      avgAway: st.sumA / n,
+      sd: {
+        home: sdOf(st.hs, n),
+        away: sdOf(st.as, n),
+        margin: sdOf(st.margin, n),
+        total: sdOf(st.total, n),
+      },
+      margin: st.margin,
+      total: st.total,
+      homeScore: st.hs,
+      awayScore: st.as,
+      topScores: Object.entries(st.exact)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 8)
         .map(([k, count]) => {
@@ -272,18 +330,10 @@ export class Accumulator {
       line: lineOut,
       team,
       players,
-      featured,
-      baseSeed: this.baseSeed,
       ms,
     };
   }
 }
-
-const pick = (x: { seed: number; home: number; away: number }) => ({
-  seed: x.seed,
-  home: x.home,
-  away: x.away,
-});
 
 /** Did this player get on the field? */
 function appeared(league: SimMatchup["league"], group: string, row: number[]): boolean {
@@ -298,6 +348,3 @@ function appeared(league: SimMatchup["league"], group: string, row: number[]): b
       return row.some((v) => v !== 0);
   }
 }
-
-/** Seeds for a batch, so game i of batch `base` can be replayed alone. */
-export const batchSeed = seedFor;

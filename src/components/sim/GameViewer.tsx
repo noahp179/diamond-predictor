@@ -22,15 +22,11 @@ const SPEEDS = [
 export function GameViewer({
   matchup,
   result,
-  seed,
-  onReplay,
   onNew,
   busy,
 }: {
   matchup: SimMatchup;
   result: GameResult;
-  seed: number;
-  onReplay: () => void;
   onNew: () => void;
   busy: boolean;
 }) {
@@ -283,18 +279,8 @@ export function GameViewer({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground sm:px-6">
-        <span>
-          Seed <span className="text-foreground tabular-nums">{seed}</span> · same seed, same game,
-          play for play
-        </span>
+        <span>Fresh randomness every game · no two play out alike</span>
         <span className="flex gap-2">
-          <button
-            onClick={onReplay}
-            disabled={busy}
-            className="border border-border px-3 py-1.5 hover:text-foreground disabled:opacity-40"
-          >
-            Replay this seed
-          </button>
           <button
             onClick={onNew}
             disabled={busy}

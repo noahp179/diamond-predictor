@@ -6,20 +6,21 @@ import { SIM_LEAGUES, type SimLeague } from "@/lib/sim/types";
 
 import { LEAGUE_LABEL } from "./format";
 
-/** The frame every simulator page renders in: the site shell plus a league
- *  band. Switching league keeps the date, so a Sunday's NFL slate and that
- *  night's NHL games are one click apart. */
+/** Each league's simulator, inside that sport's section. */
+export const SIM_HOME = {
+  nfl: "/nfl/simulate",
+  nba: "/nba/simulate",
+  nhl: "/nhl/simulate",
+  mlb: "/mlb/simulate",
+} as const satisfies Record<SimLeague, string>;
+
+/** The frame of the simulator overview (/sim): the site shell plus a band
+ *  linking to each sport's Simulate view. */
 export function SimShell({
-  league,
-  date,
-  onDateChange,
   title,
   blurb,
   children,
 }: {
-  league?: SimLeague;
-  date?: string;
-  onDateChange?: (d: string) => void;
   title: string;
   blurb: string;
   children: ReactNode;
@@ -30,39 +31,24 @@ export function SimShell({
       eyebrow="Diamond Edge · Game Simulator"
       title={title}
       blurb={blurb}
-      date={date}
-      onDateChange={onDateChange}
       footerNote="Data · ESPN season stats, rosters & injury reports · Simulations run in your browser · Not affiliated with any league"
       subnav={
         <div className="border-b border-border bg-secondary/40">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-6 py-2.5">
-            <Link
-              to="/sim"
-              className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                !league
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
+            <span className="border border-primary px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-primary">
               Overview
-            </Link>
+            </span>
             {SIM_LEAGUES.map((l) => (
               <Link
                 key={l}
-                to="/sim/$league"
-                params={{ league: l }}
-                search={date ? { date } : {}}
-                className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                  l === league
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
+                to={SIM_HOME[l]}
+                className="border border-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
               >
-                {LEAGUE_LABEL[l]}
+                {LEAGUE_LABEL[l]} →
               </Link>
             ))}
             <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              play-by-play engines · built from player stats
+              each one lives in its sport&apos;s section
             </span>
           </div>
         </div>

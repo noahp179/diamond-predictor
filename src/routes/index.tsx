@@ -61,9 +61,11 @@ export function Hub() {
           </span>
         </div>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Play any game out one play at a time from the players&apos; real season numbers. Watch a
-          single game unfold with a live box score, or run ten thousand and get the win probability,
-          the score distribution against the line, and every player&apos;s projected stat line.
+          Play any game out one play at a time from the players&apos; season numbers and each
+          team&apos;s offensive and defensive tendencies. Run it ten times or a hundred thousand for
+          the win probability, the average box score, and every player&apos;s projected line against
+          his season — or watch one unfold with a live box score. A Simulate tab in the NFL, NBA,
+          MLB and NHL sections.
         </p>
         <span className="mt-3 inline-block font-mono text-[11px] uppercase tracking-widest text-primary">
           Open the simulator →

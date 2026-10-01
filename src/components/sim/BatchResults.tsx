@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 
 import type { MassResult, PlayerSummary } from "@/lib/sim/aggregate";
-import { PROPS, UNITS } from "@/lib/sim/props";
-import type { SimMatchup } from "@/lib/sim/types";
+import { AVG_BOX, PROPS, UNITS, type PropDef } from "@/lib/sim/props";
+import type { SimLeague, SimMatchup } from "@/lib/sim/types";
 
 import {
   AWAY_COLOR,
   fairOdds,
   HOME_COLOR,
+  moeMean,
+  moeP,
   NEUTRAL_SERIES,
   noVigHome,
   pct,
@@ -20,18 +22,18 @@ import { BinTable, Histogram, WinBar } from "./SimCharts";
 /**
  * What a batch of simulated games says: who wins and how often, where the
  * margin and the total land against the posted line, the scores that come up
- * most, and every player's stat distribution.
+ * most, the average box score, and every player's stat distribution next to
+ * his season. Every figure carries its Monte Carlo error — the amount it
+ * would move if the same batch were run again with new random numbers.
  */
 export function BatchResults({
   matchup,
   result,
   partial,
-  onWatch,
 }: {
   matchup: SimMatchup;
   result: MassResult;
   partial: boolean;
-  onWatch: (seed: number) => void;
 }) {
   const u = UNITS[matchup.league];
   const { home, away } = matchup;
@@ -54,6 +56,7 @@ export function BatchResults({
   const decided = result.homeWins + result.awayWins;
   const fav = result.homeWins >= result.awayWins ? home : away;
   const favP = Math.max(result.homeWins, result.awayWins);
+  const winMoe = moeP(favP, n);
 
   const winnerOf = (x: number) => (x > 0 ? home.abbr : x < 0 ? away.abbr : null);
 
@@ -85,7 +88,8 @@ export function BatchResults({
             homeColor={HOME_COLOR}
           />
           <p className="mt-4 text-sm text-muted-foreground">
-            {fav.name} win {pct(favP)} of simulated games
+            {fav.name} win {pct(favP)} of simulated games{" "}
+            <span className="font-mono text-xs">(±{(winMoe * 100).toFixed(1)})</span>
             {decided < 1 ? ` (${pct(result.ties)} end tied)` : ""}. Fair price{" "}
             <span className="font-mono text-foreground">{fairOdds(favP)}</span>.
             {result.ot > 0.001 &&
@@ -93,17 +97,36 @@ export function BatchResults({
                 result.so > 0 ? `, ${pct(result.so)} to a shootout` : ""
               }.`}
           </p>
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            ± is the 95% Monte Carlo error: rerun with fresh randomness and the number lands within
+            it.{" "}
+            {n < 10000
+              ? `Run ${(n < 1000 ? 1000 : 10000).toLocaleString()} games to get it under ±${(moeP(0.5, n < 1000 ? 1000 : 10000) * 100).toFixed(1)}.`
+              : ""}
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-px bg-border">
-          <Tile label={`Avg ${away.abbr} ${u.pts}`} value={result.avgAway.toFixed(1)} />
-          <Tile label={`Avg ${home.abbr} ${u.pts}`} value={result.avgHome.toFixed(1)} />
+          <Tile
+            label={`Avg ${away.abbr} ${u.pts}`}
+            value={result.avgAway.toFixed(1)}
+            moe={moeMean(result.sd.away, n)}
+          />
+          <Tile
+            label={`Avg ${home.abbr} ${u.pts}`}
+            value={result.avgHome.toFixed(1)}
+            moe={moeMean(result.sd.home, n)}
+          />
           <Tile
             label="Median margin"
             value={
               medianMargin === 0 ? "Even" : `${winnerOf(medianMargin)} by ${Math.abs(medianMargin)}`
             }
           />
-          <Tile label="Avg total" value={(result.avgHome + result.avgAway).toFixed(1)} />
+          <Tile
+            label="Avg total"
+            value={(result.avgHome + result.avgAway).toFixed(1)}
+            moe={moeMean(result.sd.total, n)}
+          />
         </div>
       </div>
 
@@ -236,32 +259,17 @@ export function BatchResults({
           </ol>
         </section>
         <section className="border border-border bg-card p-5 sm:p-6">
-          <h3 className="font-display text-2xl">Watch one from this batch</h3>
+          <h3 className="font-display text-2xl">Team averages</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Every simulated game can be replayed play by play — these are three worth seeing.
+            Per game, across all {n.toLocaleString()} simulations.
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {result.featured.map((f) => (
-              <button
-                key={f.label}
-                onClick={() => onWatch(f.seed)}
-                className="border border-border bg-secondary/40 px-3 py-3 text-left transition-colors hover:border-primary"
-              >
-                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  {f.label}
-                </div>
-                <div className="mt-1 font-display text-2xl tabular-nums">
-                  {away.abbr} {f.away} – {f.home} {home.abbr}
-                </div>
-                <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-primary">
-                  ▶ Watch
-                </div>
-              </button>
-            ))}
-          </div>
           <TeamAverages matchup={matchup} result={result} />
         </section>
       </div>
+
+      <Movers matchup={matchup} result={result} />
+
+      <AverageBox matchup={matchup} result={result} />
 
       <PlayerTable matchup={matchup} result={result} />
     </div>
@@ -280,13 +288,20 @@ function medianOf(h: Record<number, number>, n: number): number {
   return 0;
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
+function Tile({ label, value, moe }: { label: string; value: string; moe?: number }) {
   return (
     <div className="bg-card p-5">
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
+      <div className="mt-1 text-2xl font-semibold text-foreground">
+        {value}
+        {moe != null && (
+          <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">
+            ±{moe < 0.1 ? moe.toFixed(2) : moe.toFixed(1)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -425,9 +440,11 @@ function PlayerTable({ matchup, result }: { matchup: SimMatchup; result: MassRes
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
         <div>
           <h3 className="font-display text-3xl">Player projections</h3>
-          <p className="text-xs text-muted-foreground">
+          <p className="max-w-3xl text-xs text-muted-foreground">
             Each player&apos;s stat across all {result.n.toLocaleString()} games — games he sat
-            count as zero. Percentages are the share of games at or above the line.
+            count as zero — next to his season per-game average (this season blended with last, the
+            numbers the engine starts from). Percentages are the share of games at or above the
+            line. Click a player for his distribution and every stat.
           </p>
         </div>
         <button
@@ -478,7 +495,16 @@ function PlayerTable({ matchup, result }: { matchup: SimMatchup; result: MassRes
           <thead className="text-muted-foreground">
             <tr className="border-b border-border">
               <th className="px-5 py-2 text-left font-normal sm:px-6">Player</th>
-              <th className="px-2 py-2 text-right font-normal">Mean</th>
+              <th
+                className="px-2 py-2 text-right font-normal"
+                title="Simulated average per game, ± its 95% Monte Carlo error"
+              >
+                Sim avg
+              </th>
+              <th className="px-2 py-2 text-right font-normal" title="Season average per game">
+                Season
+              </th>
+              <th className="px-2 py-2 text-right font-normal">vs season</th>
               <th className="px-2 py-2 text-right font-normal">Median</th>
               <th
                 className="px-2 py-2 text-right font-normal"
@@ -516,7 +542,7 @@ function PlayerTable({ matchup, result }: { matchup: SimMatchup; result: MassRes
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={4 + def.lines.length}
+                  colSpan={6 + def.lines.length}
                   className="px-6 py-6 text-center text-muted-foreground"
                 >
                   Nobody matches.
@@ -555,6 +581,8 @@ function PlayerRow({
 }) {
   const bins = open ? toBins(s.hist, n, () => color, 0.001) : [];
   const defs = PROPS[matchup.league];
+  const season = p.avg?.[s.key];
+  const digits = s.mean < 10 ? 2 : 1;
   return (
     <>
       <tr
@@ -574,8 +602,17 @@ function PlayerRow({
             </span>
           </button>
         </td>
-        <td className="px-2 py-1.5 text-right text-foreground">
-          {s.mean.toFixed(s.mean < 10 ? 2 : 1)}
+        <td
+          className="px-2 py-1.5 text-right text-foreground"
+          title={`±${moeMean(s.sd, n).toFixed(digits)} (95% Monte Carlo error)`}
+        >
+          {s.mean.toFixed(digits)}
+        </td>
+        <td className="px-2 py-1.5 text-right text-muted-foreground">
+          {season != null ? season.toFixed(digits) : "—"}
+        </td>
+        <td className="px-2 py-1.5 text-right">
+          <VsSeason sim={s.mean} season={season} digits={digits} />
         </td>
         <td className="px-2 py-1.5 text-right text-foreground/90">{s.median}</td>
         <td className="px-2 py-1.5 text-right text-muted-foreground">
@@ -593,7 +630,7 @@ function PlayerRow({
       </tr>
       {open && (
         <tr className="border-b border-border/40 bg-secondary/20">
-          <td colSpan={4 + lines.length} className="px-5 py-4 sm:px-6">
+          <td colSpan={6 + lines.length} className="px-5 py-4 sm:px-6">
             <div className="grid gap-6 md:grid-cols-[3fr_2fr]">
               <div>
                 <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -610,7 +647,8 @@ function PlayerRow({
                 <thead className="text-muted-foreground">
                   <tr>
                     <th className="py-1 text-left font-normal">Every stat</th>
-                    <th className="px-2 py-1 text-right font-normal">Mean</th>
+                    <th className="px-2 py-1 text-right font-normal">Sim avg</th>
+                    <th className="px-2 py-1 text-right font-normal">Season</th>
                     <th className="px-2 py-1 text-right font-normal">10–90</th>
                   </tr>
                 </thead>
@@ -622,6 +660,9 @@ function PlayerRow({
                       </td>
                       <td className="px-2 py-1 text-right text-foreground">
                         {x.mean.toFixed(x.mean < 10 ? 2 : 1)}
+                      </td>
+                      <td className="px-2 py-1 text-right text-muted-foreground">
+                        {p.avg?.[x.key] != null ? p.avg[x.key].toFixed(x.mean < 10 ? 2 : 1) : "—"}
                       </td>
                       <td className="px-2 py-1 text-right text-muted-foreground">
                         {x.p10}–{x.p90}
@@ -683,4 +724,262 @@ function downloadCsv(m: SimMatchup, r: MassResult) {
   a.download = `${m.league}-${m.away.abbr}-at-${m.home.abbr}-${r.n}-sims.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Simulated minus season, as an arrow and a percentage. Text stays in text
+ *  colours; the arrow carries the direction. */
+function VsSeason({ sim, season, digits }: { sim: number; season?: number; digits: number }) {
+  if (season == null || season <= 0) return <span className="text-muted-foreground">—</span>;
+  const d = sim - season;
+  const rel = d / season;
+  if (Math.abs(rel) < 0.02 || Math.abs(d) < 0.5 * 10 ** -digits)
+    return <span className="text-muted-foreground">≈</span>;
+  return (
+    <span
+      className={Math.abs(rel) >= 0.1 ? "text-foreground" : "text-foreground/80"}
+      title={`${signed(d, digits)} per game`}
+    >
+      {rel > 0 ? "▲" : "▼"} {Math.abs(Math.round(rel * 100))}%
+    </span>
+  );
+}
+
+// ------------------------------------------------------------ movers
+
+/** The headline stats per league, and the season level a player needs for a
+ *  percentage change to mean anything. */
+const MOVER_STATS: Record<SimLeague, { key: string; min: number }[]> = {
+  nfl: [
+    { key: "pyd", min: 120 },
+    { key: "ryd", min: 25 },
+    { key: "reyd", min: 25 },
+    { key: "rec", min: 2 },
+  ],
+  nba: [
+    { key: "pts", min: 8 },
+    { key: "reb", min: 4 },
+    { key: "ast", min: 3 },
+    { key: "3pm", min: 1 },
+  ],
+  nhl: [
+    { key: "sog", min: 1.5 },
+    { key: "pts", min: 0.4 },
+    { key: "sv", min: 15 },
+  ],
+  mlb: [
+    { key: "tb", min: 1.2 },
+    { key: "h", min: 0.7 },
+    { key: "k", min: 3 },
+    { key: "outs", min: 9 },
+  ],
+};
+
+type Move = { p: PlayerSummary; def: PropDef; sim: number; season: number; rel: number };
+
+/**
+ * Who the matchup moves: the biggest gaps between a player's simulated
+ * average and his season average, in both directions.
+ */
+function Movers({ matchup, result }: { matchup: SimMatchup; result: MassResult }) {
+  const moves = useMemo(() => {
+    const defs = PROPS[matchup.league];
+    const out: Move[] = [];
+    for (const { key, min } of MOVER_STATS[matchup.league]) {
+      const def = defs.find((d) => d.key === key);
+      if (!def) continue;
+      for (const p of result.players) {
+        const season = p.avg?.[key];
+        const s = p.props.find((x) => x.key === key);
+        if (!s || season == null || season < min || p.played < 0.5) continue;
+        out.push({ p, def, sim: s.mean, season, rel: s.mean / season - 1 });
+      }
+    }
+    return out;
+  }, [matchup, result]);
+  const up = moves
+    .filter((m) => m.rel >= 0.03)
+    .sort((a, b) => b.rel - a.rel)
+    .slice(0, 6);
+  const down = moves
+    .filter((m) => m.rel <= -0.03)
+    .sort((a, b) => a.rel - b.rel)
+    .slice(0, 6);
+  if (!up.length && !down.length) return null;
+  return (
+    <section className="border border-border bg-card">
+      <div className="border-b border-border px-5 py-4 sm:px-6">
+        <h3 className="font-display text-3xl">Who this matchup moves</h3>
+        <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+          The biggest gaps between a player&apos;s simulated average and his season per-game
+          average. Most of the gap is this game — the defense across from him, the pace, home or
+          road, who else is in the lineup. Some is the season line itself: games he left early, a
+          role that has changed, a small sample the engine pulls toward the league.
+        </p>
+      </div>
+      <div className="grid gap-px bg-border md:grid-cols-2">
+        <MoverList title="Up against this opponent" rows={up} matchup={matchup} />
+        <MoverList title="Down against this opponent" rows={down} matchup={matchup} />
+      </div>
+    </section>
+  );
+}
+
+function MoverList({ title, rows, matchup }: { title: string; rows: Move[]; matchup: SimMatchup }) {
+  return (
+    <div className="bg-card px-5 py-4 sm:px-6">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        {title}
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nobody moves more than 3%.</p>
+      ) : (
+        <table className="w-full font-mono text-[11px] tabular-nums">
+          <tbody>
+            {rows.map((m) => {
+              const digits = m.season < 10 ? 2 : 1;
+              return (
+                <tr
+                  key={`${m.p.side}:${m.p.idx}:${m.def.key}`}
+                  className="border-t border-border/40"
+                >
+                  <td className="py-1.5 pr-2">
+                    <span
+                      className="mr-1.5 inline-block h-2 w-2 rounded-full"
+                      style={{ background: m.p.side === "home" ? HOME_COLOR : AWAY_COLOR }}
+                      aria-hidden
+                    />
+                    <span className="text-foreground">{m.p.name}</span>{" "}
+                    <span className="text-muted-foreground">{matchup[m.p.side].abbr}</span>
+                  </td>
+                  <td className="py-1.5 pr-2 text-muted-foreground">{m.def.label}</td>
+                  <td className="py-1.5 pr-2 text-right text-muted-foreground">
+                    {m.season.toFixed(digits)} →
+                  </td>
+                  <td className="py-1.5 pr-2 text-right text-foreground">
+                    {m.sim.toFixed(digits)}
+                  </td>
+                  <td className="py-1.5 text-right text-foreground">
+                    {m.rel > 0 ? "▲" : "▼"} {Math.abs(Math.round(m.rel * 100))}%
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ average box
+
+/** The box score averaged over every simulated game, one team at a time. */
+function AverageBox({ matchup, result }: { matchup: SimMatchup; result: MassResult }) {
+  const [side, setSide] = useState<"away" | "home">("away");
+  const sections = AVG_BOX[matchup.league];
+  const players = result.players.filter((p) => p.side === side && p.avgBox.length > 0);
+  return (
+    <section className="border border-border bg-card">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
+        <div>
+          <h3 className="font-display text-3xl">Average box score</h3>
+          <p className="max-w-3xl text-xs text-muted-foreground">
+            Every player&apos;s line averaged over all {result.n.toLocaleString()} games, games he
+            sat counted as zero. The team row adds them up.
+          </p>
+        </div>
+        <div className="flex" role="group" aria-label="Team">
+          {(["away", "home"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSide(s)}
+              aria-pressed={side === s}
+              className={`flex items-center gap-1.5 border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
+                side === s
+                  ? "border-primary text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: s === "home" ? HOME_COLOR : AWAY_COLOR }}
+              />
+              {matchup[s].abbr}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-6 overflow-x-auto px-5 py-4 sm:px-6">
+        {sections.map((sec) => {
+          const rows = players
+            .filter((p) => sec.groups.includes(p.group) && sec.show(p.avgBox))
+            .sort((a, b) => sec.sort(b.avgBox) - sec.sort(a.avgBox));
+          if (!rows.length) return null;
+          return (
+            <table key={sec.title} className="w-full font-mono text-xs tabular-nums">
+              <thead className="text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="py-1.5 pr-3 text-left font-normal">
+                    <span className="font-display text-base normal-case tracking-normal text-foreground">
+                      {sec.title}
+                    </span>
+                  </th>
+                  {sec.cols.map((c) => (
+                    <th
+                      key={c.label}
+                      className="px-2 py-1.5 text-right font-normal"
+                      title={c.title}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((p) => (
+                  <tr key={p.idx} className="border-b border-border/40">
+                    <td className="whitespace-nowrap py-1 pr-3 text-left">
+                      <span className="text-foreground">{p.name}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {p.pos}
+                        {p.played < 0.95
+                          ? // A football player "appears" when he records a stat.
+                            ` · ${matchup.league === "nfl" ? "a stat in" : "in"} ${Math.round(p.played * 100)}% of games`
+                          : ""}
+                      </span>
+                    </td>
+                    {sec.cols.map((c) => (
+                      <td key={c.label} className="px-2 py-1 text-right text-foreground">
+                        {fmtAvg(c.get(p.avgBox), c.digits ?? 1, c.signed)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                <tr className="text-muted-foreground">
+                  <td className="py-1 pr-3 text-left uppercase tracking-widest">Team</td>
+                  {sec.cols.map((c) => (
+                    <td key={c.label} className="px-2 py-1 text-right">
+                      {c.noTotal
+                        ? ""
+                        : fmtAvg(
+                            rows.reduce((a, p) => a + c.get(p.avgBox), 0),
+                            c.digits ?? 1,
+                            c.signed,
+                          )}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function fmtAvg(v: number, digits: number, sign?: boolean): string {
+  const t = v.toFixed(digits);
+  if (digits === 3) return t.replace(/^0/, "");
+  return sign && v > 0 ? `+${t}` : t;
 }

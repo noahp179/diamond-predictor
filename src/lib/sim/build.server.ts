@@ -16,10 +16,12 @@
  *    hundreds of attempts. A rookie with no numbers at all simply *is* the
  *    league average, slightly discounted.
  *
- * 3. **Defense from the standings.** Player stats describe offense well and
- *    defense poorly — nobody records "shots a winger prevented". Each team's
- *    points allowed per game, relative to the league, becomes a single defense
- *    factor the engines apply to the opponent, again regressed halfway home.
+ * 3. **Defense from the team's season.** Player stats describe offense well
+ *    and defense poorly — nobody records the yards a cornerback prevented.
+ *    ESPN publishes what every team's opponents did against it, so each
+ *    defense arrives as a set of tendencies (completion percentage allowed,
+ *    yards per carry allowed, opponents' shooting, shots allowed, …) and each
+ *    offense with its pace and play-calling; see tendencies.server.ts.
  */
 
 import {
@@ -29,8 +31,10 @@ import {
   seasonFor,
   seasonLabel,
   standings,
+  teamStats,
   teams as fetchTeams,
   type RosterEntry,
+  type TeamTotals,
   type ScoreboardGame,
   type StatLine,
   type StandingRow,
@@ -57,7 +61,9 @@ import type {
   SimLeague,
   SimMatchup,
   TeamInfo,
+  Tendency,
 } from "./types";
+import { poolTeams, tendencies } from "./tendencies.server";
 
 // ------------------------------------------------------------- blending
 
@@ -76,6 +82,8 @@ type Season = {
   old: Map<string, StatLine>;
   stCur: Map<string, StandingRow>;
   stOld: Map<string, StandingRow>;
+  /** Each team's offensive and defensive tendencies, seasons blended. */
+  tend: Map<string, Record<string, Tendency>>;
   basis: string;
 };
 
@@ -89,11 +97,14 @@ function loadSeason(league: SimLeague, date: string): Promise<Season> {
   if (hit && Date.now() - hit.at < 30 * 60 * 1000) return hit.v;
   const v = (async (): Promise<Season> => {
     const prior = current - 1;
-    const [cur, old, stCur, stOld] = await Promise.all([
+    const none = () => new Map<string, TeamTotals>();
+    const [cur, old, stCur, stOld, tsCur, tsOld] = await Promise.all([
       playerStats(league, current, true).catch(() => new Map<string, StatLine>()),
       playerStats(league, prior, false),
       standings(league, current, true).catch(() => new Map<string, StandingRow>()),
       standings(league, prior, false).catch(() => new Map<string, StandingRow>()),
+      teamStats(league, current, true).catch(none),
+      teamStats(league, prior, false).catch(none),
     ]);
     const gps = [...stCur.values()].map((r) => r.gp);
     const gpNow = gps.length ? gps.reduce((a, b) => a + b, 0) / gps.length : 0;
@@ -107,7 +118,8 @@ function loadSeason(league: SimLeague, date: string): Promise<Season> {
         : w <= 0.2
           ? `${now} stats (${games} a team), with ${then} carried at 20% weight`
           : `${now} stats (${games} a team) blended with ${then} at ${Math.round(w * 100)}% weight`;
-    return { league, current, prior, w, gpNow, cur, old, stCur, stOld, basis };
+    const tend = tendencies(league, poolTeams(league, tsCur, tsOld, w));
+    return { league, current, prior, w, gpNow, cur, old, stCur, stOld, tend, basis };
   })();
   seasonCache.set(key, { at: Date.now(), v });
   v.catch(() => seasonCache.delete(key));
@@ -180,7 +192,11 @@ function availability(e: RosterEntry): Availability {
   return "questionable";
 }
 
-function teamInfo(meta: TeamMeta, rates: { pf: number; pa: number; record: string }): TeamInfo {
+function teamInfo(
+  meta: TeamMeta,
+  rates: { pf: number; pa: number; record: string },
+  se: Season,
+): TeamInfo {
   return {
     id: meta.id,
     abbr: meta.abbr,
@@ -192,7 +208,16 @@ function teamInfo(meta: TeamMeta, rates: { pf: number; pa: number; record: strin
     record: rates.record,
     pf: rates.pf,
     pa: rates.pa,
+    tend: se.tend.get(meta.id) ?? {},
   };
+}
+
+/** Per-game averages, rounded for the wire. */
+function perGame(games: number, totals: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (games < 0.5) return out;
+  for (const [k, val] of Object.entries(totals)) out[k] = Math.round((val / games) * 100) / 100;
+  return out;
 }
 
 function base(e: RosterEntry, sample: number) {
@@ -301,8 +326,21 @@ function nbaPlayer(se: Season, e: RosterEntry, env: ReturnType<typeof nbaEnv>): 
   // who arrive without numbers are, on average, not its better shooters.
   const unknown = M < 1;
   const disc = unknown ? 0.97 : 1;
+  const pts = g(s, "offensive.points");
+  const ast = g(s, "offensive.assists");
   return {
     ...base(e, G),
+    avg: perGame(G, {
+      pts,
+      reb,
+      ast,
+      pra: pts + reb + ast,
+      "3pm": tpm,
+      stl: g(s, "defensive.steals"),
+      blk: g(s, "defensive.blocks"),
+      tov: g(s, "offensive.turnovers"),
+      min: M,
+    }),
     mpg: unknown ? 8 : M / Math.max(1, G),
     fg2a: r(fga - tpa, env.fg2a),
     fg3a: r(tpa, env.fg3a),
@@ -393,8 +431,18 @@ function nhlSkater(se: Season, e: RosterEntry, lg: ReturnType<typeof nhlEnv>): N
   const fow = g(s, "offensive.faceoffsWon");
   const fol = g(s, "offensive.faceoffsLost");
   const unknown = toi < 60;
+  const goals = g(s, "offensive.goals");
+  const assists = g(s, "offensive.assists");
   return {
     ...base(e, G),
+    avg: perGame(G, {
+      g: goals,
+      a: assists,
+      pts: goals + assists,
+      sog,
+      ppp: g(s, "offensive.powerPlayGoals") + g(s, "offensive.powerPlayAssists"),
+      toi: toi / 60,
+    }),
     kind: d ? "D" : "F",
     toi: unknown ? (d ? 960 : 660) : toi / Math.max(1, G),
     sog60: r60(sog, P.sog60 * (unknown ? 0.9 : 1)),
@@ -410,8 +458,10 @@ function nhlSkater(se: Season, e: RosterEntry, lg: ReturnType<typeof nhlEnv>): N
 function nhlGoalie(se: Season, e: RosterEntry, env: NhlEnv): NhlGoalie {
   const s = pooled(se, e.id);
   const starts = g(s, "general.wins") + g(s, "general.losses") + g(s, "defensive.overtimeLosses");
+  const gp = g(s, "general.games");
   return {
-    ...base(e, g(s, "general.games")),
+    ...base(e, gp),
+    avg: perGame(gp, { sv: g(s, "defensive.saves"), ga: g(s, "defensive.goalsAgainst") }),
     kind: "G",
     // Save percentage needs the better part of a thousand shots before it
     // says much about the goalie rather than the season he had.
@@ -550,9 +600,31 @@ function mlbBatter(se: Season, e: RosterEntry, lg: ReturnType<typeof mlbEnv>): M
   };
   const obp = rates.bb + rates.b1 + rates.b2 + rates.b3 + rates.hr;
   const slg = (rates.b1 + 2 * rates.b2 + 3 * rates.b3 + 4 * rates.hr) / Math.max(0.5, 1 - rates.bb);
+  const gp = g(s, "batting.gamesPlayed");
+  const tb = b.b1 + 2 * b.b2 + 3 * b.b3 + 4 * b.hr;
+  const runs = g(s, "batting.runs");
+  const rbi = g(s, "batting.RBIs");
+  // His season per game *started*. Games played include pinch-hit and
+  // defensive-replacement appearances of one plate appearance, which drag a
+  // part-timer's per-game line below what he does in a start — and the
+  // simulation only ever starts him. Lines are scaled up to a start's worth
+  // of plate appearances (never down, and by at most 60%).
+  const starts = gp / Math.min(1.6, Math.max(1, START_PA / Math.max(0.5, b.pa / Math.max(1, gp))));
   return {
-    ...base(e, g(s, "batting.gamesPlayed")),
+    ...base(e, gp),
+    avg: perGame(starts, {
+      h: b.h,
+      tb,
+      hr: b.hr,
+      r: runs,
+      rbi,
+      hrr: b.h + runs + rbi,
+      bb: g(s, "batting.walks"),
+      so: b.so,
+      sb: b.sb,
+    }),
     kind: "B",
+    bats: e.bats === "L" ? "L" : e.bats === "B" || e.bats === "S" ? "S" : "R",
     pa: b.pa,
     rates,
     sbAttempt: reg(b.sb / 0.77 / 1.3, b.b1 + b.bb, lg.sbAttempt, 40),
@@ -560,6 +632,9 @@ function mlbBatter(se: Season, e: RosterEntry, lg: ReturnType<typeof mlbEnv>): M
     ops: obp + slg,
   };
 }
+
+/** Plate appearances in a typical start, averaged over the lineup. */
+const START_PA = 4.1;
 
 function mlbPitcher(se: Season, e: RosterEntry, lg: ReturnType<typeof mlbEnv>): MlbPitcher {
   const s = pooled(se, e.id);
@@ -574,7 +649,16 @@ function mlbPitcher(se: Season, e: RosterEntry, lg: ReturnType<typeof mlbEnv>): 
   const perStart = starter ? p.bf / Math.max(1, p.gp) : 6;
   return {
     ...base(e, p.gp),
+    avg: perGame(p.gp, {
+      k: p.so,
+      outs: p.ip * 3,
+      ha: p.h,
+      er: p.er,
+      pbb: g(s, "pitching.walks"),
+      win: g(s, "pitching.wins"),
+    }),
     kind: "P",
+    throws: e.throws === "L" ? "L" : "R",
     bf: p.bf,
     rates: {
       bb: reg(p.bb, p.bf, L.bb, 200),
@@ -782,8 +866,28 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
   const floor = DEF_FLOOR[e.pos] ?? { tkl: 0.3, sk: 0, int: 0 };
   const unit: NflPlayer["unit"] =
     e.group === "defense" || floor.tkl > 1 ? "def" : e.group === "specialTeam" ? "st" : "off";
+  const ryd = g(s, "rushing.rushingYards");
+  const reyd = g(s, "receiving.receivingYards");
+  const fgMade = g(s, "kicking.fieldGoalsMade");
   return {
     ...base(e, G),
+    avg: perGame(G, {
+      pyd: g(s, "passing.passingYards"),
+      ptd: g(s, "passing.passingTouchdowns"),
+      cmp,
+      int: g(s, "passing.interceptions"),
+      ryd,
+      car,
+      rec: recs,
+      reyd,
+      rry: ryd + reyd,
+      td: g(s, "rushing.rushingTouchdowns") + g(s, "receiving.receivingTouchdowns"),
+      fgm: fgMade,
+      kpts: 3 * fgMade + g(s, "kicking.extraPointsMade"),
+      dsk: g(s, "defensive.sacks"),
+      tkl: g(s, "defensive.totalTackles"),
+      dint: g(s, "defensiveinterceptions.interceptions"),
+    }),
     unit,
     passAtt: att / per,
     cmpPct: reg(cmp, att, E.cmpPct - 0.03, 180),
@@ -860,7 +964,7 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
   if (league === "nba") {
     const env = nbaEnv(se);
     const mk = (meta: TeamMeta, ros: RosterEntry[]): NbaTeam => ({
-      ...teamInfo(meta, teamRates(se, meta.id, env.ppg)),
+      ...teamInfo(meta, teamRates(se, meta.id, env.ppg), se),
       players: ros.map((e) => nbaPlayer(se, e, env)).sort((a, b) => b.mpg - a.mpg),
     });
     const { ppg, pace, fg2p, fg3p, ftp, stl, blk, ast, pf } = env;
@@ -887,19 +991,23 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
       const teamSv = starts
         ? pool.reduce((a, x) => a + x.svPct * Math.max(1, x.starts), 0) / starts
         : lg.env.svPct;
-      // Goals allowed = shots allowed × (1 − save%). Dividing the goalies out
-      // of the goals leaves the skaters' share: how many shots get through.
-      const shotsAllowed = rates.pa / Math.max(0.03, 1 - teamSv);
-      const raw = shotsAllowed / Math.max(1, lg.env.sogPerGame);
+      // How many shots this team lets through, relative to the league: from
+      // its shots-against when the team feed has them, otherwise backed out of
+      // goals allowed (goals = shots × (1 − save%)).
+      const info = teamInfo(meta, rates, se);
+      const sa = info.tend.shotsAgainst;
+      const raw = sa
+        ? sa.value / Math.max(1, sa.league)
+        : rates.pa / Math.max(0.03, 1 - teamSv) / Math.max(1, lg.env.sogPerGame);
       return {
-        ...teamInfo(meta, rates),
+        ...info,
         skaters: ros
           .filter((e) => e.pos !== "G")
           .map((e) => nhlSkater(se, e, lg))
           .sort((a, b) => b.toi - a.toi),
         goalies,
         probable,
-        shotSuppression: clamp(1 + 0.65 * (raw - 1), 0.85, 1.15),
+        shotSuppression: clamp(raw, 0.85, 1.15),
       };
     };
     return {
@@ -927,7 +1035,7 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
       batters.sort((a, b) => b.pa - a.pa);
       pitchers.sort((a, b) => b.starts - a.starts || b.ip - a.ip);
       return {
-        ...teamInfo(meta, teamRates(se, meta.id, lg.env.rpg)),
+        ...teamInfo(meta, teamRates(se, meta.id, lg.env.rpg), se),
         batters,
         pitchers,
         probable,
@@ -955,10 +1063,16 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
       cr += p.carries * Math.max(1, p.sample);
     }
     const share = tg + cr > 0 ? tg / (tg + cr) : lg.share;
+    const info = teamInfo(meta, teamRates(se, meta.id, lg.env.ppg), se);
+    // The team's own dropback rate when the team feed has it; otherwise the
+    // roster's targets against its carries, mapped onto the league's rate.
+    const pr = info.tend.passRate;
     return {
-      ...teamInfo(meta, teamRates(se, meta.id, lg.env.ppg)),
+      ...info,
       players,
-      passRate: clamp(0.585 + 0.8 * (share - lg.share), 0.48, 0.68),
+      passRate: pr
+        ? clamp(pr.value, 0.45, 0.7)
+        : clamp(0.585 + 0.8 * (share - lg.share), 0.48, 0.68),
     };
   };
   return {

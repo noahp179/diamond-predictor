@@ -66,8 +66,15 @@ export const SPORT_NAME: Record<SimLeague, string> = {
   mlb: "baseball",
 };
 
-/** Sensible batch sizes per sport — cheap sports can afford more. */
-export const BATCH_SIZES = [100, 1000, 5000, 10000];
+/** One-click batch sizes; any other number can be typed in. */
+export const BATCH_SIZES = [10, 100, 1000, 5000, 10000, 50000, 100000];
+/** The most games one batch may play — a few minutes for the slowest sport. */
+export const MAX_BATCH = 250000;
+
+/** Half-width of a 95% interval for a proportion from n games. */
+export const moeP = (p: number, n: number) => 1.96 * Math.sqrt((p * (1 - p)) / Math.max(1, n));
+/** Half-width of a 95% interval for a mean, given the per-game SD. */
+export const moeMean = (sd: number, n: number) => (1.96 * sd) / Math.sqrt(Math.max(1, n));
 
 /** Logos come from ESPN's CDN; if one fails, leave a gap rather than a
  *  broken-image icon. */

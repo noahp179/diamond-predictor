@@ -34,13 +34,16 @@ means adding a line there as well as a file here.
 /soccer/<league>         a competition's fixtures /soccer/seriea
 /soccer/<league>/<view>  a view within it         /soccer/seriea/props
 /teams                   cross-sport, outside the grammar
-/sim                     the game simulator's overview
-/sim/<league>            simulate a game: /sim/nfl, /sim/nba, /sim/nhl, /sim/mlb
+/<sport>/simulate        the game simulator        /nfl/simulate, /nhl/simulate
+/sim                     the simulator's overview and calibration table
 ```
 
-The simulator sits outside the sport grammar because it covers a league the
-prediction pages don't (the NHL) and its pages are not views of a model. Its
-own league band lives in `src/components/sim/SimShell.tsx`; see SIMULATOR.md.
+The simulator is a view in each sport it covers — NFL, NBA, MLB and NHL — so
+it sits in the grammar like any other page. Hockey has no picks model yet, so
+`/nhl` is a section with one view and its index redirects to `/nhl/simulate`.
+The four `<sport>.simulate.tsx` routes are thin: the page is
+`src/components/sim/SimulatePage.tsx`. The old `/sim/<league>` addresses
+redirect to the new ones, keeping their date and game. See SIMULATOR.md.
 
 Soccer carries the league in the **path**, not a query string, because each
 league is a separate model with a separate calibration and backtest. Crossing

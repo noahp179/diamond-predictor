@@ -286,6 +286,68 @@ export function standings(
   });
 }
 
+// ---------------------------------------------------------- team stats
+
+/**
+ * A team's season totals, and — where ESPN publishes them — the same totals
+ * for its opponents: what offenses did *against* this team. That second half
+ * is the defense: completion percentage allowed, yards per carry allowed,
+ * opponents' three-point percentage, and so on.
+ *
+ * ESPN lists each category twice in the football and basketball feeds, the
+ * team's own figures first and its opponents' second. Hockey and baseball
+ * list each once, with the defensive figures in their own categories.
+ */
+export type TeamTotals = { own: Record<string, number>; opp: Record<string, number> };
+
+type ByTeamResponse = {
+  categories?: { name: string; names: string[] }[];
+  teams?: {
+    team: { id: string };
+    categories: { name: string; totals?: string[]; values?: (number | string)[] }[];
+  }[];
+};
+
+export function teamStats(
+  league: SimLeague,
+  season: number,
+  current: boolean,
+): Promise<Map<string, TeamTotals>> {
+  return cached(`teamstats:${league}:${season}`, current ? 3 * HOUR : 24 * HOUR, async () => {
+    const json = await getJson<ByTeamResponse>(
+      `${WEB}/${ESPN_PATH[league]}/statistics/byteam?region=us&lang=en&contentorigin=espn` +
+        `&limit=50&season=${season}&seasontype=2`,
+    );
+    // The basketball feed lists each category twice, the second time without
+    // its names; keep the first.
+    const names = new Map<string, string[]>();
+    for (const c of json.categories ?? [])
+      if (c.names && !names.has(c.name)) names.set(c.name, c.names);
+    const out = new Map<string, TeamTotals>();
+    for (const t of json.teams ?? []) {
+      const own: Record<string, number> = {};
+      const opp: Record<string, number> = {};
+      const seen = new Set<string>();
+      for (const cat of t.categories) {
+        const keys = names.get(cat.name);
+        const vals = cat.totals ?? cat.values;
+        if (!keys || !vals) continue;
+        const into = seen.has(cat.name) ? opp : own;
+        seen.add(cat.name);
+        for (let i = 0; i < keys.length; i++) {
+          const v = num(vals[i]);
+          // Some categories repeat a name (NFL rushing lists rushingYards
+          // twice); the first, the total, wins.
+          const k = `${cat.name}.${keys[i]}`;
+          if (Number.isFinite(v) && !(k in into)) into[k] = v;
+        }
+      }
+      out.set(t.team.id, { own, opp });
+    }
+    return out;
+  });
+}
+
 // --------------------------------------------------------------- teams
 
 export type TeamMeta = {
@@ -349,6 +411,9 @@ export type RosterEntry = {
   injury: string | null;
   /** NFL roster group: offense, defense, specialTeam, injuredReserveOrOut… */
   group: string | null;
+  /** Baseball only: "L", "R", or "B" (switch) / "L", "R". */
+  bats?: string;
+  throws?: string;
 };
 
 type RosterAthlete = {
@@ -358,6 +423,8 @@ type RosterAthlete = {
   jersey?: string;
   position?: { abbreviation?: string };
   injuries?: { status?: string }[];
+  bats?: { abbreviation?: string };
+  throws?: { abbreviation?: string };
 };
 
 export function roster(league: SimLeague, teamId: string): Promise<RosterEntry[]> {
@@ -374,6 +441,8 @@ export function roster(league: SimLeague, teamId: string): Promise<RosterEntry[]
         jersey: a.jersey ?? "",
         injury: a.injuries?.[0]?.status ?? null,
         group,
+        bats: a.bats?.abbreviation,
+        throws: a.throws?.abbreviation,
       });
     for (const item of json.athletes ?? []) {
       if ("items" in item) for (const a of item.items) push(a, item.position ?? null);

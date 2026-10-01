@@ -165,16 +165,6 @@ function TopBar({ sport, section }: { sport?: SportKey; section?: "sim" | "teams
         ))}
         <span className="mx-1 hidden h-5 w-px bg-border sm:inline-block" aria-hidden />
         <Link
-          to="/sim"
-          className={`border px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-            section === "sim"
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border bg-secondary text-foreground hover:border-primary"
-          }`}
-        >
-          Simulator
-        </Link>
-        <Link
           to="/teams"
           className={`border px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
             section === "teams"

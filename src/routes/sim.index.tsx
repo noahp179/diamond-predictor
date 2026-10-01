@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { LEAGUE_LABEL } from "@/components/sim/format";
-import { SimShell } from "@/components/sim/SimShell";
+import { SIM_HOME, SimShell } from "@/components/sim/SimShell";
 import { todayET } from "@/lib/date";
 import { SIM_LEAGUES, type SimLeague } from "@/lib/sim/types";
 
@@ -65,31 +65,31 @@ const CALIBRATION: {
     unit: "points / team",
     real: "23.0",
     sim: "23.0",
-    home: "55.4%",
-    spread: "13.0 (real ≈ 13.5)",
+    home: "55.6%",
+    spread: "13.1 (real ≈ 13.5)",
   },
   {
     league: "nba",
     unit: "points / team",
     real: "115.0",
-    sim: "114.6",
-    home: "55.2%",
-    spread: "13.3 (real ≈ 13)",
+    sim: "114.7",
+    home: "55.6%",
+    spread: "13.4 (real ≈ 13)",
   },
   {
     league: "nhl",
     unit: "goals / team",
     real: "3.13",
     sim: "3.12",
-    home: "54.2%",
-    spread: "2.5 (real ≈ 2.5)",
+    home: "54.1%",
+    spread: "2.3 (real ≈ 2.4)",
   },
   {
     league: "mlb",
     unit: "runs / team",
     real: "4.48",
     sim: "4.48",
-    home: "52.2%",
+    home: "52.3%",
     spread: "4.1 (real ≈ 4.3)",
   },
 ];
@@ -98,16 +98,14 @@ function SimHub() {
   const date = todayET();
   return (
     <SimShell
-      date={undefined}
       title="Game Simulator"
-      blurb="Every game here is played out one play at a time from the players' real season statistics — who shoots, who gets the carry, who's on the ice, who's on the mound. Watch a single game unfold like a broadcast, or play it ten thousand times and read the results the way a model would."
+      blurb="Every game here is played out one play at a time from the players' real season statistics and each team's tendencies on both sides of the ball — who shoots, who gets the carry, who's on the ice, who's on the mound, and what the defense across from them allows. Each sport's simulator lives in its own section; pick one below."
     >
       <div className="grid gap-4 md:grid-cols-2">
         {SIM_LEAGUES.map((l) => (
           <Link
             key={l}
-            to="/sim/$league"
-            params={{ league: l }}
+            to={SIM_HOME[l]}
             search={{ date }}
             className="group border border-border bg-card p-5 transition-colors hover:border-primary/60"
           >
@@ -137,12 +135,12 @@ function SimHub() {
             d: "Today's slate with the posted line and probable starters, or any two teams you like. Rosters and injury reports load live; sit or start anyone.",
           },
           {
-            t: "2 · Watch one",
-            d: "A full game, play by play, with a live scoreboard, line score and box score you can scrub through. Every game has a seed — replay it exactly.",
+            t: "2 · Run it as often as you like",
+            d: "Ten games or a hundred thousand. Every run is fresh randomness, so the numbers move a little each time — by less the more games you play, and the page says by how much.",
           },
           {
-            t: "3 · Or run thousands",
-            d: "Win probability, the spread of margins and totals against the market, the most likely scores, and every player's stat distribution — exportable as CSV.",
+            t: "3 · Read the matchup",
+            d: "Win probability, the average box score, every player's projected line next to his season average, and the defensive and offensive tendencies that moved it. Or watch a single game play by play.",
           },
         ].map((x) => (
           <div key={x.t} className="bg-card p-5 sm:p-6">
@@ -193,11 +191,14 @@ function SimHub() {
         </div>
         <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-6">
           Against the market: on the NFL&apos;s October 4, 2026 slate the simulated average margins
-          correlated 0.81 with the posted spreads; on the NHL&apos;s October 1 card the simulated
-          win probabilities correlated 0.91 with the no-vig moneylines, if a little more cautious.
-          Reproducing league averages is the floor, not proof of accuracy on any particular game.
-          The engines know season statistics and today&apos;s injury report — not tape, not weather,
-          not who&apos;s on a minutes limit. Treat a disagreement with the market as a question.
+          correlated 0.90 with the posted spreads (0.81 before each defense&apos;s pass and run
+          splits went in); on the NHL&apos;s October 1 card the simulated win probabilities
+          correlated 0.90 with the no-vig moneylines, if a little more cautious. Players come out
+          close to their own seasons — within a few percent for most stats, tier by tier — before
+          the matchup moves them. Reproducing league averages is the floor, not proof of accuracy on
+          any particular game. The engines know season statistics, team splits and today&apos;s
+          injury report — not tape, not weather, not who&apos;s on a minutes limit. Treat a
+          disagreement with the market as a question.
         </p>
       </section>
     </SimShell>

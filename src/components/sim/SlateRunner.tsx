@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 
 import type { MassResult } from "@/lib/sim/aggregate";
-import { newSeed } from "@/lib/sim/core";
 import type { SlateEntry } from "@/lib/sim/build.server";
 import type { SimLeague, SimMatchup } from "@/lib/sim/types";
 
@@ -55,7 +54,7 @@ export function SlateRunner({
       setRows((r) => ({ ...r, [g.id]: { state: "running", done: 0, n } }));
       try {
         const m = await loadMatchup(g);
-        const h = worker.batch(m, { benched: [], activated: [] }, n, newSeed(), (done, total) =>
+        const h = worker.batch(m, { benched: [], activated: [] }, n, (done, total) =>
           setRows((r) => ({ ...r, [g.id]: { state: "running", done, n: total } })),
         );
         current.current = h.id;

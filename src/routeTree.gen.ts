@@ -18,6 +18,7 @@ import { Route as MlbRouteImport } from './routes/mlb'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as NbaRouteImport } from './routes/nba'
 import { Route as NflRouteImport } from './routes/nfl'
+import { Route as NhlRouteImport } from './routes/nhl'
 import { Route as PropsRouteImport } from './routes/props'
 import { Route as SimRouteImport } from './routes/sim'
 import { Route as SoccerRouteImport } from './routes/soccer'
@@ -34,20 +35,25 @@ import { Route as MlbBestOddsRouteImport } from './routes/mlb.best-odds'
 import { Route as MlbParlaysRouteImport } from './routes/mlb.parlays'
 import { Route as MlbPropsRouteImport } from './routes/mlb.props'
 import { Route as MlbRecommendedRouteImport } from './routes/mlb.recommended'
+import { Route as MlbSimulateRouteImport } from './routes/mlb.simulate'
 import { Route as MlbStacksRouteImport } from './routes/mlb.stacks'
 import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
 import { Route as MlbTwoBasesRouteImport } from './routes/mlb.two-bases'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
 import { Route as NbaBestOddsRouteImport } from './routes/nba.best-odds'
 import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
+import { Route as NbaSimulateRouteImport } from './routes/nba.simulate'
 import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
 import { Route as NflIndexRouteImport } from './routes/nfl.index'
 import { Route as NflBestOddsRouteImport } from './routes/nfl.best-odds'
 import { Route as NflParlaysRouteImport } from './routes/nfl.parlays'
 import { Route as NflPropsRouteImport } from './routes/nfl.props'
 import { Route as NflRecommendedRouteImport } from './routes/nfl.recommended'
+import { Route as NflSimulateRouteImport } from './routes/nfl.simulate'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
+import { Route as NhlIndexRouteImport } from './routes/nhl.index'
+import { Route as NhlSimulateRouteImport } from './routes/nhl.simulate'
 import { Route as SimIndexRouteImport } from './routes/sim.index'
 import { Route as SimLeagueRouteImport } from './routes/sim.$league'
 import { Route as SoccerIndexRouteImport } from './routes/soccer.index'
@@ -107,6 +113,11 @@ const NbaRoute = NbaRouteImport.update({
 const NflRoute = NflRouteImport.update({
   id: '/nfl',
   path: '/nfl',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NhlRoute = NhlRouteImport.update({
+  id: '/nhl',
+  path: '/nhl',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PropsRoute = PropsRouteImport.update({
@@ -189,6 +200,11 @@ const MlbRecommendedRoute = MlbRecommendedRouteImport.update({
   path: '/recommended',
   getParentRoute: () => MlbRoute,
 } as any)
+const MlbSimulateRoute = MlbSimulateRouteImport.update({
+  id: '/simulate',
+  path: '/simulate',
+  getParentRoute: () => MlbRoute,
+} as any)
 const MlbStacksRoute = MlbStacksRouteImport.update({
   id: '/stacks',
   path: '/stacks',
@@ -217,6 +233,11 @@ const NbaBestOddsRoute = NbaBestOddsRouteImport.update({
 const NbaRecommendedRoute = NbaRecommendedRouteImport.update({
   id: '/recommended',
   path: '/recommended',
+  getParentRoute: () => NbaRoute,
+} as any)
+const NbaSimulateRoute = NbaSimulateRouteImport.update({
+  id: '/simulate',
+  path: '/simulate',
   getParentRoute: () => NbaRoute,
 } as any)
 const NbaTrackRecordRoute = NbaTrackRecordRouteImport.update({
@@ -249,6 +270,11 @@ const NflRecommendedRoute = NflRecommendedRouteImport.update({
   path: '/recommended',
   getParentRoute: () => NflRoute,
 } as any)
+const NflSimulateRoute = NflSimulateRouteImport.update({
+  id: '/simulate',
+  path: '/simulate',
+  getParentRoute: () => NflRoute,
+} as any)
 const NflTdScorersRoute = NflTdScorersRouteImport.update({
   id: '/td-scorers',
   path: '/td-scorers',
@@ -258,6 +284,16 @@ const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
   id: '/track-record',
   path: '/track-record',
   getParentRoute: () => NflRoute,
+} as any)
+const NhlIndexRoute = NhlIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => NhlRoute,
+} as any)
+const NhlSimulateRoute = NhlSimulateRouteImport.update({
+  id: '/simulate',
+  path: '/simulate',
+  getParentRoute: () => NhlRoute,
 } as any)
 const SimIndexRoute = SimIndexRouteImport.update({
   id: '/',
@@ -347,6 +383,7 @@ export interface FileRoutesByFullPath {
   '/model': typeof ModelRoute
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
+  '/nhl': typeof NhlRouteWithChildren
   '/props': typeof PropsRoute
   '/sim': typeof SimRouteWithChildren
   '/soccer': typeof SoccerRouteWithChildren
@@ -361,18 +398,22 @@ export interface FileRoutesByFullPath {
   '/mlb/parlays': typeof MlbParlaysRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
+  '/mlb/simulate': typeof MlbSimulateRoute
   '/mlb/stacks': typeof MlbStacksRoute
   '/mlb/track-record': typeof MlbTrackRecordRoute
   '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
+  '/nba/simulate': typeof NbaSimulateRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
   '/nfl/best-odds': typeof NflBestOddsRoute
   '/nfl/parlays': typeof NflParlaysRoute
   '/nfl/props': typeof NflPropsRoute
   '/nfl/recommended': typeof NflRecommendedRoute
+  '/nfl/simulate': typeof NflSimulateRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/nhl/simulate': typeof NhlSimulateRoute
   '/sim/$league': typeof SimLeagueRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/tennis/$tour': typeof TennisTourRouteWithChildren
@@ -380,6 +421,7 @@ export interface FileRoutesByFullPath {
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
+  '/nhl/': typeof NhlIndexRoute
   '/sim/': typeof SimIndexRoute
   '/soccer/': typeof SoccerIndexRoute
   '/tennis/': typeof TennisIndexRoute
@@ -410,23 +452,28 @@ export interface FileRoutesByTo {
   '/mlb/parlays': typeof MlbParlaysRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
+  '/mlb/simulate': typeof MlbSimulateRoute
   '/mlb/stacks': typeof MlbStacksRoute
   '/mlb/track-record': typeof MlbTrackRecordRoute
   '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
+  '/nba/simulate': typeof NbaSimulateRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
   '/nfl/best-odds': typeof NflBestOddsRoute
   '/nfl/parlays': typeof NflParlaysRoute
   '/nfl/props': typeof NflPropsRoute
   '/nfl/recommended': typeof NflRecommendedRoute
+  '/nfl/simulate': typeof NflSimulateRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/nhl/simulate': typeof NhlSimulateRoute
   '/sim/$league': typeof SimLeagueRoute
   '/cfb': typeof CfbIndexRoute
   '/mlb': typeof MlbIndexRoute
   '/nba': typeof NbaIndexRoute
   '/nfl': typeof NflIndexRoute
+  '/nhl': typeof NhlIndexRoute
   '/sim': typeof SimIndexRoute
   '/soccer': typeof SoccerIndexRoute
   '/tennis': typeof TennisIndexRoute
@@ -451,6 +498,7 @@ export interface FileRoutesById {
   '/model': typeof ModelRoute
   '/nba': typeof NbaRouteWithChildren
   '/nfl': typeof NflRouteWithChildren
+  '/nhl': typeof NhlRouteWithChildren
   '/props': typeof PropsRoute
   '/sim': typeof SimRouteWithChildren
   '/soccer': typeof SoccerRouteWithChildren
@@ -465,18 +513,22 @@ export interface FileRoutesById {
   '/mlb/parlays': typeof MlbParlaysRoute
   '/mlb/props': typeof MlbPropsRoute
   '/mlb/recommended': typeof MlbRecommendedRoute
+  '/mlb/simulate': typeof MlbSimulateRoute
   '/mlb/stacks': typeof MlbStacksRoute
   '/mlb/track-record': typeof MlbTrackRecordRoute
   '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
+  '/nba/simulate': typeof NbaSimulateRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
   '/nfl/best-odds': typeof NflBestOddsRoute
   '/nfl/parlays': typeof NflParlaysRoute
   '/nfl/props': typeof NflPropsRoute
   '/nfl/recommended': typeof NflRecommendedRoute
+  '/nfl/simulate': typeof NflSimulateRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/nhl/simulate': typeof NhlSimulateRoute
   '/sim/$league': typeof SimLeagueRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
   '/tennis/$tour': typeof TennisTourRouteWithChildren
@@ -484,6 +536,7 @@ export interface FileRoutesById {
   '/mlb/': typeof MlbIndexRoute
   '/nba/': typeof NbaIndexRoute
   '/nfl/': typeof NflIndexRoute
+  '/nhl/': typeof NhlIndexRoute
   '/sim/': typeof SimIndexRoute
   '/soccer/': typeof SoccerIndexRoute
   '/tennis/': typeof TennisIndexRoute
@@ -509,6 +562,7 @@ export interface FileRouteTypes {
     | '/model'
     | '/nba'
     | '/nfl'
+    | '/nhl'
     | '/props'
     | '/sim'
     | '/soccer'
@@ -523,18 +577,22 @@ export interface FileRouteTypes {
     | '/mlb/parlays'
     | '/mlb/props'
     | '/mlb/recommended'
+    | '/mlb/simulate'
     | '/mlb/stacks'
     | '/mlb/track-record'
     | '/mlb/two-bases'
     | '/nba/best-odds'
     | '/nba/recommended'
+    | '/nba/simulate'
     | '/nba/track-record'
     | '/nfl/best-odds'
     | '/nfl/parlays'
     | '/nfl/props'
     | '/nfl/recommended'
+    | '/nfl/simulate'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/nhl/simulate'
     | '/sim/$league'
     | '/soccer/$league'
     | '/tennis/$tour'
@@ -542,6 +600,7 @@ export interface FileRouteTypes {
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
+    | '/nhl/'
     | '/sim/'
     | '/soccer/'
     | '/tennis/'
@@ -572,23 +631,28 @@ export interface FileRouteTypes {
     | '/mlb/parlays'
     | '/mlb/props'
     | '/mlb/recommended'
+    | '/mlb/simulate'
     | '/mlb/stacks'
     | '/mlb/track-record'
     | '/mlb/two-bases'
     | '/nba/best-odds'
     | '/nba/recommended'
+    | '/nba/simulate'
     | '/nba/track-record'
     | '/nfl/best-odds'
     | '/nfl/parlays'
     | '/nfl/props'
     | '/nfl/recommended'
+    | '/nfl/simulate'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/nhl/simulate'
     | '/sim/$league'
     | '/cfb'
     | '/mlb'
     | '/nba'
     | '/nfl'
+    | '/nhl'
     | '/sim'
     | '/soccer'
     | '/tennis'
@@ -612,6 +676,7 @@ export interface FileRouteTypes {
     | '/model'
     | '/nba'
     | '/nfl'
+    | '/nhl'
     | '/props'
     | '/sim'
     | '/soccer'
@@ -626,18 +691,22 @@ export interface FileRouteTypes {
     | '/mlb/parlays'
     | '/mlb/props'
     | '/mlb/recommended'
+    | '/mlb/simulate'
     | '/mlb/stacks'
     | '/mlb/track-record'
     | '/mlb/two-bases'
     | '/nba/best-odds'
     | '/nba/recommended'
+    | '/nba/simulate'
     | '/nba/track-record'
     | '/nfl/best-odds'
     | '/nfl/parlays'
     | '/nfl/props'
     | '/nfl/recommended'
+    | '/nfl/simulate'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/nhl/simulate'
     | '/sim/$league'
     | '/soccer/$league'
     | '/tennis/$tour'
@@ -645,6 +714,7 @@ export interface FileRouteTypes {
     | '/mlb/'
     | '/nba/'
     | '/nfl/'
+    | '/nhl/'
     | '/sim/'
     | '/soccer/'
     | '/tennis/'
@@ -669,6 +739,7 @@ export interface RootRouteChildren {
   ModelRoute: typeof ModelRoute
   NbaRoute: typeof NbaRouteWithChildren
   NflRoute: typeof NflRouteWithChildren
+  NhlRoute: typeof NhlRouteWithChildren
   PropsRoute: typeof PropsRoute
   SimRoute: typeof SimRouteWithChildren
   SoccerRoute: typeof SoccerRouteWithChildren
@@ -741,6 +812,13 @@ declare module '@tanstack/react-router' {
       path: '/nfl'
       fullPath: '/nfl'
       preLoaderRoute: typeof NflRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nhl': {
+      id: '/nhl'
+      path: '/nhl'
+      fullPath: '/nhl'
+      preLoaderRoute: typeof NhlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/props': {
@@ -855,6 +933,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MlbRecommendedRouteImport
       parentRoute: typeof MlbRoute
     }
+    '/mlb/simulate': {
+      id: '/mlb/simulate'
+      path: '/simulate'
+      fullPath: '/mlb/simulate'
+      preLoaderRoute: typeof MlbSimulateRouteImport
+      parentRoute: typeof MlbRoute
+    }
     '/mlb/stacks': {
       id: '/mlb/stacks'
       path: '/stacks'
@@ -895,6 +980,13 @@ declare module '@tanstack/react-router' {
       path: '/recommended'
       fullPath: '/nba/recommended'
       preLoaderRoute: typeof NbaRecommendedRouteImport
+      parentRoute: typeof NbaRoute
+    }
+    '/nba/simulate': {
+      id: '/nba/simulate'
+      path: '/simulate'
+      fullPath: '/nba/simulate'
+      preLoaderRoute: typeof NbaSimulateRouteImport
       parentRoute: typeof NbaRoute
     }
     '/nba/track-record': {
@@ -939,6 +1031,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NflRecommendedRouteImport
       parentRoute: typeof NflRoute
     }
+    '/nfl/simulate': {
+      id: '/nfl/simulate'
+      path: '/simulate'
+      fullPath: '/nfl/simulate'
+      preLoaderRoute: typeof NflSimulateRouteImport
+      parentRoute: typeof NflRoute
+    }
     '/nfl/td-scorers': {
       id: '/nfl/td-scorers'
       path: '/td-scorers'
@@ -952,6 +1051,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/nfl/track-record'
       preLoaderRoute: typeof NflTrackRecordRouteImport
       parentRoute: typeof NflRoute
+    }
+    '/nhl/': {
+      id: '/nhl/'
+      path: '/'
+      fullPath: '/nhl/'
+      preLoaderRoute: typeof NhlIndexRouteImport
+      parentRoute: typeof NhlRoute
+    }
+    '/nhl/simulate': {
+      id: '/nhl/simulate'
+      path: '/simulate'
+      fullPath: '/nhl/simulate'
+      preLoaderRoute: typeof NhlSimulateRouteImport
+      parentRoute: typeof NhlRoute
     }
     '/sim/': {
       id: '/sim/'
@@ -1086,6 +1199,7 @@ interface MlbRouteChildren {
   MlbParlaysRoute: typeof MlbParlaysRoute
   MlbPropsRoute: typeof MlbPropsRoute
   MlbRecommendedRoute: typeof MlbRecommendedRoute
+  MlbSimulateRoute: typeof MlbSimulateRoute
   MlbStacksRoute: typeof MlbStacksRoute
   MlbTrackRecordRoute: typeof MlbTrackRecordRoute
   MlbTwoBasesRoute: typeof MlbTwoBasesRoute
@@ -1097,6 +1211,7 @@ const MlbRouteChildren: MlbRouteChildren = {
   MlbParlaysRoute: MlbParlaysRoute,
   MlbPropsRoute: MlbPropsRoute,
   MlbRecommendedRoute: MlbRecommendedRoute,
+  MlbSimulateRoute: MlbSimulateRoute,
   MlbStacksRoute: MlbStacksRoute,
   MlbTrackRecordRoute: MlbTrackRecordRoute,
   MlbTwoBasesRoute: MlbTwoBasesRoute,
@@ -1108,6 +1223,7 @@ const MlbRouteWithChildren = MlbRoute._addFileChildren(MlbRouteChildren)
 interface NbaRouteChildren {
   NbaBestOddsRoute: typeof NbaBestOddsRoute
   NbaRecommendedRoute: typeof NbaRecommendedRoute
+  NbaSimulateRoute: typeof NbaSimulateRoute
   NbaTrackRecordRoute: typeof NbaTrackRecordRoute
   NbaIndexRoute: typeof NbaIndexRoute
 }
@@ -1115,6 +1231,7 @@ interface NbaRouteChildren {
 const NbaRouteChildren: NbaRouteChildren = {
   NbaBestOddsRoute: NbaBestOddsRoute,
   NbaRecommendedRoute: NbaRecommendedRoute,
+  NbaSimulateRoute: NbaSimulateRoute,
   NbaTrackRecordRoute: NbaTrackRecordRoute,
   NbaIndexRoute: NbaIndexRoute,
 }
@@ -1126,6 +1243,7 @@ interface NflRouteChildren {
   NflParlaysRoute: typeof NflParlaysRoute
   NflPropsRoute: typeof NflPropsRoute
   NflRecommendedRoute: typeof NflRecommendedRoute
+  NflSimulateRoute: typeof NflSimulateRoute
   NflTdScorersRoute: typeof NflTdScorersRoute
   NflTrackRecordRoute: typeof NflTrackRecordRoute
   NflIndexRoute: typeof NflIndexRoute
@@ -1136,12 +1254,25 @@ const NflRouteChildren: NflRouteChildren = {
   NflParlaysRoute: NflParlaysRoute,
   NflPropsRoute: NflPropsRoute,
   NflRecommendedRoute: NflRecommendedRoute,
+  NflSimulateRoute: NflSimulateRoute,
   NflTdScorersRoute: NflTdScorersRoute,
   NflTrackRecordRoute: NflTrackRecordRoute,
   NflIndexRoute: NflIndexRoute,
 }
 
 const NflRouteWithChildren = NflRoute._addFileChildren(NflRouteChildren)
+
+interface NhlRouteChildren {
+  NhlSimulateRoute: typeof NhlSimulateRoute
+  NhlIndexRoute: typeof NhlIndexRoute
+}
+
+const NhlRouteChildren: NhlRouteChildren = {
+  NhlSimulateRoute: NhlSimulateRoute,
+  NhlIndexRoute: NhlIndexRoute,
+}
+
+const NhlRouteWithChildren = NhlRoute._addFileChildren(NhlRouteChildren)
 
 interface SimRouteChildren {
   SimLeagueRoute: typeof SimLeagueRoute
@@ -1225,6 +1356,7 @@ const rootRouteChildren: RootRouteChildren = {
   ModelRoute: ModelRoute,
   NbaRoute: NbaRouteWithChildren,
   NflRoute: NflRouteWithChildren,
+  NhlRoute: NhlRouteWithChildren,
   PropsRoute: PropsRoute,
   SimRoute: SimRouteWithChildren,
   SoccerRoute: SoccerRouteWithChildren,
