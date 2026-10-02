@@ -37,6 +37,7 @@ a what-if (bench a star, start the backup goalie) needs no round trip.
 | --- | --- |
 | `src/lib/sim/espn-stats.server.ts` | ESPN reads: league-wide player season stats, team season stats (own and opponents'), standings, teams, rosters + injuries + handedness, scoreboard (lines, probables). Cached in-process. |
 | `src/lib/sim/tendencies.server.ts` | Team totals → regressed matchup tendencies (pass defense, pace, power play…). |
+| `scripts/build-nfl-coaching.ts` → `src/lib/sim/nfl-coaching.json` | NFL coaching from nflverse play-by-play: pass rate over expected, the league's 4th-down go rates by spot, each head coach's aggressiveness. Re-run weekly in season. |
 | `src/lib/sim/build.server.ts` | Season totals → regressed per-player rates, season per-game averages and a `SimMatchup`. |
 | `src/lib/sim/sim.functions.ts` | The three server functions: slate, teams, matchup. |
 | `src/lib/sim/{nba,nhl,mlb,nfl}.ts` | The engines. Pure TypeScript, seeded, no I/O. |
@@ -79,7 +80,7 @@ allows, relative to the league — rates by odds ratio, amounts by ratio:
 
 | League | Defense (what it allows) | Offense / style |
 | --- | --- | --- |
-| NFL | completion %, yards per completion, yards per carry, sack rate, interception rate | pass rate, plays per game (tempo) |
+| NFL | completion %, yards per completion, yards per carry, sack rate, interception rate | pass rate over expected, plays per game (tempo), head coach's 4th-down aggressiveness |
 | NBA | opponents' 2P% and 3P%, share of shots that are threes, free throws per shot, turnovers forced, defensive rebound % | pace (both teams', combined) |
 | NHL | shots allowed; penalty kill against the power play | power-play conversion; score effects |
 | MLB | errors (reached on error) | platoon: each hitter's line split by pitcher hand |
@@ -89,6 +90,43 @@ league gains about 9% more per catch; a lefty-heavy lineup against a lefty
 starter strikes out more and hits for less power. What the public data does not
 have is **position-by-position** defense — who covers whom — so a shutdown
 corner on one receiver is not modelled; team splits are.
+
+## Individual players, schemes and coaching: what was tested
+
+Before adding anything here it was tested against real games, because an
+effect that doesn't show up in results makes a simulation less realistic, not
+more. Data: nflverse's public charting (per-defender targets, completions,
+yards, interceptions and pressures from Pro Football Reference; combine 40
+times and heights; Next Gen Stats participation with man/zone coverage and
+pass rushers on every play; play-by-play with expected pass rates).
+
+| Idea | Test | Result | In the sim? |
+| --- | --- | --- | --- |
+| Cornerback/safety coverage quality | Same player, one season to the next | Yards per target allowed r = 0.01, completion % allowed r ≈ 0.1 — noise | No; team pass defense (r ≈ 0.4) is used instead |
+| … as a matchup | ~2,200 WR games 2023–24: opposing starting CBs' prior-season numbers vs the WR's yards beyond his own average | t = 0.4, no signal (team pass defense: t = 2.5) | No |
+| Speed (40 time) and height mismatches, WR vs CB | Same games | 0.5 ± 0.9 yards per SD of speed gap; −0.15 ± 0.4 yards per inch | No |
+| Individual interception likelihood | Interceptions per target, season to season | r ≈ 0.18 — weak but real | Yes: interceptions go to defenders by their own regressed rates |
+| Individual pass rushers | Pressures per game, season to season | r ≈ 0.78 — very real | Partly: today's defenders' sacks weight the team's sack rate. A starting front's pressure total added nothing beyond the team's own season sack rate in 1,088 team-games (t = 0.7) |
+| Defensive scheme (man rate, blitz rate) | Team, season to season | r = 0.44 and 0.57 — real tendencies | Their average effect is already in each defense's splits |
+| Scheme as a matchup (QB vs man/zone, vs the blitz) | Same QB, season to season | r = −0.12 and −0.33 — noise | No |
+| Play calling: pass rate over expected in neutral game states | Team, season to season | r = 0.30–0.45 | **Yes** (below) |
+| Fourth-down aggressiveness by head coach | Same coach, season to season | r = 0.09 and 0.62 | **Yes**, regressed hard (below) |
+
+**Coaching**, from `scripts/build-nfl-coaching.ts` (which writes
+`src/lib/sim/nfl-coaching.json`; re-run weekly in season):
+
+* *Play calling.* A team's raw pass rate mixes its coach's preference with
+  how often it trailed, and the engine already throws more when behind, so
+  each team plays at the league's rate plus its early-down pass rate over
+  expected in neutral game states (win probability 20–80%), this season and
+  half of last (a fifth under a new head coach), regressed with 600 plays of
+  league average. About ±2% between the most pass-happy and run-heavy staffs.
+* *Fourth downs.* The engine used to go for it on ~15% of 4th-and-5-or-less
+  between the 25s; real coaches went 37% of the time the last two seasons. It
+  now decides from the league's own go rate by distance and field position,
+  shifted by the head coach's go rate over expected (four seasons, regressed
+  with 50 decisions): from about 28% for the most conservative staffs to 37%
+  for the most aggressive in those spots.
 
 ## The engines
 
@@ -125,13 +163,14 @@ blowouts). Ghost runner in regular-season extras, none in October; walk-offs.
 With no listed probable, each game draws its starter from the rotation.
 
 **NFL — snap by snap.** Quarter, clock, down, distance, field position,
-timeouts. Run/pass from the team's own pass rate bent by down, distance, score
-and clock; the ball goes to a player by carries or targets (tilted toward
+timeouts. Run/pass from the coaching staff's neutral-situation tendency bent
+by down, distance, score and clock; the ball goes to a player by carries or targets (tilted toward
 touchdown-makers in the red zone); yards from his own averages against this
 defense. Completion = QB accuracy × receiver catch rate × the defense's
 completion rate allowed, by odds ratio; sacks and picks = QB rates against the
 defense's. Touchdowns happen when a gain crosses the goal line. Fourth-down
-calls, FGs by distance and kicker, punts, 2025 kickoffs, penalties, two-minute
+calls from the league's real go rates by spot and the head coach's lean, FGs
+by distance and kicker, punts, 2025 kickoffs, penalties, two-minute
 warning, hurry-up and clock-killing, kneel-downs, two-point tries, onside
 kicks, and overtime with both teams guaranteed a possession (ties possible in
 the regular season). Tackles are credited as official totals are, with assisted
@@ -149,13 +188,13 @@ reproduce their league. Figures from the October 1, 2026 data:
 
 | League | Scoring (real → sim) | Home team wins, same roster both sides (of decided games) | Margin spread around expectation |
 | --- | --- | --- | --- |
-| NFL | 22.97 → 22.95 pts | 55.6% | 13.1 (real ≈ 13.5) |
+| NFL | 22.97 → 22.94 pts | 56.1% | 13.3 (real ≈ 13.5) |
 | NBA | 115.0 → 114.7 pts | 55.6% | 13.4 (real ≈ 13) |
 | NHL | 3.13 → 3.12 goals | 54.1% | 2.3 (real ≈ 2.4) |
 | MLB | 4.48 → 4.48 runs | 52.3% | 4.1 (real ≈ 4.3) |
 
-Plus the shape of a game: NFL ~63 offensive plays, ~335 net yards and 85% field
-goals a team; NBA ~88 FGA, 36 threes, 23 FTA, 13 turnovers; NHL ~28 shots and
+Plus the shape of a game: NFL ~63 offensive plays, ~330 net yards, 1.6 field
+goals and 4.2 punts a team; NBA ~88 FGA, 36 threes, 23 FTA, 13 turnovers; NHL ~28 shots and
 2.8 power plays converting ~20%, 21% of games to overtime; MLB ~8.4 hits,
 3.4 walks, 8.5 strikeouts and ~148 pitches a team.
 

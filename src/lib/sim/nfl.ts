@@ -25,6 +25,7 @@
 
 import { available, Box, clock, finish, Log, ordinal, Rng } from "./core";
 import { NFL } from "./columns";
+import coaching from "./nfl-coaching.json";
 import type {
   GameResult,
   NflEnv,
@@ -43,14 +44,14 @@ type NflMatchup = Extract<SimMatchup, { league: "nfl" }>;
 // A player's yards per carry and per catch already include the carries that
 // were stopped by the goal line; the engine stops them at the goal line again,
 // so its mean gains sit a little above the season averages they come from.
-const RUN_YDS = 1.1;
+const RUN_YDS = 1.09;
 /** Share of tackles made by two players, each credited (official totals). */
 const ASSISTED_TKL = 0.6;
 /** Concentration of tackles and sacks on the defenders who make them. */
 const DEF_POW = 1.3;
 /** Kneel-downs a starting quarterback's season carries hold per game. */
 const KNEELS_PER_GAME = 0.8;
-const PASS_YDS = 1.07;
+const PASS_YDS = 1.055;
 /**
  * Game-to-game form. The same two teams do not play the same game twice —
  * game plans, weather, the injuries that happen during it — and play-level
@@ -93,6 +94,8 @@ interface TeamPrep {
   vs: { cmpOdds: number; ypc: number; sackOdds: number; int: number; rush: number };
   /** This offense's time between snaps relative to the league's (pace). */
   tempo: number;
+  /** Odds multiplier on going for it on fourth down: the head coach's lean. */
+  goOdds: number;
   maxFg: number;
 }
 
@@ -189,6 +192,7 @@ function prepTeam(
     off: neutral ? 1 : side === "home" ? 1 + HOME_EDGE : 1 - HOME_EDGE,
     vs,
     tempo,
+    goOdds: odds(Math.max(0.02, Math.min(0.98, GO_LEAGUE + (team.goAggr ?? 0)))) / odds(GO_LEAGUE),
     maxFg: k
       ? Math.max(50, Math.min(62, 53 + 25 * (k.fgSkill - 1) + (k.longFg >= 55 ? 3 : 0)))
       : 50,
@@ -208,6 +212,11 @@ export function prepareNfl(m: NflMatchup, o: SimOverrides): NflPrep {
 // ------------------------------------------------------------- helpers
 
 const odds = (p: number) => p / Math.max(1e-6, 1 - p);
+/** The league's fourth-down go rate by yards to go and distance from the goal
+ *  line in tens — the last two seasons of play-by-play, from
+ *  scripts/build-nfl-coaching.ts — and its rate where coaches are compared. */
+const GO_TABLE = coaching.league.goTable as Record<string, number>;
+const GO_LEAGUE = coaching.league.fourthGo;
 const prob = (o: number) => o / (1 + o);
 
 /** League field-goal make rate by distance (yards from the kick spot). */
@@ -619,12 +628,12 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     if (late && d < 0 && timeLeft <= 120 && !inRange) return "go";
     if (late && d >= -3 && d <= 0 && inRange && (timeLeft <= 120 || toGo > 3)) return "fg";
     if (ot() && otPossessions[1 - s] >= 1 && d < 0 && !inRange) return "go";
-    if (toGo <= 1 && yl >= 35 && dist > 2) return rng.chance(0.7) ? "go" : inRange ? "fg" : "punt";
-    if (toGo <= 1 && dist <= 2) return rng.chance(0.55) ? "go" : "fg";
-    if (inRange) return toGo <= 2 && dist <= 10 && rng.chance(0.35) ? "go" : "fg";
-    if (toGo <= 3 && yl >= 55) return rng.chance(0.5) ? "go" : "punt";
-    if (toGo <= 2 && yl >= 45) return rng.chance(0.35) ? "go" : "punt";
-    return "punt";
+    // Otherwise what the league's coaches actually did from this spot,
+    // leaning the way this head coach leans; kick if not going.
+    const key = `${Math.min(10, Math.max(1, toGo))}:${Math.min(9, Math.floor(dist / 10))}`;
+    const base = Math.min(0.99, GO_TABLE[key] ?? 0);
+    if (base > 0 && rng.chance(prob(odds(base) * T[s].goOdds))) return "go";
+    return inRange ? "fg" : "punt";
   };
 
   // ------------------------------------------------------------ plays

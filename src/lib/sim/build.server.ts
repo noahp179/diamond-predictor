@@ -63,6 +63,7 @@ import type {
   TeamInfo,
   Tendency,
 } from "./types";
+import coaching from "./nfl-coaching.json";
 import { poolTeams, tendencies } from "./tendencies.server";
 
 // ------------------------------------------------------------- blending
@@ -1067,13 +1068,40 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     // The team's own dropback rate when the team feed has it; otherwise the
     // roster's targets against its carries, mapped onto the league's rate.
     const pr = info.tend.passRate;
-    return {
-      ...info,
-      players,
-      passRate: pr
-        ? clamp(pr.value, 0.45, 0.7)
-        : clamp(0.585 + 0.8 * (share - lg.share), 0.48, 0.68),
-    };
+    let passRate = pr
+      ? clamp(pr.value, 0.45, 0.7)
+      : clamp(0.585 + 0.8 * (share - lg.share), 0.48, 0.68);
+    // Coaching (scripts/build-nfl-coaching.ts). A raw pass rate mixes the
+    // coach's preference with how often the team trailed, and the engine
+    // already throws more when behind — so where the play-by-play has it, the
+    // team plays at the league's rate plus its pass rate over expected in
+    // neutral game states.
+    const c = (coaching.teams as Record<string, NflCoaching | undefined>)[meta.abbr];
+    let goAggr = 0;
+    if (c) {
+      const L = coaching.league;
+      // The season's tendencies are shared across matchups; copy before adding.
+      info.tend = { ...info.tend };
+      if (pr) passRate = clamp(pr.league + c.passOffset, 0.45, 0.7);
+      goAggr = c.goOffset;
+      info.tend.neutralPass = {
+        label: "Early-down pass rate, neutral game state",
+        value: L.earlyDownPass + c.passOffset,
+        raw: L.earlyDownPass + c.passOffsetRaw,
+        league: L.earlyDownPass,
+        fmt: "pct",
+        good: "style",
+      };
+      info.tend.fourthGo = {
+        label: c.coach ? `4th-down go rate (${c.coach})` : "4th-down go rate",
+        value: L.fourthGo + c.goOffset,
+        raw: L.fourthGo + c.goOffsetRaw,
+        league: L.fourthGo,
+        fmt: "pct",
+        good: "style",
+      };
+    }
+    return { ...info, players, passRate, goAggr };
   };
   return {
     league,
@@ -1083,6 +1111,15 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     ctx,
   };
 }
+
+/** One team's entry in nfl-coaching.json. */
+type NflCoaching = {
+  coach: string;
+  passOffset: number;
+  passOffsetRaw: number;
+  goOffset: number;
+  goOffsetRaw: number;
+};
 
 // ------------------------------------------------------------- the slate
 

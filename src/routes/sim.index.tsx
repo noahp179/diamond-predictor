@@ -65,8 +65,8 @@ const CALIBRATION: {
     unit: "points / team",
     real: "23.0",
     sim: "23.0",
-    home: "55.6%",
-    spread: "13.1 (real ≈ 13.5)",
+    home: "56.1%",
+    spread: "13.3 (real ≈ 13.5)",
   },
   {
     league: "nba",

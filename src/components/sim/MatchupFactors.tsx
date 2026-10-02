@@ -31,8 +31,9 @@ const FACTORS: Record<SimLeague, Factor[]> = {
     { key: "defYpcRush", from: "def", what: "yards per carry", kind: "ratio", upHelps: true },
     { key: "defSack", from: "def", what: "sack odds", kind: "odds", upHelps: false },
     { key: "defInt", from: "def", what: "interceptions", kind: "ratio", upHelps: false },
-    { key: "passRate", from: "off", what: "pass plays", kind: "ratio", upHelps: null },
+    { key: "neutralPass", from: "off", what: "early-down passes", kind: "ratio", upHelps: null },
     { key: "pace", from: "off", what: "plays", kind: "ratio", upHelps: null },
+    { key: "fourthGo", from: "off", what: "go-for-it calls", kind: "odds", upHelps: null },
   ],
   nba: [
     { key: "defOpp2p", from: "def", what: "2-point make odds", kind: "odds", upHelps: true },
@@ -134,7 +135,7 @@ export function MatchupFactors({
 }
 
 const LEAGUE_NOTE: Record<SimLeague, string> = {
-  nfl: "Completion, sack and interception rates combine with the quarterback's and receivers' own by odds ratio; yardage scales each ball-carrier's and receiver's own average. Pass rate and plays per game are the offense's own style.",
+  nfl: "Completion, sack and interception rates combine with the quarterback's and receivers' own by odds ratio; yardage scales each ball-carrier's and receiver's own average. Pass rate (in neutral game states, so a team that trailed a lot doesn't look pass-happy), tempo and the head coach's fourth-down aggressiveness are the offense's own choices; a fourth-down call starts from what the league's coaches did from the same spot.",
   nba: "Make probabilities combine with each shooter's own by odds ratio; trips, turnovers and rebounds scale each player's rates. Pace is both teams' combined.",
   nhl: "Shots scale each skater's own shot rate; the power play's conversion meets the penalty kill's, split between them. The goalie in net is each skater's other opponent.",
   mlb: "Most of baseball's matchup is batter against pitcher, played out plate appearance by plate appearance — including which hand each throws and hits with. The defense adds its error rate.",
@@ -206,7 +207,8 @@ function Direction({
               className="grid grid-cols-[3.5rem_3.5rem_minmax(0,1fr)] items-start gap-x-2 border-t border-border/40 py-1.5 sm:grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_auto]"
             >
               <span role="cell" className="col-span-3 pb-0.5 text-muted-foreground sm:col-span-1">
-                <span className="text-foreground/90">{owner}</span> {t.label.toLowerCase()}
+                <span className="text-foreground/90">{owner}</span>{" "}
+                {t.label.charAt(0).toLowerCase() + t.label.slice(1)}
               </span>
               <span
                 role="cell"
