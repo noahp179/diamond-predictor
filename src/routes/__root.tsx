@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -34,7 +34,13 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+// TanStack Router types a thrown value as `unknown` (anything can be thrown),
+// so it is normalised to an Error before it is logged and reported.
+function ErrorComponent({ error: thrown, reset }: { error: unknown; reset: () => void }) {
+  const error = useMemo(
+    () => (thrown instanceof Error ? thrown : new Error(String(thrown))),
+    [thrown],
+  );
   console.error(error);
   const router = useRouter();
   useEffect(() => {

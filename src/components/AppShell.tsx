@@ -50,6 +50,8 @@ export function AppShell({
   onDateChange,
   statBar,
   footerNote,
+  subnav,
+  section,
   children,
 }: {
   /** Omit on pages that sit outside a sport (the hub, Teams). */
@@ -64,6 +66,11 @@ export function AppShell({
   onDateChange?: (d: string) => void;
   statBar?: ReactNode;
   footerNote?: string;
+  /** A navigation band of the page's own, under the header (the simulator's
+   *  league switcher). */
+  subnav?: ReactNode;
+  /** Sections outside the sport grammar that the top bar highlights. */
+  section?: "sim" | "teams";
   children: ReactNode;
 }) {
   const views = sport ? viewsFor(sport, league) : [];
@@ -72,7 +79,7 @@ export function AppShell({
     <div className="min-h-screen">
       <header className="border-b border-border">
         <div className="mx-auto max-w-6xl px-6">
-          <TopBar sport={sport} />
+          <TopBar sport={sport} section={section} />
           <div className="flex flex-wrap items-end justify-between gap-6 pb-10 pt-8">
             <div>
               <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
@@ -93,6 +100,8 @@ export function AppShell({
         </div>
         {statBar}
       </header>
+
+      {subnav}
 
       {sport && league && divisionsOf(sport).length > 0 && (
         <DivisionBar sport={sport} division={league} view={view} />
@@ -134,7 +143,7 @@ export function AppShell({
 }
 
 /** Brand plus the sport switcher — present on every page, including the hub. */
-function TopBar({ sport }: { sport?: SportKey }) {
+function TopBar({ sport, section }: { sport?: SportKey; section?: "sim" | "teams" }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 py-4">
       <Link to="/" className="font-display text-xl tracking-tight hover:text-primary">
@@ -157,7 +166,11 @@ function TopBar({ sport }: { sport?: SportKey }) {
         <span className="mx-1 hidden h-5 w-px bg-border sm:inline-block" aria-hidden />
         <Link
           to="/teams"
-          className="border border-border bg-secondary px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-widest text-foreground transition-colors hover:border-primary"
+          className={`border px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+            section === "teams"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border bg-secondary text-foreground hover:border-primary"
+          }`}
         >
           Teams
         </Link>

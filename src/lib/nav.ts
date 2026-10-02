@@ -18,6 +18,8 @@
  *     /soccer/<league>               a competition's fixtures
  *     /soccer/<league>/<view>        a view within one competition
  *     /teams                         cross-sport, sits outside the grammar
+ *     /sim                           the simulator's overview; each league's
+ *                                    simulator is a view (/<sport>/simulate)
  *
  * MLB used to live at the root (`/`, `/model`, `/best-odds`, `/props`,
  * `/history`) from when it was the only sport. Those paths still work — see
@@ -27,7 +29,7 @@
 import { LEAGUES, type LeagueSlug } from "./soccer-leagues";
 import { TOURS, type TourSlug } from "./tennis-tours";
 
-export type SportKey = "mlb" | "nfl" | "cfb" | "nba" | "soccer" | "tennis";
+export type SportKey = "mlb" | "nfl" | "cfb" | "nba" | "nhl" | "soccer" | "tennis";
 
 /**
  * A "division" is the extra level some sports carry: soccer's five leagues,
@@ -57,7 +59,8 @@ export type ViewKey =
   | "tdScorers"
   | "parlay"
   | "trackRecord"
-  | "model";
+  | "model"
+  | "simulate";
 
 export type NavItem = { key: ViewKey; label: string; href: string };
 
@@ -113,6 +116,15 @@ export const SPORTS: SportNav[] = [
     leagued: false,
   },
   {
+    key: "nhl",
+    label: "NHL",
+    phrase: "the NHL",
+    blurb:
+      "Shift-by-shift game simulations from player stats, special teams and goaltending — any matchup, as many times as you like.",
+    href: "/nhl",
+    leagued: false,
+  },
+  {
     key: "soccer",
     label: "Soccer",
     phrase: "soccer",
@@ -153,13 +165,35 @@ const LABELS: Record<ViewKey, string> = {
   parlay: "TD Parlays",
   trackRecord: "Track Record",
   model: "Model & Backtest",
+  simulate: "Simulate",
 };
 
 const VIEWS: Record<SportKey, ViewKey[]> = {
-  mlb: ["slate", "recommended", "bestOdds", "props", "twoBases", "parlay", "stacks", "trackRecord"],
-  nfl: ["slate", "recommended", "bestOdds", "props", "tdScorers", "parlay", "trackRecord"],
+  mlb: [
+    "slate",
+    "simulate",
+    "recommended",
+    "bestOdds",
+    "props",
+    "twoBases",
+    "parlay",
+    "stacks",
+    "trackRecord",
+  ],
+  nfl: [
+    "slate",
+    "simulate",
+    "recommended",
+    "bestOdds",
+    "props",
+    "tdScorers",
+    "parlay",
+    "trackRecord",
+  ],
   cfb: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
-  nba: ["slate", "recommended", "bestOdds", "trackRecord"],
+  nba: ["slate", "simulate", "recommended", "bestOdds", "trackRecord"],
+  // No picks model for hockey yet: the simulator is the section.
+  nhl: ["simulate"],
   soccer: ["slate", "props", "model", "trackRecord"],
   tennis: ["slate", "model", "trackRecord"],
 };
@@ -176,6 +210,7 @@ const SEGMENT: Record<ViewKey, string> = {
   parlay: "parlays",
   trackRecord: "track-record",
   model: "model",
+  simulate: "simulate",
 };
 
 /**
