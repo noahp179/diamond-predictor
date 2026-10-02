@@ -737,26 +737,27 @@ const HOW: Record<SimLeague, string[]> = {
     "Possession by possession. One of the five players on the floor uses each trip — a two, a three, free throws or a turnover — in proportion to how often he does each per minute.",
     "Every shot meets the defense in front of it: the shooter's own percentage combines with what that team allows on twos and on threes (by odds ratio), how often it lets opponents shoot threes, get to the line and turn it over, and how well it finishes possessions on the glass.",
     "Pace is both teams' season pace combined, so a fast team against a slow one plays near the middle and two fast teams play fast.",
-    "A rotation tracks every player's minutes against his season average: starters open each half, the closers finish a close fourth, the bench mops up a blowout. Foul trouble and foul-outs are real.",
+    "A rotation tracks every player's minutes against his season average: starters open each half, the closers finish a close fourth, the bench mops up a blowout. Foul trouble and foul-outs are real, and minutes and shot share wobble from night to night, so a player has hot and quiet games. The second night of a back-to-back shoots a little worse.",
     "Calibrated so the league's rosters score its 115 points a team, home teams win about 55%, and the margin spreads about 13 points around its expectation — as real games do.",
   ],
   nfl: [
     "Snap by snap, with the state a broadcast shows: quarter, clock, down, distance, field position, timeouts.",
     "Each play is a run or a pass from the coaching staff's own tendency — how much more or less than expected it throws on early downs in a close game — and its tempo, bent by down, distance, score and clock. The ball goes to a player in proportion to his carries or targets.",
     "Then the defense: completion odds combine the quarterback's accuracy and the receiver's catch rate with the completion rate this defense allows; yards per catch and per carry scale by what it gives up against the league; sacks and interceptions meet its sack and pick rates. A receiver facing a soft secondary really does gain more.",
-    "Fourth downs go the way the league's coaches actually decide from that distance and spot, leaning toward this head coach's own aggressiveness. Field goals by distance and kicker, punts, 2025 kickoff rules, penalties, the two-minute warning, clock-killing, onside kicks and overtime are all played out. Calibrated to the league's ~23 points and ~63 plays per team.",
+    "Fourth downs go the way the league's coaches actually decide from that distance and spot, leaning toward this head coach's own aggressiveness. Field goals by distance and kicker, punts, 2025 kickoff rules, the two-minute warning, clock-killing, onside kicks and overtime are all played out. Calibrated to the league's ~23 points and ~63 plays per team.",
+    "Checked against every 2025 game: quarterbacks scramble, sneak and throw to the sticks on third down; gains shrink in the red zone; penalties are real types and yardages (holding, false starts, pass interference at the spot); teams tied late play for the win; domes add a little to the passing game. Third-down rate, drives, punts, penalties, scrambles and overtime frequency now match real games within a few percent.",
   ],
   nhl: [
     "Shift by shift in continuous time. The twelve forwards and six defencemen who play most dress in lines and pairs and get ice time in proportion to how much they play.",
     "While a unit is out, each skater shoots at his own per-60 rate scaled by how many shots the other team allows; a shot scores at his regressed shooting percentage scaled by how good the goalie in front of him is.",
-    "Penalties follow each player's penalty rate; the power play's season conversion meets the other team's penalty kill. The trailing team presses at even strength and the leader sits back; late, the goalie comes out for an extra attacker.",
+    "Penalties follow each player's penalty rate; the power play's season conversion meets the other team's penalty kill. The trailing team presses at even strength and the leader sits back; late, the goalie comes out for an extra attacker. Offsetting minors, fights and misconducts fill out the penalty minutes as in a real box score.",
     "Regular-season ties go to three-on-three and a shootout; playoff games go to twenty-minute sudden-death periods. Calibrated to ~3.1 goals and ~28 shots per team.",
   ],
   mlb: [
     "Plate appearance by plate appearance. Each outcome — walk, strikeout, homer, triple, double, single, out — combines the batter's rate with the pitcher's by the odds-ratio method, then the park.",
     "Platoon splits: a hitter's season line is split into how he does against left- and right-handed pitching, so a lefty-heavy lineup against a lefty starter strikes out more and hits for less power. The defense's error rate sets how often an out becomes a runner.",
     "Rates regress by how fast each stabilises: strikeouts quickly, power more slowly, singles hardly at all, because balls in play are mostly luck.",
-    "Runners advance the way they do in real games, with double plays, sac flies, steals and errors. Starters tire the third time through and leave on a pitch count; the pen is used by leverage — closer in a save spot, set-up man in the eighth.",
+    "Runners advance the way they do in real games, with double plays, sac flies, steals and errors. Starters tire the third time through and leave on a pitch count that varies start to start; the pen is used by leverage — closer in a save spot, set-up man in the eighth. Late, the manager pinch-hits in close games, rests regulars in blowouts and sends in defensive replacements, so a team uses about ten hitters, as real ones do.",
     "Extra innings use the automatic runner in the regular season and not in October. Calibrated to the league's ~4.5 runs per team and ~53% home wins.",
   ],
 };
@@ -782,7 +783,7 @@ function Methodology({ league }: { league: SimLeague }) {
         <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
           <li>
             <strong className="text-foreground">Today&apos;s news.</strong> Late scratches, a
-            minutes limit, weather, a back-to-back. Edit the lineups to account for what you know.
+            minutes limit, wind and rain. Edit the lineups to account for what you know.
           </li>
           <li>
             <strong className="text-foreground">Matchups inside the matchup.</strong> The engines

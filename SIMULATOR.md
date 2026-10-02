@@ -17,8 +17,10 @@ build any matchup), choose how many times to play it — 10, 100, 1,000, 5,000,
 * the **matchup factors** behind it: each defense's season splits against the
   league, and what they do to the offense across from it.
 
-Or watch a single game unfold with a live box score. A fifth mode runs every
-game on a date at once. `/sim` is an overview with the calibration table.
+Or watch a single game unfold with a live play-by-play, box score and team
+stats. A fifth mode runs every game on a date at once, up to 250,000 times
+each (the page estimates how long a big slate will take). `/sim` is an
+overview with the calibration table.
 
 Nothing on the page is replayable by design. Every run draws fresh random
 numbers, so the same matchup run twice gives slightly different answers — by
@@ -47,6 +49,7 @@ a what-if (bench a star, start the backup goalie) needs no round trip.
 | `src/components/sim/SimulatePage.tsx` | The Simulate view; the four `src/routes/<sport>.simulate.tsx` routes render it. |
 | `src/components/sim/*` | Matchup factors, batch results, viewer, roster editor, slate runner, worker pool. |
 | `scripts/test-game-sim.ts` | Invariants, determinism, merging, calibration against live data. |
+| `scripts/backtest-sim.ts` | Out-of-sample backtest: replays finished games from last season's stats and scores them against the closing market and players' actual lines. |
 
 ## Data
 
@@ -140,7 +143,14 @@ and fouls are credited the same way. A rotation tracks each player's minutes
 against his season average — starters open halves, the top five close a close
 fourth quarter, the bench plays out blowouts — with foul trouble, foul-outs,
 late intentional fouling, "down three, shoot a three", and overtime until
-someone wins.
+someone wins. Minutes and usage wobble from game to game (a starter's target
+minutes by about 15%, his share of the shots by about 16%) so a player has hot
+and quiet nights, not the same line every game; players in foul trouble play
+carefully; rebounds are shared by rebounding rate raised to the 1.55 power
+(rebounding is concentrated), and 12% of defensive rebounds are team rebounds
+no player is credited with, as in real box scores. On the second night of a
+back-to-back a team makes its shots 2.8% less often (real effect: about 2
+points a game).
 
 **NHL — shift by shift.** Continuous time. The twelve forwards and six
 defencemen with the most ice time dress in lines and pairs, which get the ice
@@ -149,9 +159,13 @@ how many shots the opponent allows; a shot scores at his regressed shooting
 percentage times how much more (or less) the goalie lets in than the league.
 The trailing team presses at even strength (6% more shots per goal of deficit,
 up to two). Penalties follow each player's penalty rate; the power play's
-conversion meets the penalty kill's. The goalie is pulled around two minutes
-out down one; regular-season ties go to 3-on-3 and a shootout, playoff ties to
-20-minute sudden-death periods.
+conversion meets the penalty kill's. Offsetting penalties (roughing pairs,
+fights — five minutes each — and ten-minute misconducts) add the penalty
+minutes that never become power plays; real teams average ~9.7 PIM a game, and
+power-play minors alone gave 5.6. Defencemen pick up assists at a lower rate
+than forwards, the home team shoots a little more, and trailing teams press.
+The goalie is pulled around two minutes out down one; regular-season ties go to
+3-on-3 and a shootout, playoff ties to 20-minute sudden-death periods.
 
 **MLB — plate appearance by plate appearance.** Outcome probabilities combine
 batter (split by the pitcher's hand), pitcher and league by the odds-ratio
@@ -159,8 +173,15 @@ method, then the park. Realistic base advancement, double plays, sac flies,
 steals, hit batsmen and errors (at the fielding team's rate); the starter tires
 the third time through and leaves on a pitch count or a blow-up; the pen is
 used by leverage (closer for saves, set-up men in the eighth, long men in
-blowouts). Ghost runner in regular-season extras, none in October; walk-offs.
-With no listed probable, each game draws its starter from the rotation.
+blowouts), and a middle reliever is often lifted after one inning. A
+starter's leash varies from start to start, so about a fifth of starts end
+before the fourth inning is over, as real ones do. From the sixth inning the
+manager uses the bench: a better bat pinch-hits in a close late game, regulars
+rest in a blowout, a defensive replacement comes in to protect a small lead
+("J. Smith pinch-hits for A. Jones" in the play-by-play) — a real team uses
+~10.3 batters a game, and the engine used to use exactly nine. Ghost runner in
+regular-season extras, none in October; walk-offs. With no listed probable,
+each game draws its starter from the rotation.
 
 **NFL — snap by snap.** Quarter, clock, down, distance, field position,
 timeouts. Run/pass from the coaching staff's neutral-situation tendency bent
@@ -176,6 +197,20 @@ kicks, and overtime with both teams guaranteed a possession (ties possible in
 the regular season). Tackles are credited as official totals are, with assisted
 tackles counted for both players.
 
+Since the realism benchmark below, the NFL engine also has: quarterback
+scrambles on called passes (about two-thirds of a quarterback's rushing
+yards), sneaks on third and fourth and inches, offenses throwing to the sticks
+on third and fourth down, compressed gains inside the 20 (less room to run),
+pass depth in the play-by-play ("pass deep left", "short middle") that matches
+the real share of deep completions, real penalty types and yardages (false
+starts, holding, pass interference at the spot, roughing and face masks with
+an automatic first down), kneel-downs only when the clock can really be run
+out, a hurry-up when tied late (the engine used to sit on a tie and went to
+overtime nearly twice as often as real games do), two-point tries at the real
+rate, a small chance a quarterback leaves hurt, and a roof: games in domes
+get 4.5% better completion odds and 2% more yards per catch, outdoor games a
+little less (real effect: domes score about 2 points a game more).
+
 Every engine is seeded — the tests rely on it: the same matchup, settings and
 seed give the same game play for play, and a batch split across workers adds
 up to exactly the same totals as one run. The page never reuses a seed.
@@ -184,19 +219,19 @@ up to exactly the same totals as one run. The page never reuses a seed.
 
 Each engine has a handful of constants (scoring level, home edge, game-to-game
 variance) tuned until real rosters, played against each other both ways,
-reproduce their league. Figures from the October 1, 2026 data:
+reproduce their league. Figures from the October 1, 2026 data (NFL with the
+real mix of domes and open-air stadiums):
 
 | League | Scoring (real → sim) | Home team wins, same roster both sides (of decided games) | Margin spread around expectation |
 | --- | --- | --- | --- |
-| NFL | 22.97 → 22.94 pts | 56.1% | 13.3 (real ≈ 13.5) |
-| NBA | 115.0 → 114.7 pts | 55.6% | 13.4 (real ≈ 13) |
-| NHL | 3.13 → 3.12 goals | 54.1% | 2.3 (real ≈ 2.4) |
-| MLB | 4.48 → 4.48 runs | 52.3% | 4.1 (real ≈ 4.3) |
+| NFL | 22.97 → 22.99 pts | 54.3% | 13.0 (real ≈ 13.5) |
+| NBA | 115.0 → 114.7 pts | 55.2% | 13.3 (real ≈ 13) |
+| NHL | 3.13 → 3.11 goals | 51.7% | 2.3 (real ≈ 2.4) |
+| MLB | 4.48 → 4.42 runs | 51.8% | 4.1 (real ≈ 4.3) |
 
-Plus the shape of a game: NFL ~63 offensive plays, ~330 net yards, 1.6 field
-goals and 4.2 punts a team; NBA ~88 FGA, 36 threes, 23 FTA, 13 turnovers; NHL ~28 shots and
-2.8 power plays converting ~20%, 21% of games to overtime; MLB ~8.4 hits,
-3.4 walks, 8.5 strikeouts and ~148 pitches a team.
+The shape of a game — plays, drives, punts, rebounds, pitchers used, penalty
+minutes and the rest — is checked against real games in the realism
+benchmark below.
 
 **Players against their own seasons.** Every player who plays in at least 80%
 of simulated games, in every team's roster, compared with his season per-game
@@ -217,12 +252,11 @@ average and split into thirds by how much he produces:
 * NFL rushing and receiving yards within 2%, passing yards within 6%, tackles
   93% and sacks 95% of season.
 
-**Known misses.** Overtime frequency is off in two leagues: the NFL engine goes
-to overtime in ~9% of games (real ≈ 5–6%) and ends ~1% tied (real ≈ 0.3%),
-because late-game decision-making is simpler than real coaching; the NBA engine
-goes to overtime in ~3% (real ≈ 6%), because real end-of-game play steers toward
-ties more than per-possession randomness does. Neither moves win probabilities
-much, but a prop on "goes to overtime" should not be read off these numbers.
+**Known misses.** See the realism benchmark: NBA overtime (~2.7% of games,
+real ≈ 6% over a full season) because real end-of-game play steers toward ties
+more than per-possession randomness does; NHL overtime (21%, real ≈ 23–26%)
+and one-goal games; NFL fourth-down conversions (50%, real 56%). A prop on
+"goes to overtime" should not be read off these numbers.
 
 **Strength elasticity.** A full round robin (every team against every other,
 both ways, neutral site) checks how much of each team's season points for and
@@ -241,13 +275,85 @@ against shows up in the simulation. Net strength carries through at 0.57×
   say anything.
 
 Reproducing league averages is the floor, not proof of accuracy on any single
-game. A proper out-of-sample backtest — simulating last season's games from
-point-in-time data and scoring the results like the other models on this site —
-is the obvious next step and has not been done.
+game. `scripts/backtest-sim.ts` replays finished games from the _previous_
+season's statistics only (plus the starting pitcher or quarterback and the
+posted lineup, known before the game) and scores the result against the
+closing market. First runs: 467 MLB games from September 2026 — log loss 0.679
+against the market's 0.665 and a home-team constant's 0.692; 48 NFL games from
+weeks 1–4 of 2026 — 0.690 against the market's 0.659. The market is better, as
+it should be; the simulator is better than knowing nothing, and its value is
+the play-by-play and the player lines, not beating the line.
+
+## Realism: simulated games against real ones
+
+Every number a simulated game produces can be checked against real games, so
+it was: thousands of simulated games from the October 1 rosters against the
+2025 NFL regular season (nflverse play-by-play, 272 games), 467 MLB games from
+September 2026, 173 NBA games from November 2025 and 144 NHL games from
+October–November 2025 (ESPN box scores). Per team per game unless noted;
+"before" is the engine before this round of work.
+
+| NFL | Real | Before | Now |
+| --- | --- | --- | --- |
+| Pass attempts | 31.9 | 35.0 | 32.7 |
+| Completions | 20.6 | 22.5 | 20.9 |
+| Drives | 10.6 | 11.7 | 10.8 |
+| Punts | 3.55 | 4.08 | 3.52 |
+| First downs | 17.8 | 16.4 | 17.8 |
+| Third-down conversion | 40.4% | 35.1% | 39.5% |
+| Penalties / yards | 3.6 / 26.8 | 3.3 / 22.1 | 3.6 / 29.3 |
+| Plays of 20+ yards | 3.48 | 4.08 | 3.89 |
+| Two-point tries | 0.24 | 0.08 | 0.25 |
+| Scrambles | 4.3 | — | 4.1 |
+| Kneel-downs (game) | 1.6 | ~3 | 1.85 |
+| Deep share of completions | 11.9% | — | 12.6% |
+| Red-zone trips: TD / FG | 59% / 28% | — | 56% / 28% |
+| Games to overtime / tied | 5.1% / 0.4% | 7.9% / 1.0% | 4.4% / 0.2% |
+| One-score games | 53% | 47% | 50% |
+| Points | 23.0 | 23.5 | 23.4 |
+
+| MLB | Real | Before | Now |
+| --- | --- | --- | --- |
+| Batters used | 10.28 | 9.00 | 10.32 |
+| Pinch-hitters and replacements | 1.32 | 0 | 1.32 |
+| Starting hitter's plate appearances | 3.91 | 4.26 | 4.07 |
+| Pitchers used | 4.40 | 4.67 | 4.63 |
+| Starts under 4 innings | 21% | 16% | 21.5% |
+| Starter's pitches | 80.6 | 86.0 | 83.2 |
+| Runs / hits / HR | 4.50 / 8.25 / 1.14 | 4.46 / 8.48 / 1.19 | 4.45 / 8.47 / 1.20 |
+
+| NBA | Real | Before | Now |
+| --- | --- | --- | --- |
+| Defensive rebounds | 32.6 | 37.1 | 32.6 |
+| Foul-outs (game) | 0.18 | 0.36 | 0.18 |
+| Most minutes on a team | 35.4 | 33.1 | 35.5 |
+| Top scorer | 27.2 | 26.2 | 27.2 |
+| Top scorer 30+ / 40+ | 35% / 5.2% | 27% / 3.1% | 31% / 5.7% |
+| Double-doubles | 0.82 | 0.81 | 0.74 |
+
+| NHL | Real | Before | Now |
+| --- | --- | --- | --- |
+| Penalty minutes | 9.7 | 5.6 | 9.6 |
+| Power plays / goals | 2.84 / 0.60 | 2.78 / 0.60 | 2.85 / 0.59 |
+| Shots / goals | 28.0 / 3.17 | 27.9 / 3.16 | 27.8 / 3.12 |
+
+Still short: game-to-game spread of NBA minutes (starters' minutes vary about
+two-thirds as much as real ones), NHL one-goal games and overtime, MLB
+first-inning runs (+9%), NFL fourth-down conversions (50% vs 56%), and NFL
+plays of 20+ yards (+12%).
+
+Context effects were tested against real results before going in. Dome games
+(about 2,900 NFL games since 2010, against the expected total) have 2.2 ± 0.5
+more points between the two teams (the engine: +1.9); the second night of an
+NBA back-to-back costs 2.0 ± 0.8 points of margin (the engine: −1.9). Left out:
+NHL back-to-backs (−0.2 goals, not significant once the starting goalie is
+known), cold (no effect), rest days in the NFL (0.15 points a day, not
+significant). Wind is real (−0.28 points per mph above 10), but the free
+schedule feed doesn't carry wind speed.
 
 ## What the simulator can't know
 
-Today's news beyond the injury report (minutes limits, weather, rest),
+Today's news beyond the injury report (minutes limits, wind and rain),
 position-by-position matchups (a shutdown corner, a lefty specialist out of the
 pen), schemes, and whether a small-sample hot start is real. Its probabilities
 are its own; where it disagrees with the market, the market usually knows

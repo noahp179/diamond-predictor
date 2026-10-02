@@ -44,14 +44,14 @@ type NflMatchup = Extract<SimMatchup, { league: "nfl" }>;
 // A player's yards per carry and per catch already include the carries that
 // were stopped by the goal line; the engine stops them at the goal line again,
 // so its mean gains sit a little above the season averages they come from.
-const RUN_YDS = 1.09;
+const RUN_YDS = 1.1;
 /** Share of tackles made by two players, each credited (official totals). */
 const ASSISTED_TKL = 0.6;
 /** Concentration of tackles and sacks on the defenders who make them. */
 const DEF_POW = 1.3;
 /** Kneel-downs a starting quarterback's season carries hold per game. */
 const KNEELS_PER_GAME = 0.8;
-const PASS_YDS = 1.055;
+const PASS_YDS = 1.068;
 /**
  * Game-to-game form. The same two teams do not play the same game twice —
  * game plans, weather, the injuries that happen during it — and play-level
@@ -65,7 +65,27 @@ const HOME_EDGE = 0.02;
 /** Used only when a team's season splits are missing: points allowed, regressed. */
 const DEF_FALLBACK = 0.35;
 const RUNOFF = 36; // seconds between snaps with the clock running
-const PENALTY_RATE = 0.05;
+const PENALTY_RATE = 0.055;
+/** Sacks per dropback against the quarterbacks' own rates (2025: 2.4 a team). */
+const SACK_CAL = 0.9;
+/** Breakaway shares: runs that go 9+ yards beyond the pile, catches that go
+ *  20+ (2025: 3.5 plays of 20+ yards per team per game). */
+const RUN_TAIL = 0.026;
+const CATCH_TAIL = 0.033;
+/** On third and fourth down quarterbacks throw to the sticks: the share of
+ *  completions that would have come up short which are instead caught past
+ *  the line to gain (sets conversion by distance to 2025's). */
+const STICKS = 0.3;
+/** Share of a quarterback's non-kneel carries that are scrambles on called
+ *  passes rather than designed runs (2025: ~2.1 scrambles a team-game). */
+const SCRAMBLE_SHARE = 0.66;
+/** Starting quarterback knocked out of the game, per snap (≈5% of games). */
+const QB_INJURY = 0.0007;
+/** Roof effects on passing: completion odds and yards per catch. */
+const INDOOR_CMP = 1.045;
+const INDOOR_YDS = 1.022;
+const OUTDOOR_CMP = 0.982;
+const OUTDOOR_YDS = 0.992;
 
 interface TeamPrep {
   team: NflTeam;
@@ -75,6 +95,8 @@ interface TeamPrep {
   rushW: number[];
   /** The starter's yards per designed run (his season line less kneels). */
   qbYpc: number;
+  /** Per quarterback (player index): chance a called pass becomes a scramble. */
+  scramble: Record<number, number>;
   targets: number[];
   targetW: number[];
   kicker: number;
@@ -104,6 +126,8 @@ export interface NflPrep {
   t: [TeamPrep, TeamPrep];
   env: NflEnv;
   playoff: boolean;
+  /** Passing under a roof versus outdoors: [completion odds, yards]. */
+  roof: [number, number];
 }
 
 function prepTeam(
@@ -176,10 +200,25 @@ function prepTeam(
     qb,
     backupQb,
     rushers,
-    rushW: rushers.map((i) => (i === qb ? qbRuns : P[i].carries)),
+    // Raised to a power as in nba.ts: per-game roles from other depth charts
+    // overlap, and the starters get the ball (2025: 7.1 players catch a pass
+    // a team-game).
+    rushW: rushers.map((i) =>
+      i === qb ? qbRuns * (1 - SCRAMBLE_SHARE) : Math.pow(P[i].carries, 1.15),
+    ),
     qbYpc,
+    scramble: Object.fromEntries(
+      [qb, backupQb].map((i) => {
+        const p = P[i];
+        const runs = i === qb ? qbRuns : (p?.carries ?? 0);
+        return [
+          i,
+          p ? Math.min(0.15, (SCRAMBLE_SHARE * runs) / Math.max(10, p.passAtt + 2.5)) : 0.03,
+        ];
+      }),
+    ),
     targets,
-    targetW: targets.map((i) => P[i].targets),
+    targetW: targets.map((i) => Math.pow(P[i].targets, 1.2)),
     kicker,
     punter,
     def,
@@ -206,6 +245,9 @@ export function prepareNfl(m: NflMatchup, o: SimOverrides): NflPrep {
     t: [prepTeam(m.home, "home", o, m, neutral), prepTeam(m.away, "away", o, m, neutral)],
     env: m.env,
     playoff: o.playoff ?? m.ctx.playoff,
+    // Domes score ~2.2 more points a game than open air (2010–25), almost all
+    // of it through the air; the league average sits between the two.
+    roof: m.ctx.indoor ? [INDOOR_CMP, INDOOR_YDS] : [OUTDOOR_CMP, OUTDOOR_YDS],
   };
 }
 
@@ -285,10 +327,12 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   const sit = () => `${ordinal(down)} & ${100 - yl <= toGo ? "Goal" : toGo} at ${spot()}`;
   const absBall = () => (poss === 0 ? yl : 100 - yl);
 
+  /** Log a play. `sit` overrides the down-and-distance shown with it: the
+   *  situation before a penalty, or none for kickoffs and tries. */
   const ev = (
     side: number | null,
     text: string,
-    extra: { scoring?: boolean; big?: boolean } = {},
+    extra: { scoring?: boolean; big?: boolean; sit?: string } = {},
   ) =>
     log.push({
       period: quarter,
@@ -329,11 +373,14 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     return clk > 0;
   };
 
+  // Tied late, a team plays for the win too: in 2025 only 12% of games tied
+  // at the two-minute warning reached overtime.
   const hurry = (s: number) =>
     (quarter === 2 && clk <= 120) ||
     (quarter === 4 && diff(s) < 0 && clk <= 300) ||
+    (quarter === 4 && diff(s) === 0 && clk <= 150) ||
     (quarter === 4 && diff(s) < -8 && clk <= 600) ||
-    (ot() && diff(s) < 0);
+    (ot() && (diff(s) < 0 || (diff(s) === 0 && clk <= 150)));
   const milk = (s: number) => quarter === 4 && diff(s) > 0 && clk <= 420;
 
   /** Time between the end of one play and the next snap. */
@@ -351,7 +398,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       return 0;
     }
     // The offense in its two-minute drill spends its own.
-    if (timeouts[s] > 0 && hurry(s) && clk <= 60 && (quarter === 2 || diff(s) < 0)) {
+    if (timeouts[s] > 0 && hurry(s) && clk <= 60 && (quarter === 2 || diff(s) <= 0)) {
       timeouts[s]--;
       if (log.on) ev(s, `Timeout ${T[s].team.abbr} (${timeouts[s]} left)`);
       return 0;
@@ -397,10 +444,13 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
         poss = kicking;
         yl = 48;
         if (log.on)
-          ev(kicking, `Onside kick — RECOVERED by ${T[kicking].team.abbr}!`, { big: true });
+          ev(kicking, `Onside kick — RECOVERED by ${T[kicking].team.abbr}!`, {
+            big: true,
+            sit: "",
+          });
       } else {
         yl = 55;
-        if (log.on) ev(recv, `Onside kick recovered by ${T[recv].team.abbr}`);
+        if (log.on) ev(recv, `Onside kick recovered by ${T[recv].team.abbr}`, { sit: "" });
       }
       down = 1;
       toGo = 10;
@@ -411,18 +461,19 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       yl = 75;
       down = 1;
       toGo = 10;
-      if (log.on) ev(recv, `Kickoff returned for a TOUCHDOWN!`, { scoring: true, big: true });
+      if (log.on)
+        ev(recv, `Kickoff returned for a TOUCHDOWN!`, { scoring: true, big: true, sit: "" });
       touchdown(recv, -1, "kick return");
       return;
     }
     if (rng.chance(0.38)) {
       yl = 35;
       burn(0);
-      if (log.on) ev(recv, `Kickoff, touchback`);
+      if (log.on) ev(recv, `Kickoff, touchback`, { sit: "" });
     } else {
       yl = Math.round(Math.max(8, Math.min(60, rng.normal(29, 7))));
       burn(rng.uniform(5, 8));
-      if (log.on) ev(recv, `Kickoff returned to the ${spot()}`);
+      if (log.on) ev(recv, `Kickoff returned to the ${spot()}`, { sit: "" });
     }
     down = 1;
     toGo = 10;
@@ -514,14 +565,16 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       gameOver = true;
       return;
     }
-    if (goFor2 || rng.chance(0.025)) {
+    // Beyond the chart, coaches go for two after ~16% of touchdowns, which
+    // with it comes to 2025's 9–10%.
+    if (goFor2 || rng.chance(0.16)) {
       const ok = rng.chance(0.48);
       if (ok) {
         addScore(s, 2);
         const who = rng.chance(0.55) ? pickTarget(s, true) : pickRusher(s, true);
         if (who >= 0) box.add(s, who, NFL.TWOPT, 1);
       }
-      if (log.on) ev(s, `Two-point try ${ok ? "is GOOD" : "fails"}`, { scoring: ok });
+      if (log.on) ev(s, `Two-point try ${ok ? "is GOOD" : "fails"}`, { scoring: ok, sit: "" });
     } else {
       const ki = T[s].kicker;
       const p = ki >= 0 ? P(s, ki).xpPct : 0.94;
@@ -532,7 +585,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       }
       if (ok) addScore(s, 1);
       if (log.on)
-        ev(s, `${nm(s, ki)} extra point ${ok ? "is good" : "is NO GOOD"}`, { scoring: ok });
+        ev(s, `${nm(s, ki)} extra point ${ok ? "is good" : "is NO GOOD"}`, {
+          scoring: ok,
+          sit: "",
+        });
     }
     void scorer;
     afterScore(s);
@@ -656,23 +712,27 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     toGo -= yards;
     down++;
     if (down > 4) {
-      if (log.on) ev(1 - poss, `Turnover on downs`);
+      if (log.on) ev(1 - poss, `Turnover on downs`, { sit: "" });
       changePossession(100 - yl);
       return false;
     }
     return true;
   };
 
+  /** The field shrinks near the goal line: less room, tighter coverage
+   *  (2025: 5.9 yards a play outside the 20, 4.1 from the 20 to the 11). */
+  const squeeze = (dist: number) => (dist >= 20 ? 1 : 0.72 + 0.014 * dist);
+
   const runYards = (mean: number): number => {
-    // Most runs bunch around three yards; one in twenty-five breaks loose.
-    if (rng.chance(0.04)) return Math.round(9 + rng.exp(11));
-    const mb = (mean - 0.04 * 20) / 0.96;
+    // Most runs bunch around three yards; about one in thirty breaks loose.
+    if (rng.chance(RUN_TAIL)) return Math.round(9 + rng.exp(11));
+    const mb = (mean - RUN_TAIL * 20) / (1 - RUN_TAIL);
     return Math.round(rng.gamma(2.5, (mb + 2) / 2.5) - 2);
   };
 
   const catchYards = (mean: number): number => {
-    if (rng.chance(0.05)) return Math.round(20 + rng.exp(14));
-    const mb = (mean - 0.05 * 34) / 0.95;
+    if (rng.chance(CATCH_TAIL)) return Math.round(20 + rng.exp(14));
+    const mb = (mean - CATCH_TAIL * 34) / (1 - CATCH_TAIL);
     return Math.round(rng.gamma(1.8, (Math.max(2, mb) + 1.5) / 1.8) - 1.5);
   };
 
@@ -680,10 +740,29 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const s = poss;
     const d = 1 - s;
     const dist = 100 - yl;
+    // Third or fourth and a yard: a third of the time the quarterback sneaks
+    // (2025: 36% of those runs), which almost always works.
+    if (down >= 3 && toGo <= 1 && dist > 1 && rng.chance(0.36)) {
+      const q = qb[s];
+      const y = rng.chance(0.86) ? (rng.chance(0.2) ? 2 : 1) : 0;
+      team[s].PLAYS++;
+      box.add(s, q, NFL.CAR, 1);
+      box.add(s, q, NFL.RYD, y);
+      gain(s, y, true);
+      const t = tackle(d);
+      burn(rng.uniform(4, 6));
+      if (log.on)
+        ev(
+          s,
+          `${nm(s, q)} quarterback sneak for ${y} yard${y === 1 ? "" : "s"}${t >= 0 ? ` (${nm(d, t)})` : ""}`,
+        );
+      spotBall(y);
+      return;
+    }
     const r = pickRusher(s, dist <= 20);
     const pl = P(s, r);
     const ypc = r === T[s].qb ? T[s].qbYpc : pl.ypc_r;
-    const mean = ypc * RUN_YDS * T[d].vs.rush * T[s].off * form[s];
+    const mean = ypc * RUN_YDS * T[d].vs.rush * T[s].off * form[s] * squeeze(dist);
     let y = runYards(mean);
     if (y > dist) y = dist;
     team[s].PLAYS++;
@@ -748,7 +827,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     team[s].PLAYS++;
     // Sack?
     // The quarterback's sack rate against this pass rush, by odds ratio.
-    const pSack = Math.min(0.2, prob(odds(qp.sackRate) * T[d].vs.sackOdds));
+    const pSack = Math.min(0.2, prob(odds(qp.sackRate) * T[d].vs.sackOdds * SACK_CAL));
     if (rng.chance(pSack)) {
       const loss = Math.max(1, Math.round(rng.normal(7, 2.5)));
       const sacker = T[d].def.length ? T[d].def[rng.pick(T[d].sackW)] : -1;
@@ -772,19 +851,45 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       spotBall(-loss);
       return;
     }
+    // Scramble: the pass breaks down and the quarterback runs. Called passes,
+    // so the quarterback's designed runs are fewer to match (prepTeam).
+    if (rng.chance(T[s].scramble[q] ?? 0.03)) {
+      const ypc = q === T[s].qb ? T[s].qbYpc : qp.ypc_r;
+      // Scrambles gain more than designed runs: ~7 yards a time in 2025.
+      const mean = Math.max(4, ypc * 1.35) * RUN_YDS * T[s].off * form[s];
+      const y = Math.min(dist, runYards(mean));
+      box.add(s, q, NFL.CAR, 1);
+      box.add(s, q, NFL.RYD, y);
+      box.max(s, q, NFL.RLNG, y);
+      gain(s, y, true);
+      if (y >= dist) {
+        box.add(s, q, NFL.RTD, 1);
+        burn(rng.uniform(4, 7));
+        if (log.on) ev(s, `TOUCHDOWN — ${nm(s, q)} ${dist}-yard run`, { scoring: true, big: true });
+        yl = 100;
+        touchdown(s, q, "run");
+        return;
+      }
+      const t = tackle(d);
+      burn(rng.uniform(4, 7));
+      if (log.on)
+        ev(
+          s,
+          `${nm(s, q)} scrambles for ${y} yard${Math.abs(y) === 1 ? "" : "s"}${t >= 0 ? ` (${nm(d, t)})` : ""}`,
+          { big: y >= 20 },
+        );
+      spotBall(y);
+      return;
+    }
     const tgt = pickTarget(s, dist <= 20);
     box.add(s, q, NFL.ATT, 1);
     if (tgt >= 0) box.add(s, tgt, NFL.TGT, 1);
     // Interception?
     const pInt = Math.min(0.12, qp.intRate * T[d].vs.int);
-    const where = [
-      "short left",
-      "short middle",
-      "short right",
-      "deep left",
-      "deep middle",
-      "deep right",
-    ][flavor.int(0, 5)];
+    // Words only (flavor stream): which side, and "deep" for throws that
+    // travel — 18% of 2025's attempts, 12% of its completions.
+    const lane = ["left", "middle", "right"][flavor.int(0, 2)];
+    const where = (deep: boolean) => `${deep ? "deep" : "short"} ${lane}`;
     if (rng.chance(pInt)) {
       box.add(s, q, NFL.INT, 1);
       team[s].TO++;
@@ -798,7 +903,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
         if (log.on)
           ev(
             d,
-            `${nm(s, q)} pass ${where} INTERCEPTED by ${nm(d, picker)} and returned for a TOUCHDOWN`,
+            `${nm(s, q)} pass ${where(air >= 15)} INTERCEPTED by ${nm(d, picker)} and returned for a TOUCHDOWN`,
             { scoring: true, big: true },
           );
         if (picker >= 0) box.add(d, picker, NFL.DTD, 1);
@@ -807,7 +912,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
         touchdown(poss, picker, "interception return");
         return;
       }
-      if (log.on) ev(s, `${nm(s, q)} pass ${where} INTERCEPTED by ${nm(d, picker)}`, { big: true });
+      if (log.on)
+        ev(s, `${nm(s, q)} pass ${where(air >= 15)} INTERCEPTED by ${nm(d, picker)}`, {
+          big: true,
+        });
       changePossession(newYl + ret);
       return;
     }
@@ -825,18 +933,35 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
         CMP_CAL *
         T[s].off *
         form[s] *
-        T[d].vs.cmpOdds,
+        T[d].vs.cmpOdds *
+        prep.roof[0] *
+        (dist < 20 ? 0.75 + 0.0125 * dist : 1),
     );
     if (!rng.chance(Math.min(0.92, pCmp))) {
       burn(rng.uniform(4, 7));
       stopped = true;
-      if (log.on) ev(s, `${nm(s, q)} pass incomplete ${where} intended for ${nm(s, tgt)}`);
+      if (log.on)
+        ev(
+          s,
+          `${nm(s, q)} pass incomplete ${where(flavor.chance(0.3))} intended for ${nm(s, tgt)}`,
+        );
       spotBall(0);
       return;
     }
     const mean =
-      rp.ypr * Math.pow(qp.ypc / env.ypc, 0.6) * PASS_YDS * T[d].vs.ypc * T[s].off * form[s];
+      rp.ypr *
+      Math.pow(qp.ypc / env.ypc, 0.6) *
+      PASS_YDS *
+      T[d].vs.ypc *
+      T[s].off *
+      form[s] *
+      prep.roof[1] *
+      squeeze(dist);
     let y = catchYards(mean);
+    // Third and fourth down: the throw goes to the sticks.
+    // Long yardage is harder to reach (2025: 17% of 3rd-and-11+ converted).
+    if (down >= 3 && y < toGo && rng.chance(STICKS * Math.min(1, 8 / toGo)))
+      y = toGo + Math.round(rng.exp(2.5));
     if (y > dist) y = dist;
     if (yl + y <= 0) y = 1 - yl;
     box.add(s, q, NFL.CMP, 1);
@@ -852,7 +977,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       if (log.on)
         ev(
           s,
-          `${nm(s, q)} pass ${where} to ${nm(s, tgt)} for ${y}, FUMBLE — ${T[d].team.abbr} recover`,
+          `${nm(s, q)} pass ${where(y >= 22)} to ${nm(s, tgt)} for ${y}, FUMBLE — ${T[d].team.abbr} recover`,
           { big: true },
         );
       changePossession(100 - Math.min(99, yl + y));
@@ -878,42 +1003,77 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     if (log.on)
       ev(
         s,
-        `${nm(s, q)} pass ${where} to ${nm(s, tgt)} for ${y} yard${Math.abs(y) === 1 ? "" : "s"}${t >= 0 ? ` (${nm(d, t)})` : ""}`,
+        `${nm(s, q)} pass ${where(y >= 22)} to ${nm(s, tgt)} for ${y} yard${Math.abs(y) === 1 ? "" : "s"}${t >= 0 ? ` (${nm(d, t)})` : ""}`,
         { big: y >= 25 },
       );
     spotBall(y);
   };
 
+  /**
+   * Accepted penalties in the 2025 mix: false starts, holding and pre-snap
+   * fouls at 5–10 yards; pass interference at the spot; roughing, face masks
+   * and unnecessary roughness at 15. Defensive holding, illegal contact and
+   * the personal fouls carry an automatic first down. Half the distance near
+   * the goal line.
+   */
   const penalty = (): boolean => {
     if (!rng.chance(PENALTY_RATE)) return false;
     const s = poss;
-    const onOffense = rng.chance(0.47);
-    const pass = rng.chance(0.6);
-    if (onOffense) {
-      const hold = pass && rng.chance(0.55);
-      const yds = hold ? 10 : 5;
+    const before = sit();
+    if (rng.chance(0.48)) {
+      const r = rng.next();
+      const [what, yds, live] =
+        r < 0.3
+          ? (["false start", 5, false] as const)
+          : r < 0.62
+            ? (["offensive holding", 10, true] as const)
+            : r < 0.74
+              ? (["illegal formation", 5, false] as const)
+              : r < 0.84
+                ? (["delay of game", 5, false] as const)
+                : r < 0.92
+                  ? (["offensive pass interference", 10, true] as const)
+                  : (["unnecessary roughness", 15, true] as const);
       const loss = Math.min(yds, Math.floor((yl - 1) / 2) || 1);
       yl -= loss;
       toGo += loss;
       team[s].PEN++;
       team[s].PENY += loss;
-      if (log.on)
-        ev(
-          s,
-          `PENALTY ${T[s].team.abbr}: ${hold ? "offensive holding" : "false start"}, ${loss} yards`,
-        );
-      stopped = !hold;
-      if (hold) burn(6);
+      if (log.on) ev(s, `PENALTY ${T[s].team.abbr}: ${what}, ${loss} yards`, { sit: before });
+      stopped = !live;
+      if (live) burn(6);
       return true;
     }
     const d = 1 - s;
-    const pi = pass && rng.chance(0.35);
-    let yds = pi ? Math.min(Math.max(5, Math.round(rng.gamma(2, 9))), 99 - yl) : 5;
-    yds = Math.min(yds, Math.max(1, Math.floor((100 - yl) / 2)));
+    const r = rng.next();
+    const [what, auto, live] =
+      r < 0.22
+        ? (["pass interference", true, true] as const)
+        : r < 0.5
+          ? ([flavor.chance(0.5) ? "offside" : "neutral zone infraction", false, false] as const)
+          : r < 0.68
+            ? (["defensive holding", true, true] as const)
+            : r < 0.76
+              ? (["illegal contact", true, true] as const)
+              : r < 0.84
+                ? (["roughing the passer", true, true] as const)
+                : r < 0.94
+                  ? (["unnecessary roughness", true, true] as const)
+                  : (["face mask", true, true] as const);
+    let yds =
+      what === "pass interference"
+        ? Math.max(5, Math.round(rng.gamma(2, 6.5)))
+        : r >= 0.76
+          ? 15
+          : 5;
+    // Pass interference is a spot foul (to the 1 at most); the rest stop at
+    // half the distance to the goal.
+    const half = Math.max(1, Math.floor((100 - yl) / 2));
+    yds = Math.max(1, what === "pass interference" ? Math.min(yds, 99 - yl) : Math.min(yds, half));
     team[d].PEN++;
     team[d].PENY += yds;
     yl += yds;
-    if (pi || yds >= toGo) {
+    if (auto || yds >= toGo) {
       down = 1;
       toGo = Math.min(10, 100 - yl);
       team[s].FD++;
@@ -921,9 +1081,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     if (log.on)
       ev(
         d,
-        `PENALTY ${T[d].team.abbr}: ${pi ? "pass interference" : flavor.chance(0.5) ? "offside" : "defensive holding"}, ${yds} yards${pi ? ", automatic first down" : ""}`,
+        `PENALTY ${T[d].team.abbr}: ${what}, ${yds} yards${auto ? ", automatic first down" : ""}`,
+        { sit: before },
       );
-    if (pi) burn(6);
+    if (live) burn(6);
     stopped = true;
     return true;
   };
@@ -932,12 +1093,14 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const s = poss;
     const d = 1 - s;
     if (quarter === 4 && diff(s) > 0) {
-      const kneels = 4 - down + 1;
-      const canBurn = kneels * 40 - timeouts[d] * 38;
-      if (clk <= canBurn && clk > 0) return true;
+      // Kneels left before fourth down, ~40 seconds each, less what the
+      // other side's timeouts can stop.
+      const kneels = 4 - down;
+      const canBurn = kneels * 40 + 5 - timeouts[d] * 38;
+      if (clk <= Math.min(canBurn, 125) && clk > 0) return true;
     }
     // Run out the half from deep in their own end rather than risk a turnover.
-    if (quarter === 2 && clk <= 25 && yl < 30 && diff(s) >= -3 && !stopped) return true;
+    if (quarter === 2 && clk <= 20 && yl < 25 && diff(s) >= -3 && !stopped) return true;
     return false;
   };
 
@@ -981,7 +1144,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     if (rng.chance(passRate(s))) passPlay();
     else runPlay();
     // Quarterback injury: rare, but it is the event that most changes a game.
-    if (rng.chance(0.0012) && T[s].backupQb !== qb[s]) {
+    if (rng.chance(QB_INJURY) && T[s].backupQb !== qb[s]) {
       qb[s] = T[s].backupQb;
       if (log.on)
         ev(s, `${nm(s, T[s].qb)} is injured — ${nm(s, qb[s])} takes over at quarterback`, {

@@ -4,8 +4,13 @@ import type { MassResult } from "@/lib/sim/aggregate";
 import type { SlateEntry } from "@/lib/sim/build.server";
 import type { SimLeague, SimMatchup } from "@/lib/sim/types";
 
-import { noVigHome, pct, spreadText } from "./format";
+import { MAX_BATCH, noVigHome, pct, spreadText } from "./format";
 import type { useSimWorker } from "./useSimWorker";
+
+/** Games per matchup when running a whole date, up to the single-game cap. */
+const SLATE_SIZES = [100, 1000, 5000, 10000, 50000, 100000, MAX_BATCH];
+/** Rough throughput across a four-core laptop's workers, for the time hint. */
+const GAMES_PER_SECOND: Record<SimLeague, number> = { nfl: 6000, nba: 7000, nhl: 4000, mlb: 4500 };
 
 /**
  * Every game on the date, simulated in turn. One table answers "what does the
@@ -86,6 +91,8 @@ export function SlateRunner({
           <h2 className="font-display text-3xl">Simulate the whole slate</h2>
           <p className="text-xs text-muted-foreground">
             Every game on this date, {n.toLocaleString()} times each, injury report as listed.
+            {n * games.length >= 500000 &&
+              ` About ${Math.max(1, Math.round((n * games.length) / GAMES_PER_SECOND[league] / 60))} min on a typical laptop — it runs in your browser.`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -96,7 +103,7 @@ export function SlateRunner({
             aria-label="Games per matchup"
             className="border border-border bg-secondary px-2 py-1.5 font-mono text-xs text-foreground"
           >
-            {[250, 1000, 2500, 5000].map((v) => (
+            {SLATE_SIZES.map((v) => (
               <option key={v} value={v}>
                 {v.toLocaleString()} each
               </option>
