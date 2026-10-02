@@ -742,9 +742,9 @@ const HOW: Record<SimLeague, string[]> = {
   ],
   nfl: [
     "Snap by snap, with the state a broadcast shows: quarter, clock, down, distance, field position, timeouts.",
-    "Each play is a run or a pass from the team's own pass rate and tempo, bent by the situation. The ball goes to a player in proportion to his carries or targets.",
+    "Each play is a run or a pass from the coaching staff's own tendency — how much more or less than expected it throws on early downs in a close game — and its tempo, bent by down, distance, score and clock. The ball goes to a player in proportion to his carries or targets.",
     "Then the defense: completion odds combine the quarterback's accuracy and the receiver's catch rate with the completion rate this defense allows; yards per catch and per carry scale by what it gives up against the league; sacks and interceptions meet its sack and pick rates. A receiver facing a soft secondary really does gain more.",
-    "Fourth-down calls, field goals by distance and kicker, punts, 2025 kickoff rules, penalties, the two-minute warning, clock-killing, onside kicks and overtime are all played out. Calibrated to the league's ~23 points and ~63 plays per team.",
+    "Fourth downs go the way the league's coaches actually decide from that distance and spot, leaning toward this head coach's own aggressiveness. Field goals by distance and kicker, punts, 2025 kickoff rules, penalties, the two-minute warning, clock-killing, onside kicks and overtime are all played out. Calibrated to the league's ~23 points and ~63 plays per team.",
   ],
   nhl: [
     "Shift by shift in continuous time. The twelve forwards and six defencemen who play most dress in lines and pairs and get ice time in proportion to how much they play.",

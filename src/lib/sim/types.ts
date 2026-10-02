@@ -254,6 +254,9 @@ export interface NflTeam extends TeamInfo {
   players: NflPlayer[];
   /** Share of offensive plays that are designed passes (incl. sacks). */
   passRate: number;
+  /** The head coach's fourth-down go rate above (or below) the league's from
+   *  the same spots, regressed; 0 when unknown. */
+  goAggr?: number;
 }
 
 export interface NflEnv {
