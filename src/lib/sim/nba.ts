@@ -63,7 +63,14 @@ const SCORE_EFFECT = 0.0035;
 const ROLE_POW = 1.5;
 /** The same for rebounds, which concentrate less: a big's rate was earned
  *  next to other bigs too. */
-const REB_POW = 1.3;
+const REB_POW = 1.55;
+/** Share of defensive rebounds credited to the team, not a player. */
+const TEAM_REB = 0.12;
+/** Make-probability factor for a team on the second night of a back-to-back. */
+const B2B_MAKE = 0.972;
+/** Game-to-game swings in a player's minutes and shot volume (log scale). */
+const MIN_FORM = 0.15;
+const USE_FORM = 0.16;
 /** Game-to-game pace swings both teams share. */
 const PACE_NOISE = 0.035;
 
@@ -156,7 +163,17 @@ function prepTeam(
     orebOdds: dreb ? odds(1 - dreb.value) / Math.max(1e-9, odds(1 - dreb.league)) : 1,
   };
   const homeEdge = neutral ? 0 : side === "home" ? HOME_EDGE : -HOME_EDGE;
-  return { side, team, roster, target, starters, vs, makeF: MAKE_CAL * (1 + homeEdge) };
+  // Second night of a back-to-back: tired legs, ~2 points (2025-26).
+  const tired = m.ctx.b2b?.[side] ? B2B_MAKE : 1;
+  return {
+    side,
+    team,
+    roster,
+    target,
+    starters,
+    vs,
+    makeF: MAKE_CAL * (1 + homeEdge) * tired,
+  };
 }
 
 const odds = (p: number) => p / Math.max(1e-9, 1 - p);
@@ -220,6 +237,22 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
   const T = prep.teams;
   const played = [new Float64Array(H.team.players.length), new Float64Array(A.team.players.length)];
   const fouls = [new Int8Array(H.team.players.length), new Int8Array(A.team.players.length)];
+  // Tonight's roles: everyone's minutes and shot volume swing a little from
+  // game to game — a hot hand, a matchup, a coach's whim — around their
+  // season averages (2025-26: the busiest player averages 35 minutes and a
+  // team's top scorer reaches 30 a third of the time).
+  const jitter = (tp: TeamPrep) => {
+    const t = tp.target.map((x) => x * Math.exp(rng.normal(0, MIN_FORM)));
+    const k =
+      tp.target.reduce((a, b) => a + b, 0) /
+      Math.max(
+        1,
+        t.reduce((a, b) => a + b, 0),
+      );
+    return t.map((x) => Math.min(42 * 60, x * k));
+  };
+  const tgt = [jitter(H), jitter(A)];
+  const usage = [H, A].map((tp) => tp.team.players.map(() => Math.exp(rng.normal(0, USE_FORM))));
   const lineup: number[][] = [H.starters.slice(), A.starters.slice()];
   for (let s = 0; s < 2; s++) for (const p of lineup[s]) box.add(s, p, NBA.START, 1);
   const name = (s: number, p: number) => T[s].team.players[p].short;
@@ -283,7 +316,7 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
       // Closing time: the five who play the most.
       const best = avail
         .slice()
-        .sort((a, b) => t.target[b] - t.target[a])
+        .sort((a, b) => tgt[s][b] - tgt[s][a])
         .slice(0, 5);
       setLineup(s, best);
       return;
@@ -291,14 +324,14 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
     if (period === REG && clk < 400 && Math.abs(margin) >= 20) {
       const garbage = avail
         .slice()
-        .sort((a, b) => t.target[a] - t.target[b])
+        .sort((a, b) => tgt[s][a] - tgt[s][b])
         .slice(0, 5);
       setLineup(s, garbage);
       return;
     }
     const frac = Math.min(1, (regElapsed() + 150) / 2880);
     const need = (p: number) => {
-      let d = t.target[p] * frac - played[s][p];
+      let d = tgt[s][p] * frac - played[s][p];
       // Foul trouble: two in the first, three in the second, and so on.
       if (fouls[s][p] >= Math.min(5, period + 1) && period <= REG) d -= 400;
       return d;
@@ -335,9 +368,7 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
       for (let s = 0; s < 2; s++) {
         const avail = T[s].roster.filter((p) => !fouledOut(s, p));
         const st = T[s].starters.filter((p) => avail.includes(p));
-        const fill = avail
-          .filter((p) => !st.includes(p))
-          .sort((a, b) => T[s].target[b] - T[s].target[a]);
+        const fill = avail.filter((p) => !st.includes(p)).sort((a, b) => tgt[s][b] - tgt[s][a]);
         setLineup(s, st.concat(fill).slice(0, 5));
       }
     } else {
@@ -348,14 +379,24 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
 
   // ---------------------------------------------------------- actions
 
-  const pickActor = (s: number, w: (p: NbaPlayer) => number, pow = 1) => {
+  const pickActor = (
+    s: number,
+    w: (p: NbaPlayer, i: number) => number,
+    pow = 1,
+    form?: number[],
+  ) => {
     const ps = lineup[s];
-    const weights = ps.map((i) => Math.pow(w(T[s].team.players[i]), pow));
+    const weights = ps.map((i) => Math.pow(w(T[s].team.players[i], i), pow) * (form ? form[i] : 1));
     return ps[rng.pick(weights)];
   };
 
   const foul = (d: number, shooting: boolean) => {
-    const p = pickActor(d, (x) => x.pf);
+    // A player in foul trouble defends more carefully (2025-26: 0.18
+    // foul-outs a game).
+    const p = pickActor(
+      d,
+      (x, i) => x.pf * (fouls[d][i] >= 4 ? 0.45 : fouls[d][i] === 3 ? 0.8 : 1),
+    );
     fouls[d][p]++;
     box.add(d, p, NBA.PF, 1);
     if (log.on && !shooting) ev(d, `Personal foul: ${name(d, p)}`);
@@ -401,6 +442,13 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
       if (log.on) ev(s, `${name(s, r)} offensive rebound`);
       return true;
     }
+    // Some misses are team rebounds — out of bounds off the shooter, the end
+    // of a quarter — and go in no one's box line (2025-26: 32.6 defensive
+    // rebounds a team in box scores).
+    if (rng.chance(TEAM_REB)) {
+      if (log.on) ev(1 - s, `${T[1 - s].team.name} team rebound`);
+      return false;
+    }
     const r = pickActor(1 - s, (x) => x.dreb, REB_POW);
     box.add(1 - s, r, NBA.DREB, 1);
     if (log.on) ev(1 - s, `${name(1 - s, r)} defensive rebound`);
@@ -425,7 +473,7 @@ export function playNba(prep: NbaPrep, seed: number, record: boolean): GameResul
     // This defense draws fouls and forces turnovers at its own rates.
     const ftW = 0.44 * dp.vs.ft;
     const tovW = dp.vs.tov;
-    const p = pickActor(s, (x) => x.fg2a + x.fg3a + ftW * x.fta + tovW * x.tov, ROLE_POW);
+    const p = pickActor(s, (x) => x.fg2a + x.fg3a + ftW * x.fta + tovW * x.tov, ROLE_POW, usage[s]);
     const pl = tp.team.players[p];
     const shots = pl.fg2a + pl.fg3a;
     const total = shots + ftW * pl.fta + tovW * pl.tov;

@@ -59,6 +59,8 @@ interface TeamPrep {
   homeF: number;
   /** Each batter's rates against a left- and a right-handed pitcher. */
   split: { L: PaRates; R: PaRates }[];
+  /** Position players on the bench, best hitter first. */
+  bench: number[];
   /** Reached-on-error chance on an out in play against this defense. */
   roe: number;
 }
@@ -168,7 +170,15 @@ function prepTeam(team: MlbTeam, side: Side, o: SimOverrides, neutral: boolean):
   // A sloppy defense turns more outs into runners on base.
   const e = team.tend?.errors;
   const roe = ROE * (e ? Math.max(0.6, Math.min(1.6, e.value / Math.max(1e-6, e.league))) : 1);
-  return { team, order, starter, rotation, closer, setup, middle, long, homeF, split, roe };
+  const bench = team.batters
+    .map((b, i) => ({ b, i }))
+    .filter(
+      ({ b, i }) =>
+        !order.includes(i) && ok(b) && b.pos !== "SP" && b.pos !== "RP" && b.pos !== "P",
+    )
+    .sort((a, b) => b.b.ops - a.b.ops)
+    .map(({ i }) => i);
+  return { team, order, starter, rotation, closer, setup, middle, long, homeF, split, roe, bench };
 }
 
 export function prepareMlb(m: MlbMatchup, o: SimOverrides): MlbPrep {
@@ -233,6 +243,9 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
   const lob = [0, 0];
   const periods = { home: [] as number[], away: [] as number[] };
   const lineupPos = [0, 0];
+  // Today's batting orders and benches, which substitutions change.
+  const lineup = [T[0].order.slice(), T[1].order.slice()];
+  const bench = [T[0].bench.slice(), T[1].bench.slice()];
   // Today's starters: the named one, or a draw from the rotation.
   const starters = T.map((tp) => {
     if (tp.starter >= 0) return tp.starter;
@@ -250,8 +263,10 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
   // Leash: the pitch count this starter is allowed today.
   const leash = [0, 1].map((s) => {
     const p = T[s].team.pitchers[starters[s]];
-    const expected = Math.max(60, Math.min(MAX_PITCHES, (p?.bfPerStart ?? 22) * 3.9));
-    return expected + rng.normal(0, 9);
+    const expected = Math.max(60, Math.min(MAX_PITCHES, (p?.bfPerStart ?? 22) * 3.75));
+    // Some days the hook comes early — a short leash, a bullpen game, a
+    // tired arm (2026: a fifth of starts end before the fourth inning out).
+    return expected + rng.normal(0, 15);
   });
   T.forEach((tp, s) => {
     tp.order.forEach((b, k) => box.add(s, b, MLB.ORDER, k + 1));
@@ -411,6 +426,18 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
       // Relievers go an inning; long men longer.
       const isLong = tp.long.includes(cur[f]);
       const limit = isLong ? 40 : 22;
+      // An efficient middle reliever often takes a second inning (2026: 4.4
+      // pitchers a team-game, not one fresh arm every inning).
+      if (
+        atInningStart &&
+        faced[f] >= 3 &&
+        !isLong &&
+        inning <= 7 &&
+        pitches[f] < 20 &&
+        runsThisOuting[f] === 0 &&
+        rng.chance(0.45)
+      )
+        return;
       if (!(atInningStart && faced[f] >= 3) && pitches[f] < limit && runsThisOuting[f] < 3) return;
       if (!atInningStart && pitches[f] < limit + 8 && runsThisOuting[f] < 3) return;
     }
@@ -496,13 +523,47 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
     }
   };
 
+  /**
+   * Late-game substitutions, ~1.3 a team-game as in 2026: a better bat for a
+   * weak hitter in a close game, regulars rested in a blowout, a defensive
+   * replacement protecting a lead. The man replaced is done for the day;
+   * returns the bench player coming in, or -1.
+   */
+  const substitute = (s: number, b: number): number => {
+    if (inning < 6 || !bench[s].length) return -1;
+    const lead = score[s] - score[1 - s];
+    const best = bench[s][0];
+    let p = 0;
+    let rest = false;
+    if (Math.abs(lead) >= 6 && inning >= 7) {
+      p = 0.26;
+      rest = true;
+    } else if (inning >= 7 && Math.abs(lead) <= 3 && bat(s, best).ops > bat(s, b).ops + 0.04)
+      p = inning >= 8 ? 0.4 : 0.2;
+    else if (inning >= 8 && lead >= 1 && lead <= 4) {
+      p = 0.14;
+      rest = true;
+    }
+    if (!rng.chance(p)) return -1;
+    // In a blowout or for defense, whoever is next on the bench; otherwise the
+    // best bat left.
+    const k = rest ? bench[s].length - 1 : 0;
+    return bench[s].splice(k, 1)[0];
+  };
+
   const plateAppearance = (s: number) => {
     const f = 1 - s;
     manage(f);
     steal(s);
     if (outs >= 3) return;
-    const slot = lineupPos[s] % T[s].order.length;
-    const b = T[s].order[slot];
+    const slot = lineupPos[s] % lineup[s].length;
+    let b = lineup[s][slot];
+    const sub = substitute(s, b);
+    if (sub >= 0) {
+      if (log.on) ev(s, `${name(s, sub)} pinch-hits for ${name(s, b)}`);
+      lineup[s][slot] = sub;
+      b = sub;
+    }
     lineupPos[s]++;
     const o = paOutcome(s, b);
     const pi = pIdx(f, cur[f]);
@@ -694,7 +755,7 @@ export function playMlb(prep: MlbPrep, seed: number, record: boolean): GameResul
       if (inning > 9 && !prep.playoff) {
         // The automatic runner: the hitter who made the last out of the
         // previous inning, unearned against the pitcher.
-        const last = T[s].order[(lineupPos[s] - 1 + T[s].order.length) % T[s].order.length];
+        const last = lineup[s][(lineupPos[s] - 1 + lineup[s].length) % lineup[s].length];
         bases[1] = last;
         owner[1] = cur[f];
         earned[1] = false;

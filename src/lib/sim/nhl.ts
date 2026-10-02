@@ -36,7 +36,7 @@ type NhlMatchup = Extract<SimMatchup, { league: "nhl" }>;
 // a home team wins ~54%. See SIMULATOR.md.
 const SHOT_CAL = 0.985;
 const GOAL_CAL = 1.0;
-const HOME_SHOTS = 0.04;
+const HOME_SHOTS = 0.025;
 const EV_MULT = 0.94;
 const PP_MULT = 1.8;
 const SH_MULT = 0.42;
@@ -49,6 +49,9 @@ const MINOR_SHARE = 0.68; // of PIM/2 that are minors that put a team down a man
 // Score effects: at even strength the trailing team pushes and the leading
 // team sits back, so shot share tilts ~6% per goal of deficit (up to two).
 const SCORE_SHOTS = 0.06;
+/** Strength-neutral penalty incidents per game, and the share that are fights. */
+const OFFSETTING = 1.05;
+const FIGHT_SHARE = 0.2;
 const D_ASSIST = 0.8;
 const PERIOD = 1200;
 const REG_OT = 300;
@@ -442,6 +445,37 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     }
   };
 
+  /**
+   * Penalties that change nobody's strength: a fight (five each), offsetting
+   * minors, a ten-minute misconduct. They fill the penalty-minutes column
+   * the way real games do (2025-26: 9.7 PIM a team, against 5.7 from the
+   * minors that make power plays).
+   */
+  const offsetting = () => {
+    const who = (s: number) => {
+      const ice = onIce(s);
+      return ice.length ? ice[rng.pick(ice.map((i) => sk(s, i).pim60 + 0.05))] : -1;
+    };
+    const r = rng.next();
+    const a = who(0);
+    const b = who(1);
+    if (a < 0 || b < 0) return;
+    if (r < FIGHT_SHARE) {
+      box.add(0, a, NHL.PIM, 5);
+      box.add(1, b, NHL.PIM, 5);
+      if (log.on) ev(null, `Fighting majors: ${name(0, a)} and ${name(1, b)}, 5 min each`);
+    } else if (r < FIGHT_SHARE + 0.45) {
+      box.add(0, a, NHL.PIM, 2);
+      box.add(1, b, NHL.PIM, 2);
+      if (log.on) ev(null, `Offsetting minors: ${name(0, a)} and ${name(1, b)}, 2 min each`);
+    } else {
+      const s = rng.chance(0.5) ? 0 : 1;
+      const p = s === 0 ? a : b;
+      box.add(s, p, NHL.PIM, 10);
+      if (log.on) ev(s, `${name(s, p)}, 10 min misconduct`);
+    }
+  };
+
   const penalty = (s: number) => {
     const ice = onIce(s);
     if (!ice.length) return;
@@ -533,7 +567,13 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     let guard = 0;
     while (t < len && guard++ < 5000) {
       pullCheck();
-      const rates = [shotRate(0), shotRate(1), penRate(0), penRate(1)];
+      const rates = [
+        shotRate(0),
+        shotRate(1),
+        penRate(0),
+        penRate(1),
+        period <= 3 && !pulled[0] && !pulled[1] ? OFFSETTING / 3600 : 0,
+      ];
       if (regOt()) {
         rates[2] *= 0.4;
         rates[3] *= 0.4;
@@ -542,7 +582,7 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
         rates[2] *= 0.5;
         rates[3] *= 0.5;
       }
-      const R = rates[0] + rates[1] + rates[2] + rates[3];
+      const R = rates[0] + rates[1] + rates[2] + rates[3] + rates[4];
       const dt = R > 0 ? rng.exp(1 / R) : Infinity;
       // The next boundary: shift change, a penalty expiring, the period end.
       let bound = Math.min(shiftLeft, len - t);
@@ -573,7 +613,8 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
       if (k < 2) {
         shot(k);
         if (ot() && score[0] !== score[1]) break;
-      } else penalty(k - 2);
+      } else if (k < 4) penalty(k - 2);
+      else offsetting();
     }
     periods.home.push(periodScore[0]);
     periods.away.push(periodScore[1]);

@@ -460,6 +460,8 @@ export type ScoreboardGame = {
   state: "pre" | "in" | "post";
   status: string;
   venue: string;
+  /** Roof closed or a dome, where ESPN says. */
+  indoor?: boolean;
   neutral: boolean;
   playoff: boolean;
   homeId: string;
@@ -486,7 +488,7 @@ type ScoreboardResponse = {
     status: { type: { state: string; shortDetail?: string; completed?: boolean } };
     competitions: {
       neutralSite?: boolean;
-      venue?: { fullName?: string };
+      venue?: { fullName?: string; indoor?: boolean };
       competitors: {
         homeAway: "home" | "away";
         score?: string;
@@ -556,6 +558,7 @@ export function scoreboard(league: SimLeague, date: string): Promise<ScoreboardG
         state,
         status: st.shortDetail ?? "",
         venue: c.venue?.fullName ?? "",
+        indoor: c.venue?.indoor,
         neutral: c.neutralSite === true,
         playoff: ev.season?.type === 3,
         homeId: home.team.id,

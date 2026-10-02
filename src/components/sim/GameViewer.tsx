@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { MLB, NBA, NFL, NHL } from "@/lib/sim/columns";
 import { BOX, boxPlayers, UNITS, type BoxPlayer } from "@/lib/sim/props";
 import type { GameResult, PlayEvent, SimMatchup, Side } from "@/lib/sim/types";
 
@@ -95,7 +96,7 @@ export function GameViewer({
   return (
     <div className="border border-border bg-card">
       {/* Scoreboard */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border px-4 py-5 sm:px-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-5 sm:px-6">
         <TeamScore
           team={matchup.away}
           score={finalAway}
@@ -273,7 +274,7 @@ export function GameViewer({
           </div>
           <div className="max-h-[560px] overflow-auto px-4 pb-4 sm:px-6">
             <BoxScore matchup={matchup} side={boxSide} rows={box[boxSide]} />
-            <TeamTotals result={result} matchup={matchup} done={done} />
+            <TeamTotals result={result} matchup={matchup} done={done} box={box} />
           </div>
         </div>
       </div>
@@ -608,49 +609,91 @@ function BoxRow({
   );
 }
 
+/**
+ * The team stat comparison, live: everything a box score can add up as the
+ * game is played back, plus what only the final knows (possession time,
+ * first downs, power plays, errors) once it is over.
+ */
 function TeamTotals({
   result,
   matchup,
   done,
+  box,
 }: {
   result: GameResult;
   matchup: SimMatchup;
   done: boolean;
+  box: { home: number[][]; away: number[][] };
 }) {
-  if (!done) return null;
-  const keys: Record<SimMatchup["league"], [string, string][]> = {
+  type Row = [string, (rows: number[][], side: Side) => string];
+  const sum = (rows: number[][], c: number) => rows.reduce((a, r) => a + (r[c] ?? 0), 0);
+  const pct = (m: number, a: number) => (a ? ` (${Math.round((m / a) * 100)}%)` : "");
+  const final =
+    (k: string, f: (v: number) => string = (v) => String(Math.round(v))) =>
+    (_: number[][], side: Side) =>
+      done ? f(result.team[side][k] ?? 0) : "—";
+  const rowsFor: Record<SimMatchup["league"], Row[]> = {
+    nba: [
+      [
+        "Field goals",
+        (r) => `${sum(r, NBA.FGM)}-${sum(r, NBA.FGA)}${pct(sum(r, NBA.FGM), sum(r, NBA.FGA))}`,
+      ],
+      [
+        "Threes",
+        (r) => `${sum(r, NBA.TPM)}-${sum(r, NBA.TPA)}${pct(sum(r, NBA.TPM), sum(r, NBA.TPA))}`,
+      ],
+      ["Free throws", (r) => `${sum(r, NBA.FTM)}-${sum(r, NBA.FTA)}`],
+      ["Rebounds", (r) => `${sum(r, NBA.OREB) + sum(r, NBA.DREB)} (${sum(r, NBA.OREB)} off)`],
+      ["Assists", (r) => String(sum(r, NBA.AST))],
+      ["Turnovers", (r) => String(sum(r, NBA.TOV))],
+      ["Steals · blocks", (r) => `${sum(r, NBA.STL)} · ${sum(r, NBA.BLK)}`],
+      ["Fouls", (r) => String(sum(r, NBA.PF))],
+    ],
     nfl: [
-      ["YDS", "Total yards"],
-      ["PASS", "Passing"],
-      ["RUSH", "Rushing"],
-      ["FD", "First downs"],
-      ["TO", "Turnovers"],
-      ["SACKS", "Sacked"],
-      ["PEN", "Penalties"],
-      ["TOP", "Possession"],
+      ["Total yards", (r) => String(sum(r, NFL.PYD) - sum(r, NFL.SKY) + sum(r, NFL.RYD))],
+      [
+        "Passing",
+        (r) => `${sum(r, NFL.CMP)}/${sum(r, NFL.ATT)}, ${sum(r, NFL.PYD) - sum(r, NFL.SKY)} yds`,
+      ],
+      ["Rushing", (r) => `${sum(r, NFL.CAR)} for ${sum(r, NFL.RYD)}`],
+      ["Sacked", (r) => `${sum(r, NFL.SK)}-${sum(r, NFL.SKY)}`],
+      ["Turnovers", final("TO")],
+      ["First downs", final("FD")],
+      [
+        "Penalties",
+        (_, side) => (done ? `${result.team[side].PEN ?? 0}-${result.team[side].PENY ?? 0}` : "—"),
+      ],
+      [
+        "Possession",
+        final("TOP", (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")}`),
+      ],
     ],
     nhl: [
-      ["SOG", "Shots on goal"],
-      ["PPG", "Power-play goals"],
-      ["PPO", "Power plays"],
+      ["Shots on goal", (r) => String(sum(r, NHL.SOG))],
+      [
+        "Faceoffs won",
+        (r) => `${sum(r, NHL.FOW)}${pct(sum(r, NHL.FOW), sum(r, NHL.FOW) + sum(r, NHL.FOL))}`,
+      ],
+      ["Penalty minutes", (r) => String(sum(r, NHL.PIM))],
+      [
+        "Power plays",
+        (_, side) => (done ? `${result.team[side].PPG ?? 0}/${result.team[side].PPO ?? 0}` : "—"),
+      ],
     ],
     mlb: [
-      ["H", "Hits"],
-      ["E", "Errors"],
-      ["LOB", "Left on base"],
+      ["Hits", (r) => String(sum(r, MLB.H))],
+      ["Home runs", (r) => String(sum(r, MLB.HR))],
+      ["Walks · strikeouts", (r) => `${sum(r, MLB.BB)} · ${sum(r, MLB.SO)}`],
+      ["Pitches", (r) => String(sum(r, MLB.NP))],
+      ["Errors", final("E")],
+      ["Left on base", final("LOB")],
     ],
-    nba: [],
   };
-  const list = keys[matchup.league];
-  if (!list.length) return null;
-  const fmt = (k: string, v: number) =>
-    k === "TOP"
-      ? `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")}`
-      : String(Math.round(v));
+  const list = rowsFor[matchup.league];
   return (
     <div className="mt-5">
       <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        Team
+        Team stats{done ? "" : " · live"}
       </div>
       <table className="w-full font-mono text-xs tabular-nums">
         <thead className="text-muted-foreground">
@@ -661,15 +704,11 @@ function TeamTotals({
           </tr>
         </thead>
         <tbody>
-          {list.map(([k, label]) => (
-            <tr key={k} className="border-t border-border/40">
+          {list.map(([label, f]) => (
+            <tr key={label} className="border-t border-border/40">
               <td className="py-1 text-left text-muted-foreground">{label}</td>
-              <td className="py-1 text-right text-foreground">
-                {fmt(k, result.team.away[k] ?? 0)}
-              </td>
-              <td className="py-1 text-right text-foreground">
-                {fmt(k, result.team.home[k] ?? 0)}
-              </td>
+              <td className="py-1 text-right text-foreground">{f(box.away, "away")}</td>
+              <td className="py-1 text-right text-foreground">{f(box.home, "home")}</td>
             </tr>
           ))}
         </tbody>

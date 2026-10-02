@@ -93,18 +93,26 @@ const seasonCache = new Map<string, { at: number; v: Promise<Season> }>();
 /** The two seasons a league's numbers come from, fetched and weighted. */
 function loadSeason(league: SimLeague, date: string): Promise<Season> {
   const current = seasonFor(league, date);
-  const key = `${league}:${current}`;
+  // Backtests (scripts/backtest-sim.ts) replay games already played from last
+  // season's numbers alone, so the simulation never sees what it is scored on.
+  const priorOnly = process.env.SIM_STATS === "prior";
+  const key = `${league}:${current}${priorOnly ? ":prior" : ""}`;
   const hit = seasonCache.get(key);
   if (hit && Date.now() - hit.at < 30 * 60 * 1000) return hit.v;
   const v = (async (): Promise<Season> => {
     const prior = current - 1;
     const none = () => new Map<string, TeamTotals>();
+    const skip = <T>(v: T) => Promise.resolve(v);
     const [cur, old, stCur, stOld, tsCur, tsOld] = await Promise.all([
-      playerStats(league, current, true).catch(() => new Map<string, StatLine>()),
+      priorOnly
+        ? skip(new Map<string, StatLine>())
+        : playerStats(league, current, true).catch(() => new Map<string, StatLine>()),
       playerStats(league, prior, false),
-      standings(league, current, true).catch(() => new Map<string, StandingRow>()),
+      priorOnly
+        ? skip(new Map<string, StandingRow>())
+        : standings(league, current, true).catch(() => new Map<string, StandingRow>()),
       standings(league, prior, false).catch(() => new Map<string, StandingRow>()),
-      teamStats(league, current, true).catch(none),
+      priorOnly ? skip(none()) : teamStats(league, current, true).catch(none),
       teamStats(league, prior, false).catch(none),
     ]);
     const gps = [...stCur.values()].map((r) => r.gp);
@@ -952,6 +960,15 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     req.gameId ? scoreboard(league, date).catch(() => []) : Promise.resolve([] as ScoreboardGame[]),
   ]);
   const game = req.gameId ? board.find((x) => x.id === req.gameId) : undefined;
+  // NBA: who played last night? A back-to-back costs ~2 points (2025-26).
+  let b2b: MatchupContext["b2b"];
+  if (league === "nba") {
+    const prev = new Date(`${date}T12:00:00Z`);
+    prev.setUTCDate(prev.getUTCDate() - 1);
+    const y = await scoreboard(league, prev.toISOString().slice(0, 10)).catch(() => []);
+    const played = new Set(y.flatMap((g) => [g.homeId, g.awayId]));
+    b2b = { home: played.has(homeId), away: played.has(awayId) };
+  }
   const ctx: MatchupContext = {
     gameId: game?.id ?? null,
     date,
@@ -960,6 +977,8 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     playoff: game?.playoff ?? false,
     line: game?.line ?? null,
     basis: se.basis,
+    ...(league === "nfl" ? { indoor: game?.indoor ?? NFL_DOMES.has(homeMeta.abbr) } : {}),
+    ...(b2b ? { b2b } : {}),
   };
 
   if (league === "nba") {
@@ -1111,6 +1130,21 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     ctx,
   };
 }
+
+/** NFL home stadiums with a fixed or (usually closed) retractable roof. */
+const NFL_DOMES = new Set([
+  "ARI",
+  "ATL",
+  "DAL",
+  "DET",
+  "HOU",
+  "IND",
+  "LV",
+  "LAR",
+  "LAC",
+  "MIN",
+  "NO",
+]);
 
 /** One team's entry in nfl-coaching.json. */
 type NflCoaching = {

@@ -292,6 +292,10 @@ export interface MatchupContext {
   basis: string;
   /** MLB park factor, 100 = neutral. */
   park?: number;
+  /** NFL: played under a roof (2010–25: ~2.2 more points a game indoors). */
+  indoor?: boolean;
+  /** NBA: a team on the second night of a back-to-back (2025-26: ~2 points). */
+  b2b?: Partial<Record<Side, boolean>>;
 }
 
 export type SimMatchup =
