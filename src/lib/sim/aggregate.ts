@@ -345,6 +345,7 @@ function appeared(league: SimMatchup["league"], group: string, row: number[]): b
     case "mlb":
       return group === "pitcher" ? row[MLB.APP] > 0 : row[MLB.PA] > 0;
     case "nfl":
+    case "cfb":
       return row.some((v) => v !== 0);
   }
 }

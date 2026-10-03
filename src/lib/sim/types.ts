@@ -13,9 +13,15 @@
  * their own idea of what "small sample" means.
  */
 
-export type SimLeague = "nfl" | "nba" | "nhl" | "mlb";
+export type SimLeague = "nfl" | "cfb" | "nba" | "nhl" | "mlb";
 
-export const SIM_LEAGUES: SimLeague[] = ["nfl", "nba", "nhl", "mlb"];
+export const SIM_LEAGUES: SimLeague[] = ["nfl", "cfb", "nba", "nhl", "mlb"];
+
+/** The two football leagues share an engine, a box score and a matchup shape;
+ *  college plays it under its own rules (see nfl.ts). */
+export type FootballLeague = "nfl" | "cfb";
+
+export const isFootball = (l: SimLeague): l is FootballLeague => l === "nfl" || l === "cfb";
 
 export type Side = "home" | "away";
 
@@ -257,6 +263,12 @@ export interface NflTeam extends TeamInfo {
   /** The head coach's fourth-down go rate above (or below) the league's from
    *  the same spots, regressed; 0 when unknown. */
   goAggr?: number;
+  /** College: an FCS (or lower) programme, whose numbers came against FCS
+   *  opponents. */
+  fcs?: boolean;
+  /** College: margin against an average FBS team on a neutral field, from
+   *  every result so far with schedules accounted for (cfb-ratings.server.ts). */
+  rating?: number;
 }
 
 export interface NflEnv {
@@ -302,7 +314,13 @@ export type SimMatchup =
   | { league: "nba"; home: NbaTeam; away: NbaTeam; env: NbaEnv; ctx: MatchupContext }
   | { league: "nhl"; home: NhlTeam; away: NhlTeam; env: NhlEnv; ctx: MatchupContext }
   | { league: "mlb"; home: MlbTeam; away: MlbTeam; env: MlbEnv; ctx: MatchupContext }
-  | { league: "nfl"; home: NflTeam; away: NflTeam; env: NflEnv; ctx: MatchupContext };
+  | {
+      league: FootballLeague;
+      home: NflTeam;
+      away: NflTeam;
+      env: NflEnv;
+      ctx: MatchupContext;
+    };
 
 /**
  * What the user changed before pressing play: who sits, who starts. Kept apart

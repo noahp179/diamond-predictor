@@ -21,12 +21,23 @@
  * penalties, timeouts, the two-minute warning, hurry-up and clock-killing,
  * kneel-downs, two-point tries, onside kicks, and overtime with both teams
  * guaranteed a possession.
+ *
+ * College football (league "cfb") plays the same game under its own rules:
+ * overtime is alternating possessions from the opponent's 25 — a two-point try
+ * is required from the second period, and from the third each period is one
+ * two-point play a side — so there are no ties; the clock stops on first downs
+ * in the last two minutes of each half; pass interference is 15 yards at most;
+ * kickoffs that are fair-caught or downed come out to the 25; a sack is a
+ * quarterback rush in the box score, as college counts it. FCS teams play at
+ * a discount against FBS ones, and the kicking, tempo, home field and
+ * game-to-game spread are college's own.
  */
 
 import { available, Box, clock, finish, Log, ordinal, Rng } from "./core";
 import { NFL } from "./columns";
 import coaching from "./nfl-coaching.json";
 import type {
+  FootballLeague,
   GameResult,
   NflEnv,
   NflPlayer,
@@ -36,7 +47,7 @@ import type {
   Side,
 } from "./types";
 
-type NflMatchup = Extract<SimMatchup, { league: "nfl" }>;
+type NflMatchup = Extract<SimMatchup, { league: FootballLeague }>;
 
 // Calibration — two average teams on a neutral field score the league's
 // points per game, run ~63 offensive plays each, and a home team wins ~55%.
@@ -65,7 +76,9 @@ const HOME_EDGE = 0.02;
 /** Used only when a team's season splits are missing: points allowed, regressed. */
 const DEF_FALLBACK = 0.35;
 const RUNOFF = 36; // seconds between snaps with the clock running
-const PENALTY_RATE = 0.055;
+/** Accepted penalties per scrimmage snap (2025: 6.4 a team-game for 51 yards,
+ *  about 5.4 of them on scrimmage plays, 57% on the offense). */
+const PENALTY_RATE = 0.088;
 /** Sacks per dropback against the quarterbacks' own rates (2025: 2.4 a team). */
 const SACK_CAL = 0.9;
 /** Breakaway shares: runs that go 9+ yards beyond the pile, catches that go
@@ -86,6 +99,70 @@ const INDOOR_CMP = 1.045;
 const INDOOR_YDS = 1.022;
 const OUTDOOR_CMP = 0.982;
 const OUTDOOR_YDS = 0.992;
+
+// ------------------------------------------------------------ college
+// Calibrated against every FBS game of 2025 (SIMULATOR.md, realism benchmark).
+
+/** Seconds between snaps with the clock running: college runs more plays
+ *  (2025: 66 offensive plays a team-game, the NFL's ~60). */
+const CFB_RUNOFF = 31;
+const CFB_HOME_EDGE = 0.022;
+const CFB_FORM_SD = 0.09;
+/** Kickoffs fair-caught or downed in the end zone, out to the 25. */
+const CFB_TOUCHBACK = 0.55;
+const CFB_KR_TD = 0.005;
+/** An FCS team against an FBS one: its offense's efficiency, and how much
+ *  more its defense gives up, than its numbers (made against FCS) say. */
+const FCS_OFF = 0.84;
+const FCS_DEF = 1.16;
+/** How much a team's schedule-adjusted rating (points better than an average
+ *  FBS team) lifts its offense and holds down the offense across from it, per
+ *  point, in log efficiency — half to each side of the ball. Season statistics
+ *  alone put teams about half as far apart as results do. */
+export const CFB_STRENGTH = 0.0175;
+/** Fourth-down go odds against the NFL's table from the same spots (2025:
+ *  2.1 tries a team-game). */
+const CFB_GO = 3.2;
+/** Interceptions against the passers' own rates (2025: 0.79 a team-game). */
+const CFB_INT = 0.86;
+/** Share of college penalties that are 15-yard personal fouls beyond the NFL
+ *  mix — targeting, unsportsmanlike conduct (2025: 8.3 yards a penalty). */
+const CFB_PERSONAL = 0.06;
+/** Third-and-short: college quarterbacks carry it themselves more often. */
+const CFB_SNEAK = 0.5;
+/** Runs: breakaway share, and the shape and offset of the rest (NFL: 0.026,
+ *  2.5, 2). */
+const CFB_RUN_SHAPE: [number, number, number] = [0.027, 1.8, 3];
+/** Throws to the sticks on third and fourth down (NFL: STICKS). */
+const CFB_STICKS = 0.24;
+/** Catches that go 20+ (NFL: CATCH_TAIL). */
+const CFB_CATCH_TAIL = 0.027;
+/** Tackles: concentration on the regulars, and the share that are shared. */
+const CFB_DEF_POW = 1.6;
+const CFB_ASSISTED_TKL = 0.38;
+/** Accepted penalties per snap (2025: 6.0 a team-game for 53 yards). */
+const CFB_PENALTY_RATE = 0.083;
+/** Completion odds, sack odds and run yardage against the NFL calibration
+ *  (2025: 61.9% completions, 2.0 sacks and 154 rushing yards a team-game). */
+const CFB_CMP = 1.15;
+const CFB_SACK_CAL = 0.79;
+const CFB_RUN_YDS = 1.0;
+/** Usage concentration: college depth charts run deeper on paper (backups'
+ *  garbage-time games) than they play in a close game (2025: 7.3 players catch
+ *  a pass a team-game; the top rusher gains 84 yards). */
+const CFB_TARGET_POW = 1.5;
+const CFB_RUSH_POW = 1.6;
+/** Kickoff returns that are not fair-caught: where the drive starts. */
+const CFB_RET_MEAN = 24;
+/** Share of touchdowns followed by a two-point try beyond the chart, and how
+ *  often a try succeeds. */
+const CFB_TWO = 0.07;
+const CFB_TWO_OK = 0.46;
+/** College field-goal make rate by distance (2025: 92% from 20–29, 85% from
+ *  30–39, 67% from 40–49, 51% from 50+). */
+function cfbFgCurve(dist: number): number {
+  return 1 / (1 + Math.exp(-(4.5 - 0.084 * dist)));
+}
 
 interface TeamPrep {
   team: NflTeam;
@@ -126,6 +203,8 @@ export interface NflPrep {
   t: [TeamPrep, TeamPrep];
   env: NflEnv;
   playoff: boolean;
+  /** College rules (see the header). */
+  college: boolean;
   /** Passing under a roof versus outdoors: [completion odds, yards]. */
   roof: [number, number];
 }
@@ -184,14 +263,24 @@ function prepTeam(
   const intSum = def.reduce((a, i) => a + P[i].ints, 0);
   const rushF = Math.max(0.7, Math.min(1.35, 1 + 0.5 * (sackSum / 2.6 - 1)));
   const coverF = Math.max(0.7, Math.min(1.35, 1 + 0.5 * (intSum / 0.8 - 1)));
+  const college = m.league === "cfb";
+  const opp = side === "home" ? m.away : m.home;
+  // An FCS defense's numbers came against FCS offenses.
+  // College: the defense's half of the team's rating, and the FCS discount.
+  const soft =
+    (college && team.fcs && !opp.fcs ? FCS_DEF : 1) *
+    (college ? Math.exp((-CFB_STRENGTH * (team.rating ?? 0)) / 2) : 1);
   const vs = {
-    cmpOdds: oddsRatio("defCmp") ?? Math.pow(fallback, 0.8),
-    ypc: ratio("defYpc") ?? fallback,
+    cmpOdds: (oddsRatio("defCmp") ?? Math.pow(fallback, 0.8)) * soft,
+    ypc: (ratio("defYpc") ?? fallback) * soft,
     sackOdds:
-      Math.pow(oddsRatio("defSack") ?? 1 / Math.sqrt(fallback), 0.75) * Math.pow(rushF, 0.25),
-    int: Math.pow(ratio("defInt") ?? Math.pow(fallback, -0.7), 0.75) * Math.pow(coverF, 0.25),
-    rush: ratio("defYpcRush") ?? fallback,
+      (Math.pow(oddsRatio("defSack") ?? 1 / Math.sqrt(fallback), 0.75) * Math.pow(rushF, 0.25)) /
+      soft,
+    int:
+      (Math.pow(ratio("defInt") ?? Math.pow(fallback, -0.7), 0.75) * Math.pow(coverF, 0.25)) / soft,
+    rush: (ratio("defYpcRush") ?? fallback) * soft,
   };
+  const edge = college ? CFB_HOME_EDGE : HOME_EDGE;
   const pace = t.pace;
   const tempo = pace ? Math.max(0.85, Math.min(1.15, pace.league / Math.max(1, pace.value))) : 1;
   const k = kicker >= 0 ? P[kicker] : null;
@@ -204,7 +293,11 @@ function prepTeam(
     // overlap, and the starters get the ball (2025: 7.1 players catch a pass
     // a team-game).
     rushW: rushers.map((i) =>
-      i === qb ? qbRuns * (1 - SCRAMBLE_SHARE) : Math.pow(P[i].carries, 1.15),
+      i === qb
+        ? qbRuns * (1 - SCRAMBLE_SHARE)
+        : college
+          ? Math.pow(P[i].carries, CFB_RUSH_POW) / Math.pow(8, CFB_RUSH_POW - 1)
+          : Math.pow(P[i].carries, 1.15),
     ),
     qbYpc,
     scramble: Object.fromEntries(
@@ -218,23 +311,44 @@ function prepTeam(
       }),
     ),
     targets,
-    targetW: targets.map((i) => Math.pow(P[i].targets, 1.2)),
+    targetW: targets.map((i) => Math.pow(P[i].targets, college ? CFB_TARGET_POW : 1.2)),
     kicker,
     punter,
     def,
     // Raised to a power for the same reason as usage in nba.ts: per-game
     // lines from deeper or different depth charts overlap, and the starters
     // make the plays.
-    tackleW: def.map((i) => Math.pow(P[i].tackles, DEF_POW)),
-    sackW: def.map((i) => Math.pow(P[i].sacks + 0.01, DEF_POW)),
+    // College rosters carry twice the defenders who play, so the regulars'
+    // share is weighted by how much they have played (2025 FBS: 21 players
+    // make a tackle a team-game, the leader 9.4 of 66).
+    tackleW: def.map((i) =>
+      college
+        ? Math.pow(P[i].tackles, CFB_DEF_POW) * Math.min(1, P[i].sample / 4)
+        : Math.pow(P[i].tackles, DEF_POW),
+    ),
+    sackW: def.map((i) =>
+      college
+        ? Math.pow(P[i].sacks + 0.01, CFB_DEF_POW) * Math.min(1, P[i].sample / 4)
+        : Math.pow(P[i].sacks + 0.01, DEF_POW),
+    ),
     intW: def.map((i) => P[i].ints + 0.005),
-    off: neutral ? 1 : side === "home" ? 1 + HOME_EDGE : 1 - HOME_EDGE,
+    off:
+      (neutral ? 1 : side === "home" ? 1 + edge : 1 - edge) *
+      (college && team.fcs && !opp.fcs ? FCS_OFF : 1) *
+      (college ? Math.exp((CFB_STRENGTH * (team.rating ?? 0)) / 2) : 1),
     vs,
     tempo,
-    goOdds: odds(Math.max(0.02, Math.min(0.98, GO_LEAGUE + (team.goAggr ?? 0)))) / odds(GO_LEAGUE),
-    maxFg: k
-      ? Math.max(50, Math.min(62, 53 + 25 * (k.fgSkill - 1) + (k.longFg >= 55 ? 3 : 0)))
-      : 50,
+    goOdds: college
+      ? CFB_GO
+      : odds(Math.max(0.02, Math.min(0.98, GO_LEAGUE + (team.goAggr ?? 0)))) / odds(GO_LEAGUE),
+    // College kickers have less range (2025: 11% of attempts from 50+).
+    maxFg: college
+      ? k
+        ? Math.max(46, Math.min(58, 51 + 25 * (k.fgSkill - 1) + (k.longFg >= 52 ? 3 : 0)))
+        : 47
+      : k
+        ? Math.max(50, Math.min(62, 53 + 25 * (k.fgSkill - 1) + (k.longFg >= 55 ? 3 : 0)))
+        : 50,
   };
 }
 
@@ -245,9 +359,16 @@ export function prepareNfl(m: NflMatchup, o: SimOverrides): NflPrep {
     t: [prepTeam(m.home, "home", o, m, neutral), prepTeam(m.away, "away", o, m, neutral)],
     env: m.env,
     playoff: o.playoff ?? m.ctx.playoff,
+    college: m.league === "cfb",
     // Domes score ~2.2 more points a game than open air (2010–25), almost all
-    // of it through the air; the league average sits between the two.
-    roof: m.ctx.indoor ? [INDOOR_CMP, INDOOR_YDS] : [OUTDOOR_CMP, OUTDOOR_YDS],
+    // of it through the air; the league average sits between the two. College
+    // plays almost everything outdoors, and is calibrated as it is.
+    roof:
+      m.league === "cfb"
+        ? [1, 1]
+        : m.ctx.indoor
+          ? [INDOOR_CMP, INDOOR_YDS]
+          : [OUTDOOR_CMP, OUTDOOR_YDS],
   };
 }
 
@@ -299,7 +420,9 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   }));
   const timeouts = [3, 3];
   const qb = [T[0].qb, T[1].qb];
-  const form = [0, 1].map(() => Math.max(0.8, Math.min(1.2, 1 + rng.normal(0, FORM_SD))));
+  const college = prep.college;
+  const formSd = college ? CFB_FORM_SD : FORM_SD;
+  const form = [0, 1].map(() => Math.max(0.75, Math.min(1.25, 1 + rng.normal(0, formSd))));
 
   let quarter = 1;
   let clk = QUARTER;
@@ -313,6 +436,15 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   // Overtime bookkeeping.
   let otPossessions = [0, 0];
   let otSudden = false;
+  // College overtime: untimed possessions from the 25 (collegeOvertime).
+  let cfbOt = false;
+  let driveOver = false;
+  let otPeriod = 0;
+  let otOffense = 0;
+  let otSecond = 1;
+  // College stops the clock on a first down in the last two minutes of a
+  // half, until the chains are set.
+  let chainStop = false;
 
   const ot = () => quarter > 4;
   const half = () => (quarter <= 2 ? 1 : 2);
@@ -336,7 +468,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   ) =>
     log.push({
       period: quarter,
-      clock: clock(clk),
+      clock: cfbOt ? "" : clock(clk),
       side: side === null ? null : side === 0 ? "home" : "away",
       text,
       home: score[0],
@@ -358,6 +490,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
 
   /** Burn `sec` off the clock; returns false if the quarter ran out. */
   const burn = (sec: number): boolean => {
+    if (cfbOt) return true;
     const t = Math.min(sec, clk);
     // Two-minute warning: the clock stops at 2:00 of each half.
     if (!warned && (quarter === 2 || quarter === 4) && clk > 120 && clk - t <= 120) {
@@ -373,20 +506,23 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     return clk > 0;
   };
 
-  // Tied late, a team plays for the win too: in 2025 only 12% of games tied
-  // at the two-minute warning reached overtime.
+  // Tied late, an NFL team plays for the win too: in 2025 only 12% of games
+  // tied at the two-minute warning reached overtime. College coaches are
+  // content to take it to overtime (2025: 5.5% of FBS games).
   const hurry = (s: number) =>
-    (quarter === 2 && clk <= 120) ||
-    (quarter === 4 && diff(s) < 0 && clk <= 300) ||
-    (quarter === 4 && diff(s) === 0 && clk <= 150) ||
-    (quarter === 4 && diff(s) < -8 && clk <= 600) ||
-    (ot() && (diff(s) < 0 || (diff(s) === 0 && clk <= 150)));
+    !cfbOt &&
+    ((quarter === 2 && clk <= 120) ||
+      (quarter === 4 && diff(s) < 0 && clk <= 300) ||
+      (quarter === 4 && diff(s) === 0 && clk <= 150 && !college) ||
+      (quarter === 4 && diff(s) < -8 && clk <= 600) ||
+      (ot() && (diff(s) < 0 || (diff(s) === 0 && clk <= 150))));
   const milk = (s: number) => quarter === 4 && diff(s) > 0 && clk <= 420;
 
   /** Time between the end of one play and the next snap. */
   const betweenPlays = () => {
-    if (stopped) {
+    if (stopped || cfbOt) {
       stopped = false;
+      chainStop = false;
       return 0;
     }
     const s = poss;
@@ -403,16 +539,21 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       if (log.on) ev(s, `Timeout ${T[s].team.abbr} (${timeouts[s]} left)`);
       return 0;
     }
+    if (chainStop) {
+      chainStop = false;
+      return rng.uniform(5, 9);
+    }
     if (hurry(s)) return rng.uniform(10, 17);
     if (milk(s)) return rng.uniform(36, 40);
     if (ot()) return rng.uniform(18, 28);
-    return Math.max(10, rng.normal(RUNOFF * T[s].tempo, 4));
+    return Math.max(10, rng.normal((college ? CFB_RUNOFF : RUNOFF) * T[s].tempo, 4));
   };
 
   // ------------------------------------------------------- possession
 
   const changePossession = (newYl: number) => {
-    if (ot()) otPossessions[poss]++;
+    if (cfbOt) driveOver = true;
+    if (ot() && !college) otPossessions[poss]++;
     poss = 1 - poss;
     yl = Math.max(1, Math.min(99, Math.round(newYl)));
     down = 1;
@@ -422,7 +563,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   };
 
   const checkOtEnd = () => {
-    if (!ot()) return;
+    if (!ot() || college) return;
     if (otSudden) {
       if (score[0] !== score[1]) gameOver = true;
       return;
@@ -456,7 +597,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       toGo = 10;
       return;
     }
-    if (rng.chance(0.004)) {
+    if (rng.chance(college ? CFB_KR_TD : 0.004)) {
       // Returned all the way.
       yl = 75;
       down = 1;
@@ -466,12 +607,23 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       touchdown(recv, -1, "kick return");
       return;
     }
-    if (rng.chance(0.38)) {
-      yl = 35;
+    if (rng.chance(college ? CFB_TOUCHBACK : 0.38)) {
+      // NFL 2025: touchbacks to the 35. College: touchbacks and fair catches
+      // inside the 25 come out to the 25.
+      yl = college ? 25 : 35;
       burn(0);
-      if (log.on) ev(recv, `Kickoff, touchback`, { sit: "" });
+      if (log.on)
+        ev(
+          recv,
+          college && flavor.chance(0.2)
+            ? `Kickoff, fair catch — ball at the ${T[recv].team.abbr} 25`
+            : `Kickoff, touchback`,
+          { sit: "" },
+        );
     } else {
-      yl = Math.round(Math.max(8, Math.min(60, rng.normal(29, 7))));
+      yl = Math.round(
+        Math.max(college ? 5 : 8, Math.min(60, rng.normal(college ? CFB_RET_MEAN : 29, 7))),
+      );
       burn(rng.uniform(5, 8));
       if (log.on) ev(recv, `Kickoff returned to the ${spot()}`, { sit: "" });
     }
@@ -516,7 +668,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const ki = T[s].kicker;
     const dist = 100 - yl + 17;
     const skill = ki >= 0 ? P(s, ki).fgSkill : 0.9;
-    const p = prob(odds(fgCurve(dist)) * Math.pow(skill, 4));
+    const p = prob(odds(college ? cfbFgCurve(dist) : fgCurve(dist)) * Math.pow(skill, 4));
     const good = rng.chance(p);
     burn(5);
     if (ki >= 0) {
@@ -543,6 +695,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
 
   /** After a score: kick off, unless the game (or overtime) is over. */
   const afterScore = (s: number) => {
+    if (cfbOt) {
+      driveOver = true;
+      return;
+    }
     if (ot()) {
       otPossessions[s]++;
       checkOtEnd();
@@ -554,9 +710,54 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     kickoff(s, onside);
   };
 
+  const twoPointTry = (s: number, play = false) => {
+    const ok = rng.chance(college ? CFB_TWO_OK : 0.48);
+    if (ok) {
+      addScore(s, 2);
+      const who = rng.chance(0.55) ? pickTarget(s, true) : pickRusher(s, true);
+      if (who >= 0) box.add(s, who, NFL.TWOPT, 1);
+    }
+    if (log.on)
+      ev(s, `${play ? "Two-point play" : "Two-point try"} ${ok ? "is GOOD" : "fails"}`, {
+        scoring: ok,
+        big: play,
+        sit: "",
+      });
+  };
+
+  const extraPoint = (s: number) => {
+    const ki = T[s].kicker;
+    const p = ki >= 0 ? P(s, ki).xpPct : 0.94;
+    const ok = rng.chance(p);
+    if (ki >= 0) {
+      box.add(s, ki, NFL.XPA, 1);
+      if (ok) box.add(s, ki, NFL.XPM, 1);
+    }
+    if (ok) addScore(s, 1);
+    if (log.on)
+      ev(s, `${nm(s, ki)} extra point ${ok ? "is good" : "is NO GOOD"}`, {
+        scoring: ok,
+        sit: "",
+      });
+  };
+
   const touchdown = (s: number, scorer: number, how: string) => {
     addScore(s, 6);
     void how;
+    void scorer;
+    if (cfbOt) {
+      // A defensive score ends it; so does the side with the ball second
+      // going ahead. From the second period the try must be for two.
+      if (s !== otOffense || (s === otSecond && diff(s) > 0)) {
+        gameOver = true;
+        driveOver = true;
+        return;
+      }
+      if (otPeriod >= 2 || diff(s) === -2) twoPointTry(s);
+      else extraPoint(s);
+      afterScore(s);
+      return;
+    }
     // Extra point or two?
     const d = diff(s); // after the six
     const late = quarter >= 4;
@@ -567,30 +768,8 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     }
     // Beyond the chart, coaches go for two after ~16% of touchdowns, which
     // with it comes to 2025's 9–10%.
-    if (goFor2 || rng.chance(0.16)) {
-      const ok = rng.chance(0.48);
-      if (ok) {
-        addScore(s, 2);
-        const who = rng.chance(0.55) ? pickTarget(s, true) : pickRusher(s, true);
-        if (who >= 0) box.add(s, who, NFL.TWOPT, 1);
-      }
-      if (log.on) ev(s, `Two-point try ${ok ? "is GOOD" : "fails"}`, { scoring: ok, sit: "" });
-    } else {
-      const ki = T[s].kicker;
-      const p = ki >= 0 ? P(s, ki).xpPct : 0.94;
-      const ok = rng.chance(p);
-      if (ki >= 0) {
-        box.add(s, ki, NFL.XPA, 1);
-        if (ok) box.add(s, ki, NFL.XPM, 1);
-      }
-      if (ok) addScore(s, 1);
-      if (log.on)
-        ev(s, `${nm(s, ki)} extra point ${ok ? "is good" : "is NO GOOD"}`, {
-          scoring: ok,
-          sit: "",
-        });
-    }
-    void scorer;
+    if (goFor2 || rng.chance(college ? CFB_TWO : 0.16)) twoPointTry(s);
+    else extraPoint(s);
     afterScore(s);
   };
 
@@ -598,6 +777,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     // `s` is the defense scoring two.
     addScore(s, 2);
     if (log.on) ev(s, `SAFETY — ${T[s].team.abbr} score two`, { scoring: true, big: true });
+    if (cfbOt) {
+      driveOver = true;
+      return;
+    }
     if (ot()) {
       gameOver = true;
       return;
@@ -639,7 +822,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const t = tackler(d);
     if (t < 0) return t;
     box.add(d, t, NFL.TKL, 1);
-    if (rng.chance(ASSISTED_TKL)) {
+    if (rng.chance(college ? CFB_ASSISTED_TKL : ASSISTED_TKL)) {
       const t2 = tackler(d);
       if (t2 >= 0 && t2 !== t) box.add(d, t2, NFL.TKL, 1);
     }
@@ -655,10 +838,11 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   const passRate = (s: number): number => {
     // The team's season pass rate already includes its third downs and its
     // comebacks, so the early-down base sits a little under it.
-    let p = T[s].team.passRate - 0.04;
+    let p = T[s].team.passRate - (college ? 0.055 : 0.04);
     const dist = 100 - yl;
-    if (down === 3) p = toGo >= 5 ? 0.9 : toGo >= 3 ? 0.72 : 0.45;
-    else if (down === 4) p = toGo >= 3 ? 0.85 : 0.5;
+    // College runs more on third- and fourth-and-short.
+    if (down === 3) p = toGo >= 5 ? 0.9 : toGo >= 3 ? 0.72 : college ? 0.32 : 0.45;
+    else if (down === 4) p = toGo >= 3 ? 0.85 : college ? 0.38 : 0.5;
     else if (down === 2 && toGo >= 8) p += 0.08;
     else if (down === 1) p -= 0.05;
     const d = diff(s);
@@ -677,6 +861,13 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const fgDist = dist + 17;
     const inRange = fgDist <= T[s].maxFg;
     const d = diff(s);
+    if (cfbOt) {
+      // Going second, the side knows what it needs; going first, three
+      // points are worth taking unless the goal line is a step away.
+      if (s === otSecond) return d < -3 || !inRange ? "go" : "fg";
+      if (!inRange) return "go";
+      return toGo <= 1 && dist <= 3 && rng.chance(0.4) ? "go" : "fg";
+    }
     const late = quarter === 4 || ot();
     const timeLeft = clk;
     // Late and needing a touchdown: there is no punting.
@@ -707,6 +898,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       down = 1;
       toGo = Math.min(10, 100 - yl);
       team[poss].FD++;
+      if (college && (quarter === 2 || quarter === 4) && clk <= 120) chainStop = true;
       return true;
     }
     toGo -= yards;
@@ -723,16 +915,23 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
    *  (2025: 5.9 yards a play outside the 20, 4.1 from the 20 to the 11). */
   const squeeze = (dist: number) => (dist >= 20 ? 1 : 0.72 + 0.014 * dist);
 
+  // College gains are more boom-or-bust than the NFL's: more runs stopped
+  // behind the line and more that break (2025 FBS: 20.1 first downs and 4.4
+  // plays of 20+ yards on 376 yards a team-game).
+  // Short yardage is a power run either way.
   const runYards = (mean: number): number => {
+    const [runTail, runShape, runOff] =
+      college && !(down >= 3 && toGo <= 3) ? CFB_RUN_SHAPE : [RUN_TAIL, 2.5, 2];
     // Most runs bunch around three yards; about one in thirty breaks loose.
-    if (rng.chance(RUN_TAIL)) return Math.round(9 + rng.exp(11));
-    const mb = (mean - RUN_TAIL * 20) / (1 - RUN_TAIL);
-    return Math.round(rng.gamma(2.5, (mb + 2) / 2.5) - 2);
+    if (rng.chance(runTail)) return Math.round(9 + rng.exp(11));
+    const mb = (mean - runTail * 20) / (1 - runTail);
+    return Math.round(rng.gamma(runShape, (mb + runOff) / runShape) - runOff);
   };
 
   const catchYards = (mean: number): number => {
-    if (rng.chance(CATCH_TAIL)) return Math.round(20 + rng.exp(14));
-    const mb = (mean - CATCH_TAIL * 34) / (1 - CATCH_TAIL);
+    const tail = college ? CFB_CATCH_TAIL : CATCH_TAIL;
+    if (rng.chance(tail)) return Math.round(20 + rng.exp(14));
+    const mb = (mean - tail * 34) / (1 - tail);
     return Math.round(rng.gamma(1.8, (Math.max(2, mb) + 1.5) / 1.8) - 1.5);
   };
 
@@ -742,9 +941,9 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const dist = 100 - yl;
     // Third or fourth and a yard: a third of the time the quarterback sneaks
     // (2025: 36% of those runs), which almost always works.
-    if (down >= 3 && toGo <= 1 && dist > 1 && rng.chance(0.36)) {
+    if (down >= 3 && toGo <= 1 && dist > 1 && rng.chance(college ? CFB_SNEAK : 0.36)) {
       const q = qb[s];
-      const y = rng.chance(0.86) ? (rng.chance(0.2) ? 2 : 1) : 0;
+      const y = rng.chance(college ? 0.88 : 0.86) ? (rng.chance(0.2) ? 2 : 1) : 0;
       team[s].PLAYS++;
       box.add(s, q, NFL.CAR, 1);
       box.add(s, q, NFL.RYD, y);
@@ -762,7 +961,11 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const r = pickRusher(s, dist <= 20);
     const pl = P(s, r);
     const ypc = r === T[s].qb ? T[s].qbYpc : pl.ypc_r;
-    const mean = ypc * RUN_YDS * T[d].vs.rush * T[s].off * form[s] * squeeze(dist);
+    const runCal = college ? CFB_RUN_YDS : RUN_YDS;
+    // College short yardage is a power run behind a push (2025: 73% of
+    // third-and-ones converted).
+    const push = college && down >= 3 && toGo <= 2 ? 0.8 : 0;
+    const mean = ypc * runCal * T[d].vs.rush * T[s].off * form[s] * squeeze(dist) + push;
     let y = runYards(mean);
     if (y > dist) y = dist;
     team[s].PLAYS++;
@@ -827,15 +1030,23 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     team[s].PLAYS++;
     // Sack?
     // The quarterback's sack rate against this pass rush, by odds ratio.
-    const pSack = Math.min(0.2, prob(odds(qp.sackRate) * T[d].vs.sackOdds * SACK_CAL));
+    const pSack = Math.min(
+      0.2,
+      prob(odds(qp.sackRate) * T[d].vs.sackOdds * (college ? CFB_SACK_CAL : SACK_CAL)),
+    );
     if (rng.chance(pSack)) {
       const loss = Math.max(1, Math.round(rng.normal(7, 2.5)));
       const sacker = T[d].def.length ? T[d].def[rng.pick(T[d].sackW)] : -1;
       box.add(s, q, NFL.SK, 1);
       box.add(s, q, NFL.SKY, loss);
+      // College counts a sack as a quarterback rush for the loss.
+      if (college) {
+        box.add(s, q, NFL.CAR, 1);
+        box.add(s, q, NFL.RYD, -loss);
+      }
       if (sacker >= 0) box.add(d, sacker, NFL.DSK, 1);
       team[s].SACKS++;
-      gain(s, -loss, false);
+      gain(s, -loss, college);
       burn(rng.uniform(5, 7));
       if (log.on) ev(s, `${nm(s, q)} sacked by ${nm(d, sacker)} for -${loss}`);
       if (yl - loss <= 0) return safety(d);
@@ -885,7 +1096,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     box.add(s, q, NFL.ATT, 1);
     if (tgt >= 0) box.add(s, tgt, NFL.TGT, 1);
     // Interception?
-    const pInt = Math.min(0.12, qp.intRate * T[d].vs.int);
+    const pInt = Math.min(0.12, qp.intRate * T[d].vs.int * (college ? CFB_INT : 1));
     // Words only (flavor stream): which side, and "deep" for throws that
     // travel — 18% of 2025's attempts, 12% of its completions.
     const lane = ["left", "middle", "right"][flavor.int(0, 2)];
@@ -930,7 +1141,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     // against this coverage.
     const pCmp = prob(
       ((odds(qp.cmpPct) * odds(rp.catchRate)) / odds(env.cmpPct)) *
-        CMP_CAL *
+        (college ? CFB_CMP : CMP_CAL) *
         T[s].off *
         form[s] *
         T[d].vs.cmpOdds *
@@ -960,7 +1171,11 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     let y = catchYards(mean);
     // Third and fourth down: the throw goes to the sticks.
     // Long yardage is harder to reach (2025: 17% of 3rd-and-11+ converted).
-    if (down >= 3 && y < toGo && rng.chance(STICKS * Math.min(1, 8 / toGo)))
+    if (
+      down >= 3 &&
+      y < toGo &&
+      rng.chance((college ? CFB_STICKS : STICKS) * Math.min(1, (college ? 5 : 8) / toGo))
+    )
       y = toGo + Math.round(rng.exp(2.5));
     if (y > dist) y = dist;
     if (yl + y <= 0) y = 1 - yl;
@@ -1017,10 +1232,29 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
    * the goal line.
    */
   const penalty = (): boolean => {
-    if (!rng.chance(PENALTY_RATE)) return false;
+    if (!rng.chance(college ? CFB_PENALTY_RATE : PENALTY_RATE)) return false;
     const s = poss;
     const before = sit();
-    if (rng.chance(0.48)) {
+    if (college && rng.chance(CFB_PERSONAL)) {
+      // A college personal foul on the defense: 15 yards and a first down.
+      const d = 1 - s;
+      const what = ["targeting", "unsportsmanlike conduct", "personal foul"][flavor.int(0, 2)];
+      const yds = Math.max(1, Math.min(15, Math.floor((100 - yl) / 2)));
+      team[d].PEN++;
+      team[d].PENY += yds;
+      yl += yds;
+      down = 1;
+      toGo = Math.min(10, 100 - yl);
+      team[s].FD++;
+      if (log.on)
+        ev(d, `PENALTY ${T[d].team.abbr}: ${what}, ${yds} yards, automatic first down`, {
+          sit: before,
+        });
+      burn(6);
+      stopped = true;
+      return true;
+    }
+    if (rng.chance(0.56)) {
       const r = rng.next();
       const [what, yds, live] =
         r < 0.3
@@ -1066,6 +1300,8 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
         : r >= 0.76
           ? 15
           : 5;
+    // College pass interference is 15 yards, or the spot if that is shorter.
+    if (college && what === "pass interference") yds = Math.min(15, yds);
     // Pass interference is a spot foul (to the 1 at most); the rest stop at
     // half the distance to the goal.
     const half = Math.max(1, Math.floor((100 - yl) / 2));
@@ -1100,7 +1336,8 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       if (clk <= Math.min(canBurn, 125) && clk > 0) return true;
     }
     // Run out the half from deep in their own end rather than risk a turnover.
-    if (quarter === 2 && clk <= 20 && yl < 25 && diff(s) >= -3 && !stopped) return true;
+    if (quarter === 2 && clk <= (college ? 10 : 20) && yl < 25 && diff(s) >= -3 && !stopped)
+      return true;
     return false;
   };
 
@@ -1153,6 +1390,52 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     }
   };
 
+  /**
+   * College overtime. Each side gets the ball at the other's 25 with no
+   * clock, the side going second knowing what it needs; the order alternates
+   * each period. From the third period a side's turn is one two-point play.
+   * Periods continue until one side leads after both have had theirs.
+   */
+  const collegeOvertime = () => {
+    cfbOt = true;
+    clk = QUARTER;
+    // The toss winner takes the ball second.
+    let first = rng.chance(0.5) ? 0 : 1;
+    for (otPeriod = 1; otPeriod <= 30; otPeriod++) {
+      quarter = 4 + otPeriod;
+      otSecond = 1 - first;
+      if (log.on)
+        ev(
+          null,
+          otPeriod === 1
+            ? `Overtime: ${T[first].team.name} have the ball first`
+            : otPeriod === 3
+              ? `Overtime period 3: two-point plays from here, ${T[first].team.abbr} first`
+              : `Overtime period ${otPeriod}: ${T[first].team.abbr} first`,
+          { sit: "" },
+        );
+      for (const s of [first, 1 - first]) {
+        otOffense = s;
+        poss = s;
+        down = 1;
+        stopped = true;
+        if (otPeriod >= 3) {
+          yl = 97;
+          toGo = 3;
+          twoPointTry(s, true);
+        } else {
+          yl = 75;
+          toGo = 10;
+          driveOver = false;
+          for (let n = 0; n < 40 && !driveOver && !gameOver; n++) snap();
+        }
+        if (gameOver) return;
+      }
+      if (score[0] !== score[1]) return;
+      first = 1 - first;
+    }
+  };
+
   // ---------------------------------------------------------- the game
 
   const opening = rng.chance(0.5) ? 0 : 1;
@@ -1182,6 +1465,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     }
     // End of regulation or of an overtime period.
     if (score[0] !== score[1]) break;
+    if (college) {
+      collegeOvertime();
+      break;
+    }
     if (ot() && !prep.playoff) break; // a tie
     quarter++;
     clk = prep.playoff ? PLAYOFF_OT : REG_OT;
@@ -1198,18 +1485,21 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
 
   const wentOt = quarter > 4;
   const tie = score[0] === score[1];
+  // Both line scores carry the overtime column, scored in or not.
+  if (wentOt) for (const arr of [periods.home, periods.away]) while (arr.length < 5) arr.push(0);
+  const otTag = college && quarter > 5 ? `${quarter - 4}OT` : "OT";
   if (log.on)
     ev(
       null,
       tie
         ? `Final: tie, ${score[0]}–${score[1]}`
-        : `Final${wentOt ? " (OT)" : ""}: ${T[score[0] > score[1] ? 0 : 1].team.name} win`,
+        : `Final${wentOt ? ` (${otTag})` : ""}: ${T[score[0] > score[1] ? 0 : 1].team.name} win`,
     );
   return finish(score[0], score[1], periods, box, log, {
     ot: wentOt,
     tie,
     team: { home: team[0], away: team[1] },
-    status: wentOt ? (tie ? "Final/OT (tie)" : "Final/OT") : "Final",
+    status: wentOt ? (tie ? "Final/OT (tie)" : `Final/${otTag}`) : "Final",
   });
 }
 

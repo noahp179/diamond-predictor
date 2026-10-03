@@ -9,6 +9,7 @@ import { LEAGUE_LABEL } from "./format";
 /** Each league's simulator, inside that sport's section. */
 export const SIM_HOME = {
   nfl: "/nfl/simulate",
+  cfb: "/cfb/simulate",
   nba: "/nba/simulate",
   nhl: "/nhl/simulate",
   mlb: "/mlb/simulate",

@@ -1,7 +1,8 @@
 # The game simulator
 
-Each of the NFL, NBA, MLB and NHL sections has a **Simulate** view
-(`/nfl/simulate`, `/nba/simulate`, `/mlb/simulate`, `/nhl/simulate`) that plays
+Each of the NFL, college football, NBA, MLB and NHL sections has a
+**Simulate** view (`/nfl/simulate`, `/cfb/simulate`, `/nba/simulate`,
+`/mlb/simulate`, `/nhl/simulate`) that plays
 games out one play at a time from real player statistics and each team's
 tendencies on both sides of the ball. Pick a game from the date's slate (or
 build any matchup), choose how many times to play it — 10, 100, 1,000, 5,000,
@@ -42,7 +43,10 @@ a what-if (bench a star, start the backup goalie) needs no round trip.
 | `scripts/build-nfl-coaching.ts` → `src/lib/sim/nfl-coaching.json` | NFL coaching from nflverse play-by-play: pass rate over expected, the league's 4th-down go rates by spot, each head coach's aggressiveness. Re-run weekly in season. |
 | `src/lib/sim/build.server.ts` | Season totals → regressed per-player rates, season per-game averages and a `SimMatchup`. |
 | `src/lib/sim/sim.functions.ts` | The three server functions: slate, teams, matchup. |
-| `src/lib/sim/{nba,nhl,mlb,nfl}.ts` | The engines. Pure TypeScript, seeded, no I/O. |
+| `src/lib/sim/{nba,nhl,mlb,nfl}.ts` | The engines. Pure TypeScript, seeded, no I/O. College football runs on `nfl.ts` under college rules. |
+| `src/lib/sim/cfb-box.ts` | One college box score (and its play-by-play) read into player stat lines keyed like ESPN's season feed. |
+| `scripts/build-cfb-players.ts` → `src/lib/sim/cfb-2025.json` | Last season's college player lines, from every FBS box score. Re-run once a season, after the bowls. |
+| `src/lib/sim/cfb-ratings.server.ts` | College ratings: each team's margin against an average FBS team, schedules accounted for, from every FBS and FCS result. |
 | `src/lib/sim/aggregate.ts` | Folds a batch into histograms, box-score sums and summaries; mergeable across workers. |
 | `src/lib/sim/props.ts` | Box-score layouts (per game and averaged) and the player stats a batch reports. |
 | `src/lib/sim/sim.worker.ts` | Runs engines off the main thread. |
@@ -70,6 +74,15 @@ a what-if (bench a star, start the backup goalie) needs no round trip.
   — with 600; three-point defense in the NBA with 2,500 attempts, because it is
   mostly luck. Players with no numbers are the league average, slightly
   discounted.
+* **College player stats come from box scores.** ESPN's `byathlete` feed
+  returns games played and nothing else for college football, so this season's
+  lines are read from the box scores of the games each team has played (a
+  finished game is read once and kept for a week), and last season's from a
+  table built from all 888 FBS box scores of 2025 (`cfb-2025.json`) — so a
+  transfer brings his numbers with him. The play-by-play fills in what a
+  college box score leaves out: sacks taken by each passer, field-goal
+  distances, net punting. College box scores record no targets; a receiver's
+  are estimated from his catches at his position group's catch rate.
 * **Rosters, injuries and handedness** from each team's ESPN roster. Anyone
   listed out, doubtful, on IR or the IL starts benched; every player can be
   toggled.
@@ -211,6 +224,33 @@ rate, a small chance a quarterback leaves hurt, and a roof: games in domes
 get 4.5% better completion odds and 2% more yards per catch, outdoor games a
 little less (real effect: domes score about 2 points a game more).
 
+**College football — the same engine, college rules.** Overtime is
+alternating possessions from the opponent's 25 with no clock — a two-point
+try is required from the second period, and from the third each side runs a
+single two-point play — so a college game never ends tied. The clock stops on
+first downs only in the last two minutes of each half; pass interference is
+15 yards at most; kickoffs fair-caught or downed come out to the 25; a sack is
+a quarterback rush in the box score, as college counts it, and passing yards
+stay gross. College kickers are less accurate and shorter (2025 FBS: 92% from
+20–29 yards, 67% from 40–49, 51% from 50+), teams go for it more on fourth
+down, run more on third-and-short, commit more penalties (6.0 a team-game,
+including 15-yard personal fouls), and snap faster (67 plays a team-game).
+College gains are more boom-or-bust than the NFL's: more runs stopped behind
+the line and more that break.
+
+Two things are college's own. **Schedules**: a defense allowing 4.0 yards a
+carry in the MAC is not one allowing 4.0 in the SEC, and from season
+statistics alone simulated games came out about half as far apart as the
+market has them (slope 0.47 against the October 3, 2026 spreads). So each
+team also carries a rating — its margin against an average FBS team on a
+neutral field, from a ridge regression of every FBS and FCS result this
+season with last season as the prior (`cfb-ratings.server.ts`; it agrees
+with the market's spreads at r = 0.94 and uses no market data) — half of
+which lifts its offense and half holds down the offense across from it.
+**Rosters**: a college roster lists twice the defenders who play, so tackles
+and sacks are shared by how much each defender has actually played. FCS
+opponents, whose numbers came against FCS teams, play at a further discount.
+
 Every engine is seeded — the tests rely on it: the same matchup, settings and
 seed give the same game play for play, and a batch split across workers adds
 up to exactly the same totals as one run. The page never reuses a seed.
@@ -225,6 +265,7 @@ real mix of domes and open-air stadiums):
 | League | Scoring (real → sim) | Home team wins, same roster both sides (of decided games) | Margin spread around expectation |
 | --- | --- | --- | --- |
 | NFL | 22.97 → 22.99 pts | 54.3% | 13.0 (real ≈ 13.5) |
+| CFB (FBS vs FBS) | 26.3 → 25.8 pts | 55.7% | 15.4 (real: 13.4 in the 55 priced 2025 games ESPN kept a line for) |
 | NBA | 115.0 → 114.7 pts | 55.2% | 13.3 (real ≈ 13) |
 | NHL | 3.13 → 3.11 goals | 51.7% | 2.3 (real ≈ 2.4) |
 | MLB | 4.48 → 4.42 runs | 51.8% | 4.1 (real ≈ 4.3) |
@@ -301,7 +342,7 @@ October–November 2025 (ESPN box scores). Per team per game unless noted;
 | Punts | 3.55 | 4.08 | 3.52 |
 | First downs | 17.8 | 16.4 | 17.8 |
 | Third-down conversion | 40.4% | 35.1% | 39.5% |
-| Penalties / yards | 3.6 / 26.8 | 3.3 / 22.1 | 3.6 / 29.3 |
+| Penalties / yards | 6.4 / 51.1 | 3.3 / 22.1 | 5.8 / 46.4 |
 | Plays of 20+ yards | 3.48 | 4.08 | 3.89 |
 | Two-point tries | 0.24 | 0.08 | 0.25 |
 | Scrambles | 4.3 | — | 4.1 |
@@ -321,6 +362,49 @@ October–November 2025 (ESPN box scores). Per team per game unless noted;
 | Starts under 4 innings | 21% | 16% | 21.5% |
 | Starter's pitches | 80.6 | 86.0 | 83.2 |
 | Runs / hits / HR | 4.50 / 8.25 / 1.14 | 4.46 / 8.48 / 1.19 | 4.45 / 8.47 / 1.20 |
+
+The NFL penalty figures were first compared with the offense's own penalties
+only (3.6 a team-game), and the engine was tuned to that; counting both sides'
+accepted penalties (6.4) showed it called about half the real number, and the
+rate was raised. The rest is special-teams fouls, which the engine does not
+play.
+
+College football was benchmarked the same way: 54 matchups from the October 3,
+2026 slate (the 51 between FBS teams, 200 games each) against all 762 FBS
+games between FBS teams in 2025 (ESPN box scores and play-by-play). "Before"
+is the first college version — the NFL engine under college rules, with no
+schedule ratings or college calibration.
+
+| CFB | Real | Before | Now |
+| --- | --- | --- | --- |
+| Offensive plays | 66.8 | 68.6 | 67.1 |
+| Pass attempts / completion % | 30.8 / 61.9% | 31.8 / 58.6% | 31.1 / 61.6% |
+| Passing / rushing yards | 222 / 154 | 214 / 168 | 224 / 158 |
+| First downs | 20.1 | 20.2 | 20.0 |
+| Sacks | 1.99 | 2.27 | 1.98 |
+| Interceptions / fumbles lost | 0.79 / 0.51 | 1.45 turnovers | 0.78 / 0.49 |
+| Penalties / yards | 6.0 / 52.7 | 4.0 / 31.2 | 6.0 / 48.3 |
+| Punts | 4.07 | 3.81 | 3.79 |
+| Field goals made / tried | 1.22 / 1.58 | 1.22 / 1.52 | 1.21 / 1.55 |
+| Fourth-down tries / conversion | 2.07 / 54% | 1.61 / 50% | 1.88 / 49% |
+| Third-down conversion | 39.4% | 40.4% | 37.6% |
+| Red-zone trips: TD / FG | 59% / 22% | 59% / 23% | 59% / 22% |
+| Points | 26.2 | 24.5 | 25.6 |
+| Winning margin | 16.5 | 13.7 | 16.7 |
+| One-score games | 37% | 41% | 34% |
+| Overtime | 5.5% | 3.8% | 5.5% |
+| Top receiver / top rusher yards | 82 / 84 | 72 / 73 | 82 / 78 |
+| Players with a catch | 7.3 | 8.3 | 7.8 |
+| Tackles / players with one / leader | 66 / 21 / 9.4 | 77 / 35 / 6.2 | 66 / 22 / 9.9 |
+
+Against the market (never an input), October 3, 2026, 54 games: simulated
+mean margin against the posted spread correlates 0.94 with a slope of 1.03
+(0.91 and 1.06 for the 51 games between FBS teams; 0.87 and 0.47 before the
+schedule ratings), and the three FBS-against-FCS games come out within a few
+points of the line on average; totals correlate 0.76 with the posted total. Still short in college: fourth-down
+conversions (49% vs 54%), third-and-long converts a little too often (20% of
+11+ vs 15%), plays of 20+ yards run 9% high, and kneel-downs (1.9 a game vs
+1.1).
 
 | NBA | Real | Before | Now |
 | --- | --- | --- | --- |
@@ -362,7 +446,7 @@ something it doesn't.
 ## Testing
 
 ```
-NODE_USE_ENV_PROXY=1 npx tsx scripts/test-game-sim.ts          # all four
+NODE_USE_ENV_PROXY=1 npx tsx scripts/test-game-sim.ts          # all five
 NODE_USE_ENV_PROXY=1 npx tsx scripts/test-game-sim.ts nfl nhl  # some
 ```
 

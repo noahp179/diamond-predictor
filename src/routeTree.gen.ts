@@ -28,6 +28,7 @@ import { Route as CfbIndexRouteImport } from './routes/cfb.index'
 import { Route as CfbBestOddsRouteImport } from './routes/cfb.best-odds'
 import { Route as CfbParlaysRouteImport } from './routes/cfb.parlays'
 import { Route as CfbRecommendedRouteImport } from './routes/cfb.recommended'
+import { Route as CfbSimulateRouteImport } from './routes/cfb.simulate'
 import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
 import { Route as CfbTrackRecordRouteImport } from './routes/cfb.track-record'
 import { Route as MlbIndexRouteImport } from './routes/mlb.index'
@@ -163,6 +164,11 @@ const CfbParlaysRoute = CfbParlaysRouteImport.update({
 const CfbRecommendedRoute = CfbRecommendedRouteImport.update({
   id: '/recommended',
   path: '/recommended',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbSimulateRoute = CfbSimulateRouteImport.update({
+  id: '/simulate',
+  path: '/simulate',
   getParentRoute: () => CfbRoute,
 } as any)
 const CfbTdScorersRoute = CfbTdScorersRouteImport.update({
@@ -392,6 +398,7 @@ export interface FileRoutesByFullPath {
   '/cfb/best-odds': typeof CfbBestOddsRoute
   '/cfb/parlays': typeof CfbParlaysRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
+  '/cfb/simulate': typeof CfbSimulateRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
@@ -446,6 +453,7 @@ export interface FileRoutesByTo {
   '/cfb/best-odds': typeof CfbBestOddsRoute
   '/cfb/parlays': typeof CfbParlaysRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
+  '/cfb/simulate': typeof CfbSimulateRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
@@ -507,6 +515,7 @@ export interface FileRoutesById {
   '/cfb/best-odds': typeof CfbBestOddsRoute
   '/cfb/parlays': typeof CfbParlaysRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
+  '/cfb/simulate': typeof CfbSimulateRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
   '/cfb/track-record': typeof CfbTrackRecordRoute
   '/mlb/best-odds': typeof MlbBestOddsRoute
@@ -571,6 +580,7 @@ export interface FileRouteTypes {
     | '/cfb/best-odds'
     | '/cfb/parlays'
     | '/cfb/recommended'
+    | '/cfb/simulate'
     | '/cfb/td-scorers'
     | '/cfb/track-record'
     | '/mlb/best-odds'
@@ -625,6 +635,7 @@ export interface FileRouteTypes {
     | '/cfb/best-odds'
     | '/cfb/parlays'
     | '/cfb/recommended'
+    | '/cfb/simulate'
     | '/cfb/td-scorers'
     | '/cfb/track-record'
     | '/mlb/best-odds'
@@ -685,6 +696,7 @@ export interface FileRouteTypes {
     | '/cfb/best-odds'
     | '/cfb/parlays'
     | '/cfb/recommended'
+    | '/cfb/simulate'
     | '/cfb/td-scorers'
     | '/cfb/track-record'
     | '/mlb/best-odds'
@@ -882,6 +894,13 @@ declare module '@tanstack/react-router' {
       path: '/recommended'
       fullPath: '/cfb/recommended'
       preLoaderRoute: typeof CfbRecommendedRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/simulate': {
+      id: '/cfb/simulate'
+      path: '/simulate'
+      fullPath: '/cfb/simulate'
+      preLoaderRoute: typeof CfbSimulateRouteImport
       parentRoute: typeof CfbRoute
     }
     '/cfb/td-scorers': {
@@ -1178,6 +1197,7 @@ interface CfbRouteChildren {
   CfbBestOddsRoute: typeof CfbBestOddsRoute
   CfbParlaysRoute: typeof CfbParlaysRoute
   CfbRecommendedRoute: typeof CfbRecommendedRoute
+  CfbSimulateRoute: typeof CfbSimulateRoute
   CfbTdScorersRoute: typeof CfbTdScorersRoute
   CfbTrackRecordRoute: typeof CfbTrackRecordRoute
   CfbIndexRoute: typeof CfbIndexRoute
@@ -1187,6 +1207,7 @@ const CfbRouteChildren: CfbRouteChildren = {
   CfbBestOddsRoute: CfbBestOddsRoute,
   CfbParlaysRoute: CfbParlaysRoute,
   CfbRecommendedRoute: CfbRecommendedRoute,
+  CfbSimulateRoute: CfbSimulateRoute,
   CfbTdScorersRoute: CfbTdScorersRoute,
   CfbTrackRecordRoute: CfbTrackRecordRoute,
   CfbIndexRoute: CfbIndexRoute,

@@ -25,6 +25,7 @@
  */
 
 import {
+  cfbTeamLines,
   playerStats,
   roster as fetchRoster,
   scoreboard,
@@ -63,13 +64,15 @@ import type {
   TeamInfo,
   Tendency,
 } from "./types";
+import cfb2025 from "./cfb-2025.json";
+import { cfbRatings } from "./cfb-ratings.server";
 import coaching from "./nfl-coaching.json";
 import { poolTeams, tendencies } from "./tendencies.server";
 
 // ------------------------------------------------------------- blending
 
 /** Games into a season by which last season stops mattering much. */
-const HALF: Record<SimLeague, number> = { nba: 30, nhl: 30, nfl: 6, mlb: 50 };
+const HALF: Record<SimLeague, number> = { nba: 30, nhl: 30, nfl: 6, cfb: 6, mlb: 50 };
 
 type Season = {
   league: SimLeague;
@@ -86,6 +89,9 @@ type Season = {
   /** Each team's offensive and defensive tendencies, seasons blended. */
   tend: Map<string, Record<string, Tendency>>;
   basis: string;
+  /** College: the FBS teams (those in ESPN's team feed); anyone else on a
+   *  schedule is FCS or below. */
+  fbs: Set<string>;
 };
 
 const seasonCache = new Map<string, { at: number; v: Promise<Season> }>();
@@ -104,10 +110,11 @@ function loadSeason(league: SimLeague, date: string): Promise<Season> {
     const none = () => new Map<string, TeamTotals>();
     const skip = <T>(v: T) => Promise.resolve(v);
     const [cur, old, stCur, stOld, tsCur, tsOld] = await Promise.all([
-      priorOnly
+      // College player lines come team by team (buildMatchup), not league-wide.
+      priorOnly || league === "cfb"
         ? skip(new Map<string, StatLine>())
         : playerStats(league, current, true).catch(() => new Map<string, StatLine>()),
-      playerStats(league, prior, false),
+      league === "cfb" ? skip(cfbSeason(prior)) : playerStats(league, prior, false),
       priorOnly
         ? skip(new Map<string, StandingRow>())
         : standings(league, current, true).catch(() => new Map<string, StandingRow>()),
@@ -117,22 +124,44 @@ function loadSeason(league: SimLeague, date: string): Promise<Season> {
     ]);
     const gps = [...stCur.values()].map((r) => r.gp);
     const gpNow = gps.length ? gps.reduce((a, b) => a + b, 0) / gps.length : 0;
-    const w = cur.size === 0 ? 1 : Math.max(0.2, Math.min(1, 1 - gpNow / HALF[league]));
+    const noCur = league === "cfb" ? gpNow < 0.5 : cur.size === 0;
+    const w = noCur ? 1 : Math.max(0.2, Math.min(1, 1 - gpNow / HALF[league]));
     const now = seasonLabel(league, current);
     const games = `${Math.round(gpNow)} game${Math.round(gpNow) === 1 ? "" : "s"}`;
     const then = seasonLabel(league, prior);
     const basis =
-      gpNow < 0.5 || cur.size === 0
+      gpNow < 0.5 || noCur
         ? `${then} season stats — ${now} has not produced numbers yet`
         : w <= 0.2
           ? `${now} stats (${games} a team), with ${then} carried at 20% weight`
           : `${now} stats (${games} a team) blended with ${then} at ${Math.round(w * 100)}% weight`;
     const tend = tendencies(league, poolTeams(league, tsCur, tsOld, w));
-    return { league, current, prior, w, gpNow, cur, old, stCur, stOld, tend, basis };
+    const fbs = new Set([...tsCur.keys(), ...tsOld.keys()]);
+    return { league, current, prior, w, gpNow, cur, old, stCur, stOld, tend, basis, fbs };
   })();
   seasonCache.set(key, { at: Date.now(), v });
   v.catch(() => seasonCache.delete(key));
   return v;
+}
+
+/**
+ * Last season's college player lines, read from every FBS box score by
+ * scripts/build-cfb-players.ts. Only the season that file holds is known;
+ * any other comes back empty and the current season stands alone.
+ */
+function cfbSeason(season: number): Map<string, StatLine> {
+  const out = new Map<string, StatLine>();
+  if (season !== cfb2025.season) return out;
+  const keys = cfb2025.keys;
+  for (const [id, row] of Object.entries(cfb2025.players as Record<string, (string | number)[]>)) {
+    const st: Record<string, number> = {};
+    keys.forEach((k, i) => {
+      const v = row[i + 1] as number;
+      if (v) st[k] = v;
+    });
+    out.set(id, { id, name: "", teamId: "", pos: String(row[0] ?? ""), s: st });
+  }
+  return out;
 }
 
 /** Derived per-season totals that cannot be pooled from averages. */
@@ -149,7 +178,9 @@ function pooled(se: Season, id: string): Record<string, number> {
   const out: Record<string, number> = {};
   if (a) for (const [k, v] of Object.entries(derive(se.league, a.s))) out[k] = v;
   if (b)
-    for (const [k, v] of Object.entries(derive(se.league, b.s))) out[k] = (out[k] ?? 0) + se.w * v;
+    for (const [k, v] of Object.entries(derive(se.league, b.s)))
+      // A longest-ever is the longer of the two seasons, not a sum.
+      out[k] = k.includes(".long") ? Math.max(out[k] ?? 0, v) : (out[k] ?? 0) + se.w * v;
   return out;
 }
 
@@ -748,6 +779,26 @@ function rushGroup(pos: string): "RB" | "QB" | "X" {
   return "X";
 }
 
+/**
+ * College box scores record no targets, so a receiver's are estimated from his
+ * catches at his position group's catch rate (FBS 2025: 62% of passes were
+ * completed, and running backs catch more of theirs than receivers).
+ */
+const CFB_CATCH: Record<"WR" | "TE" | "RB", number> = { WR: 0.6, TE: 0.68, RB: 0.76 };
+
+/** Targets, carries and rushing yards as the engine means them: college
+ *  counts a sack as a quarterback rush, and records no targets. */
+function usage(league: SimLeague, s: Record<string, number>, pos: string) {
+  const recs = g(s, "receiving.receptions");
+  const college = league === "cfb";
+  const sk = college ? g(s, "passing.sacks") : 0;
+  return {
+    tgt: college ? recs / CFB_CATCH[recGroup(pos)] : g(s, "receiving.receivingTargets"),
+    car: Math.max(0, g(s, "rushing.rushingAttempts") - sk),
+    ryd: g(s, "rushing.rushingYards") + (college ? g(s, "passing.sackYardsLost") : 0),
+  };
+}
+
 function nflEnv(se: Season): NflLg {
   const t = {
     att: 0,
@@ -779,14 +830,15 @@ function nflEnv(se: Season): NflLg {
     t.ptd += g(s, "passing.passingTouchdowns");
     t.int += g(s, "passing.interceptions");
     t.sk += g(s, "passing.sacks");
-    const car = g(s, "rushing.rushingAttempts");
+    const u = usage(se.league, s, pos);
+    const car = u.car;
     t.car += car;
-    t.ryd += g(s, "rushing.rushingYards");
+    t.ryd += u.ryd;
     const rg = rush[rushGroup(pos)];
     rg[0] += car;
-    rg[1] += g(s, "rushing.rushingYards");
+    rg[1] += u.ryd;
     rg[2] += g(s, "rushing.rushingTouchdowns");
-    const tgt = g(s, "receiving.receivingTargets");
+    const tgt = u.tgt;
     t.tgt += tgt;
     const r = rec[recGroup(pos)];
     r[0] += tgt;
@@ -857,8 +909,11 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
   const att = g(s, "passing.passingAttempts");
   const cmp = g(s, "passing.completions");
   const sk = g(s, "passing.sacks");
-  const car = g(s, "rushing.rushingAttempts");
-  const tgt = g(s, "receiving.receivingTargets");
+  // Rates from the runs he chose and the targets he drew; his season averages
+  // (avg, below) stay as the box scores count them.
+  const u = usage(se.league, s, e.pos);
+  const car = u.car;
+  const tgt = u.tgt;
   const recs = g(s, "receiving.receptions");
   const rg = lg.rush[rushGroup(e.pos)];
   const cg = lg.rec[recGroup(e.pos)];
@@ -876,6 +931,7 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
   const unit: NflPlayer["unit"] =
     e.group === "defense" || floor.tkl > 1 ? "def" : e.group === "specialTeam" ? "st" : "off";
   const ryd = g(s, "rushing.rushingYards");
+  const boxCar = g(s, "rushing.rushingAttempts");
   const reyd = g(s, "receiving.receivingYards");
   const fgMade = g(s, "kicking.fieldGoalsMade");
   return {
@@ -886,7 +942,7 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
       cmp,
       int: g(s, "passing.interceptions"),
       ryd,
-      car,
+      car: boxCar,
       rec: recs,
       reyd,
       rry: ryd + reyd,
@@ -905,7 +961,7 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
     intRate: reg(g(s, "passing.interceptions"), att, E.intRate * 1.15, 300),
     sackRate: reg(sk, att + sk, E.sackRate * 1.05, 180),
     carries: car / per,
-    ypc_r: reg(g(s, "rushing.rushingYards"), car, rg.ypc * 0.96, 70),
+    ypc_r: reg(u.ryd, car, rg.ypc * 0.96, 70),
     rushTd: reg(g(s, "rushing.rushingTouchdowns"), car, rg.td, 90),
     fumble: reg(
       g(s, "rushing.rushingFumblesLost") + g(s, "receiving.receivingFumblesLost"),
@@ -934,6 +990,29 @@ async function teamMeta(league: SimLeague, id: string): Promise<TeamMeta> {
   const m = all.find((t) => t.id === id);
   if (!m) throw new Error(`Unknown ${league} team ${id}`);
   return m;
+}
+
+/**
+ * College player lines for one matchup: this season's from each team's own
+ * box scores, last season's from the FBS table — and, for an FCS opponent,
+ * whose players are mostly not in it, from its own games last season.
+ */
+async function collegeSeason(se: Season, homeId: string, awayId: string): Promise<Season> {
+  const none = () => new Map<string, StatLine>();
+  const ids = [homeId, awayId];
+  const priorOnly = process.env.SIM_STATS === "prior";
+  const cur = new Map<string, StatLine>();
+  if (!priorOnly)
+    for (const m of await Promise.all(
+      ids.map((id) => cfbTeamLines(id, se.current, true).catch(none)),
+    ))
+      for (const [k, v] of m) cur.set(k, v);
+  const fcs = ids.filter((id) => !se.fbs.has(id));
+  if (!fcs.length) return { ...se, cur };
+  const old = new Map(se.old);
+  for (const m of await Promise.all(fcs.map((id) => cfbTeamLines(id, se.prior, false).catch(none))))
+    for (const [k, v] of m) if (!old.has(k)) old.set(k, v);
+  return { ...se, cur, old };
 }
 
 export type MatchupRequest = {
@@ -978,6 +1057,7 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     line: game?.line ?? null,
     basis: se.basis,
     ...(league === "nfl" ? { indoor: game?.indoor ?? NFL_DOMES.has(homeMeta.abbr) } : {}),
+    ...(league === "cfb" ? { indoor: game?.indoor ?? false } : {}),
     ...(b2b ? { b2b } : {}),
   };
 
@@ -1071,9 +1151,17 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     };
   }
 
-  const lg = nflEnv(se);
+  const [fse, ratings] =
+    league === "cfb"
+      ? await Promise.all([collegeSeason(se, homeId, awayId), cfbRatings(date).catch(() => null)])
+      : [se, null];
+  const lg = nflEnv(fse);
+  const college = league === "cfb";
+  if (college && ratings?.ppg) lg.env = { ...lg.env, ppg: ratings.ppg };
   const mk = (meta: TeamMeta, ros: RosterEntry[]): NflTeam => {
-    const players = ros.filter((e) => e.group !== "practiceSquad").map((e) => nflPlayer(se, e, lg));
+    const players = ros
+      .filter((e) => e.group !== "practiceSquad")
+      .map((e) => nflPlayer(fse, e, lg));
     // How pass-heavy this roster plays: its targets against its carries,
     // relative to the league's, mapped onto the league's ~58% pass rate.
     let tg = 0;
@@ -1087,15 +1175,20 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     // The team's own dropback rate when the team feed has it; otherwise the
     // roster's targets against its carries, mapped onto the league's rate.
     const pr = info.tend.passRate;
+    // College runs the whole range, from the service academies' option
+    // (under 20% passes) to the air raid.
+    const [lo, hi] = college ? [0.15, 0.75] : [0.45, 0.7];
     let passRate = pr
-      ? clamp(pr.value, 0.45, 0.7)
-      : clamp(0.585 + 0.8 * (share - lg.share), 0.48, 0.68);
+      ? clamp(pr.value, lo, hi)
+      : clamp((college ? 0.49 : 0.585) + 0.8 * (share - lg.share), lo + 0.03, hi - 0.02);
     // Coaching (scripts/build-nfl-coaching.ts). A raw pass rate mixes the
     // coach's preference with how often the team trailed, and the engine
     // already throws more when behind — so where the play-by-play has it, the
     // team plays at the league's rate plus its pass rate over expected in
     // neutral game states.
-    const c = (coaching.teams as Record<string, NflCoaching | undefined>)[meta.abbr];
+    const c = college
+      ? undefined
+      : (coaching.teams as Record<string, NflCoaching | undefined>)[meta.abbr];
     let goAggr = 0;
     if (c) {
       const L = coaching.league;
@@ -1120,7 +1213,28 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
         good: "style",
       };
     }
-    return { ...info, players, passRate, goAggr };
+    if (college && ratings) {
+      // The schedule-adjusted rating, as the engine splits it: half lifts this
+      // offense, half holds down the one across from it.
+      const r = Math.round(ratings.of(meta.id) * 10) / 10;
+      const rating = (side: string): Tendency => ({
+        label: `Schedule-adjusted rating, ${side} half (points vs an average FBS team)`,
+        value: r,
+        raw: r,
+        league: 0,
+        fmt: 1,
+        good: "high",
+      });
+      info.tend = { ...info.tend, ratingOff: rating("offense"), ratingDef: rating("defense") };
+    }
+    return {
+      ...info,
+      players,
+      passRate,
+      goAggr,
+      ...(college && !se.fbs.has(meta.id) ? { fcs: true } : {}),
+      ...(ratings ? { rating: Math.round(ratings.of(meta.id) * 10) / 10 } : {}),
+    };
   };
   return {
     league,
@@ -1208,7 +1322,17 @@ export async function buildSlate(league: SimLeague, date: string): Promise<Slate
 }
 
 export async function listTeams(league: SimLeague): Promise<SlateTeam[]> {
-  const all = await fetchTeams(league);
+  let all = await fetchTeams(league);
+  // College: the FBS, not the ~760 programmes ESPN lists across every division.
+  if (league === "cfb") {
+    const season = seasonFor(league, new Date().toISOString().slice(0, 10));
+    const [a, b] = await Promise.all([
+      teamStats(league, season, true).catch(() => new Map()),
+      teamStats(league, season - 1, false).catch(() => new Map()),
+    ]);
+    const fbs = new Set([...a.keys(), ...b.keys()]);
+    if (fbs.size) all = all.filter((t) => fbs.has(t.id));
+  }
   return all.map((t) => ({
     id: t.id,
     abbr: t.abbr,

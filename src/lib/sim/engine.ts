@@ -28,7 +28,8 @@ export function runner(m: SimMatchup, o: SimOverrides): Runner {
       const p = prepareMlb(m, o);
       return (seed, record) => playMlb(p, seed, record);
     }
-    case "nfl": {
+    case "nfl":
+    case "cfb": {
       const p = prepareNfl(m, o);
       return (seed, record) => playNfl(p, seed, record);
     }

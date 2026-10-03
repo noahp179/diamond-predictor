@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MLB, NBA, NFL, NHL } from "@/lib/sim/columns";
 import { BOX, boxPlayers, UNITS, type BoxPlayer } from "@/lib/sim/props";
 import type { GameResult, PlayEvent, SimMatchup, Side } from "@/lib/sim/types";
+import { isFootball } from "@/lib/sim/types";
 
 import { AWAY_COLOR, hideBroken, HOME_COLOR } from "./format";
 
@@ -123,7 +124,7 @@ export function GameViewer({
           lead={done && result.home > result.away}
         />
       </div>
-      {matchup.league === "nfl" && last?.ball != null && !done && (
+      {isFootball(matchup.league) && last?.ball != null && !done && (
         <FieldStrip
           ball={last.ball}
           homeAbbr={matchup.home.abbr}
@@ -486,7 +487,7 @@ function LineScoreTable({
       ? (["H", "E"] as const)
       : matchup.league === "nhl"
         ? (["SOG"] as const)
-        : matchup.league === "nfl"
+        : isFootball(matchup.league)
           ? (["YDS", "TO"] as const)
           : ([] as const);
   const skipBottom = matchup.league === "mlb" && final && result.team.home.skipBottom === 1;
@@ -655,6 +656,23 @@ function TeamTotals({
         "Passing",
         (r) => `${sum(r, NFL.CMP)}/${sum(r, NFL.ATT)}, ${sum(r, NFL.PYD) - sum(r, NFL.SKY)} yds`,
       ],
+      ["Rushing", (r) => `${sum(r, NFL.CAR)} for ${sum(r, NFL.RYD)}`],
+      ["Sacked", (r) => `${sum(r, NFL.SK)}-${sum(r, NFL.SKY)}`],
+      ["Turnovers", final("TO")],
+      ["First downs", final("FD")],
+      [
+        "Penalties",
+        (_, side) => (done ? `${result.team[side].PEN ?? 0}-${result.team[side].PENY ?? 0}` : "—"),
+      ],
+      [
+        "Possession",
+        final("TOP", (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")}`),
+      ],
+    ],
+    // College counts sacks in rushing and leaves passing yards gross.
+    cfb: [
+      ["Total yards", (r) => String(sum(r, NFL.PYD) + sum(r, NFL.RYD))],
+      ["Passing", (r) => `${sum(r, NFL.CMP)}/${sum(r, NFL.ATT)}, ${sum(r, NFL.PYD)} yds`],
       ["Rushing", (r) => `${sum(r, NFL.CAR)} for ${sum(r, NFL.RYD)}`],
       ["Sacked", (r) => `${sum(r, NFL.SK)}-${sum(r, NFL.SKY)}`],
       ["Turnovers", final("TO")],

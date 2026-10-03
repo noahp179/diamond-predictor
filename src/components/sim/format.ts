@@ -47,6 +47,7 @@ export function kickoff(iso: string): string {
 
 export const LEAGUE_LABEL: Record<SimLeague, string> = {
   nfl: "NFL",
+  cfb: "CFB",
   nba: "NBA",
   nhl: "NHL",
   mlb: "MLB",
@@ -54,6 +55,7 @@ export const LEAGUE_LABEL: Record<SimLeague, string> = {
 
 export const PLAY_VERB: Record<SimLeague, string> = {
   nfl: "Kick off",
+  cfb: "Kick off",
   nba: "Tip off",
   nhl: "Drop the puck",
   mlb: "Play ball",
@@ -61,6 +63,7 @@ export const PLAY_VERB: Record<SimLeague, string> = {
 
 export const SPORT_NAME: Record<SimLeague, string> = {
   nfl: "football",
+  cfb: "college football",
   nba: "basketball",
   nhl: "hockey",
   mlb: "baseball",
