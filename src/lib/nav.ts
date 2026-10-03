@@ -190,7 +190,7 @@ const VIEWS: Record<SportKey, ViewKey[]> = {
     "parlay",
     "trackRecord",
   ],
-  cfb: ["slate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
+  cfb: ["slate", "simulate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
   nba: ["slate", "simulate", "recommended", "bestOdds", "trackRecord"],
   // No picks model for hockey yet: the simulator is the section.
   nhl: ["simulate"],

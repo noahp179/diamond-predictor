@@ -82,6 +82,7 @@ export function boxPlayers(m: SimMatchup, side: Side): BoxPlayer[] {
       ];
     }
     case "nfl":
+    case "cfb":
       return m[side].players.map((p, idx) => {
         let group: Group = "def";
         if (p.pos === "QB") group = "qb";
@@ -117,7 +118,7 @@ const mmss = (sec: number) => {
 };
 const ip = (outs: number) => `${Math.floor(outs / 3)}.${outs % 3}`;
 
-export const BOX: Record<SimLeague, BoxSection[]> = {
+const BOX_: Record<Exclude<SimLeague, "cfb">, BoxSection[]> = {
   nba: [
     {
       title: "Players",
@@ -308,6 +309,7 @@ export const BOX: Record<SimLeague, BoxSection[]> = {
     },
   ],
 };
+export const BOX: Record<SimLeague, BoxSection[]> = { ...BOX_, cfb: BOX_.nfl };
 
 // ------------------------------------------------------- average box
 
@@ -340,7 +342,7 @@ export interface AvgSection {
 
 const per = (a: number, b: number) => (b > 0 ? a / b : 0);
 
-export const AVG_BOX: Record<SimLeague, AvgSection[]> = {
+const AVG_BOX_: Record<Exclude<SimLeague, "cfb">, AvgSection[]> = {
   nba: [
     {
       title: "Players",
@@ -520,6 +522,7 @@ export const AVG_BOX: Record<SimLeague, AvgSection[]> = {
     },
   ],
 };
+export const AVG_BOX: Record<SimLeague, AvgSection[]> = { ...AVG_BOX_, cfb: AVG_BOX_.nfl };
 
 // ------------------------------------------------------------ projections
 
@@ -537,7 +540,7 @@ export interface PropDef {
   minMean?: number;
 }
 
-export const PROPS: Record<SimLeague, PropDef[]> = {
+const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
   nba: [
     {
       key: "pts",
@@ -923,6 +926,7 @@ export const PROPS: Record<SimLeague, PropDef[]> = {
     },
   ],
 };
+export const PROPS: Record<SimLeague, PropDef[]> = { ...PROPS_, cfb: PROPS_.nfl };
 
 /** What to call points in each sport, for headings. */
 export const UNITS: Record<
@@ -931,6 +935,7 @@ export const UNITS: Record<
 > = {
   nba: { pts: "points", one: "point", period: "Q", periods: ["1", "2", "3", "4"] },
   nfl: { pts: "points", one: "point", period: "Q", periods: ["1", "2", "3", "4"] },
+  cfb: { pts: "points", one: "point", period: "Q", periods: ["1", "2", "3", "4"] },
   nhl: { pts: "goals", one: "goal", period: "P", periods: ["1", "2", "3"] },
   mlb: {
     pts: "runs",

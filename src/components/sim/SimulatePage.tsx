@@ -747,6 +747,12 @@ const HOW: Record<SimLeague, string[]> = {
     "Fourth downs go the way the league's coaches actually decide from that distance and spot, leaning toward this head coach's own aggressiveness. Field goals by distance and kicker, punts, 2025 kickoff rules, the two-minute warning, clock-killing, onside kicks and overtime are all played out. Calibrated to the league's ~23 points and ~63 plays per team.",
     "Checked against every 2025 game: quarterbacks scramble, sneak and throw to the sticks on third down; gains shrink in the red zone; penalties are real types and yardages (holding, false starts, pass interference at the spot); teams tied late play for the win; domes add a little to the passing game. Third-down rate, drives, punts, penalties, scrambles and overtime frequency now match real games within a few percent.",
   ],
+  cfb: [
+    "Snap by snap, on the same engine as the NFL's, under college rules: overtime from the 25 with two-point tries required from the second period and alternating two-point plays from the third, so there are no ties; the clock stops on first downs only in the last two minutes of a half; kickoffs fair-caught or downed come out to the 25; pass interference is 15 yards at most.",
+    "Players come from box scores, not a season feed: ESPN publishes no college player statistics league-wide, so every FBS game of last season and every game each team has played this season is read play by play. A transfer brings last season's numbers with him. Box scores record no targets, so a receiver's are estimated from his catches.",
+    "Each defense meets the offense across from it through what opponents have done against it — completion rate, yards per catch and per carry, sacks, interceptions — and each offense plays at its own pass rate and tempo, from the option academies to the air raid.",
+    "An FCS opponent plays at a discount: its numbers came against FCS teams. College kickers are shorter and less accurate than the NFL's, and the box score counts a sack as a quarterback rush, as college does.",
+  ],
   nhl: [
     "Shift by shift in continuous time. The twelve forwards and six defencemen who play most dress in lines and pairs and get ice time in proportion to how much they play.",
     "While a unit is out, each skater shoots at his own per-60 rate scaled by how many shots the other team allows; a shot scores at his regressed shooting percentage scaled by how good the goalie in front of him is.",

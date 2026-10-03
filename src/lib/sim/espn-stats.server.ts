@@ -18,11 +18,13 @@
  */
 
 import { etDateOf } from "../date";
+import { accumulate, readSummary, type CfbGame, type Summary } from "./cfb-box";
 import type { SimLeague } from "./types";
 
 export const ESPN_PATH: Record<SimLeague, string> = {
   nba: "basketball/nba",
   nfl: "football/nfl",
+  cfb: "football/college-football",
   nhl: "hockey/nhl",
   mlb: "baseball/mlb",
 };
@@ -261,14 +263,22 @@ export function standings(
     const out = new Map<string, StandingRow>();
     const walk = (n: StandingsNode) => {
       for (const e of n.standings?.entries ?? []) {
-        const st = new Map(e.stats.map((s) => [s.name, s]));
+        // College lists each stat once per split (overall, conference, home,
+        // away…), overall first; the other leagues list each once.
+        const st = new Map<string, (typeof e.stats)[number]>();
+        for (const x of e.stats) if (league !== "cfb" || !st.has(x.name)) st.set(x.name, x);
         const v = (k: string) => st.get(k)?.value ?? 0;
         const w = v("wins");
         const l = v("losses");
         const t = v("ties");
         const otl = league === "nhl" ? v("otLosses") : 0;
-        const gp = v("gamesPlayed") || w + l + t + otl;
         const overall = st.get("overall")?.displayValue?.split(",")[0];
+        // College has no losses or games-played stat, only the "4-1" record.
+        const fromRecord = (overall ?? "")
+          .split("-")
+          .map(Number)
+          .reduce((a, x) => a + (Number.isFinite(x) ? x : 0), 0);
+        const gp = league === "cfb" ? fromRecord : v("gamesPlayed") || w + l + t + otl;
         const record =
           overall ?? (league === "nhl" ? `${w}-${l}-${otl}` : t ? `${w}-${l}-${t}` : `${w}-${l}`);
         out.set(e.team.id, {
@@ -316,7 +326,7 @@ export function teamStats(
   return cached(`teamstats:${league}:${season}`, current ? 3 * HOUR : 24 * HOUR, async () => {
     const json = await getJson<ByTeamResponse>(
       `${WEB}/${ESPN_PATH[league]}/statistics/byteam?region=us&lang=en&contentorigin=espn` +
-        `&limit=50&season=${season}&seasontype=2`,
+        `&limit=${league === "cfb" ? 300 : 50}&season=${season}&seasontype=2`,
     );
     // The basketball feed lists each category twice, the second time without
     // its names; keep the first.
@@ -383,7 +393,10 @@ export function teams(league: SimLeague): Promise<TeamMeta[]> {
         }[];
       }[];
     };
-    const json = await getJson<R>(`${SITE}/${ESPN_PATH[league]}/teams?limit=100`);
+    // College: every division, so an FCS opponent on the slate has a name.
+    const json = await getJson<R>(
+      `${SITE}/${ESPN_PATH[league]}/teams?limit=${league === "cfb" ? 1000 : 100}`,
+    );
     return (json.sports?.[0]?.leagues?.[0]?.teams ?? [])
       .map(({ team: t }) => ({
         id: t.id,
@@ -508,6 +521,9 @@ type ScoreboardResponse = {
   }[];
 };
 
+/** College scoreboards default to the Top 25; every FBS game is group 80. */
+const FBS = (league: SimLeague) => (league === "cfb" ? "&groups=80" : "");
+
 const ml = (s: string | undefined) => {
   const v = num(s);
   return Number.isFinite(v) && v !== 0 ? v : null;
@@ -524,7 +540,7 @@ export function nextGameDay(league: SimLeague, from: string): Promise<string | n
   const end = new Date(Date.UTC(y, m - 1, d + 14)).toISOString().slice(0, 10);
   return cached(`next:${league}:${ymd(from)}`, 60 * 60 * 1000, async () => {
     const json = await getJson<ScoreboardResponse>(
-      `${SITE}/${ESPN_PATH[league]}/scoreboard?dates=${ymd(from)}-${ymd(end)}&limit=300`,
+      `${SITE}/${ESPN_PATH[league]}/scoreboard?dates=${ymd(from)}-${ymd(end)}&limit=300${FBS(league)}`,
     );
     const days = (json.events ?? [])
       .filter((e) => e.status.type.state !== "post")
@@ -539,7 +555,7 @@ export function scoreboard(league: SimLeague, date: string): Promise<ScoreboardG
   const ymd = date.replace(/-/g, "");
   return cached(`scoreboard:${league}:${ymd}`, 10 * 60 * 1000, async () => {
     const json = await getJson<ScoreboardResponse>(
-      `${SITE}/${ESPN_PATH[league]}/scoreboard?dates=${ymd}&limit=500`,
+      `${SITE}/${ESPN_PATH[league]}/scoreboard?dates=${ymd}&limit=500${FBS(league)}`,
     );
     const out: ScoreboardGame[] = [];
     for (const ev of json.events ?? []) {
@@ -586,4 +602,48 @@ export function scoreboard(league: SimLeague, date: string): Promise<ScoreboardG
     }
     return out;
   });
+}
+
+// ------------------------------------------------------- college lines
+
+/**
+ * One college team's player lines for a season, from the box scores of the
+ * games it has played (see cfb-box.ts — ESPN's league-wide player feed has no
+ * college statistics). A finished game never changes, so each is read once
+ * and kept for a week; the list of games is checked hourly in season.
+ */
+export function cfbTeamLines(
+  teamId: string,
+  season: number,
+  current: boolean,
+): Promise<Map<string, StatLine>> {
+  return cached(`cfblines:${teamId}:${season}`, current ? HOUR : 24 * HOUR, async () => {
+    type Schedule = {
+      events?: {
+        id: string;
+        competitions?: { status?: { type?: { completed?: boolean } } }[];
+      }[];
+    };
+    const sch = await getJson<Schedule>(
+      `${SITE}/${ESPN_PATH.cfb}/teams/${teamId}/schedule?season=${season}&seasontype=2`,
+    );
+    const ids = (sch.events ?? [])
+      .filter((e) => e.competitions?.[0]?.status?.type?.completed)
+      .map((e) => e.id);
+    const games = await Promise.all(ids.map((id) => cfbGame(id).catch(() => null)));
+    const totals = new Map<string, { name: string; teamId: string; s: Record<string, number> }>();
+    for (const g of games) {
+      const mine = g?.teams.find((t) => t.teamId === teamId);
+      if (g && mine && g.seasonType === 2) accumulate(totals, mine);
+    }
+    const out = new Map<string, StatLine>();
+    for (const [id, t] of totals) out.set(id, { id, name: t.name, teamId, pos: "", s: t.s });
+    return out;
+  });
+}
+
+function cfbGame(id: string): Promise<CfbGame | null> {
+  return cached(`cfbgame:${id}`, 7 * 24 * HOUR, async () =>
+    readSummary(await getJson<Summary>(`${SITE}/${ESPN_PATH.cfb}/summary?event=${id}`)),
+  );
 }

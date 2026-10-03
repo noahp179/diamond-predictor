@@ -15,7 +15,7 @@
  *      rosters score within a few percent of the league's points per game,
  *      and the same roster on both sides wins at home 51–58% of the time.
  *
- * Run:  NODE_USE_ENV_PROXY=1 npx tsx scripts/test-game-sim.ts [nfl|nba|nhl|mlb ...]
+ * Run:  NODE_USE_ENV_PROXY=1 npx tsx scripts/test-game-sim.ts [nfl|cfb|nba|nhl|mlb ...]
  * (the proxy variable is only needed behind an HTTPS proxy). Takes a minute,
  * most of it the first fetch of each league's season stats.
  */
@@ -86,6 +86,7 @@ function invariants(m: SimMatchup, r: GameResult): string[] {
   }
   if (!r.tie && r.home === r.away) errs.push("level score without a tie");
   if (r.tie && m.league !== "nfl") errs.push("a tie outside the NFL");
+  if (m.league === "cfb" && r.ot && r.periods.home.length < 5) errs.push("overtime not recorded");
   return errs;
 }
 
@@ -106,8 +107,12 @@ function rebuilt(r: GameResult): boolean {
 async function league(lg: SimLeague) {
   console.log(`\n── ${lg.toUpperCase()} ─────────────────────────────`);
   const date = todayET();
-  const teams = await listTeams(lg);
-  check(`${lg}: team list`, teams.length >= 30, `${teams.length} teams`);
+  const all = await listTeams(lg);
+  check(`${lg}: team list`, all.length >= 30, `${all.length} teams`);
+  // College has 138 FBS teams, each matchup read from box scores: a spread
+  // sample of 32 of them.
+  const teams =
+    lg === "cfb" ? all.filter((_, i) => i % Math.floor(all.length / 32) === 0).slice(0, 32) : all;
   // Every team appears: pairs (0,1), (2,3), …
   const matchups: SimMatchup[] = [];
   for (let i = 0; i + 1 < teams.length; i += 2)
@@ -243,6 +248,7 @@ function lgAverage(m: SimMatchup): number {
     case "nba":
       return m.env.ppg;
     case "nfl":
+    case "cfb":
       return m.env.ppg;
     case "nhl":
       return m.env.gpg;
@@ -253,9 +259,9 @@ function lgAverage(m: SimMatchup): number {
 
 async function main() {
   const wanted = (process.argv.slice(2) as SimLeague[]).filter((x) =>
-    ["nfl", "nba", "nhl", "mlb"].includes(x),
+    ["nfl", "cfb", "nba", "nhl", "mlb"].includes(x),
   );
-  for (const lg of wanted.length ? wanted : (["nfl", "nba", "nhl", "mlb"] as SimLeague[])) {
+  for (const lg of wanted.length ? wanted : (["nfl", "cfb", "nba", "nhl", "mlb"] as SimLeague[])) {
     try {
       await league(lg);
     } catch (err) {

@@ -300,7 +300,8 @@ function describe(
         ],
       };
     }
-    case "nfl": {
+    case "nfl":
+    case "cfb": {
       const t = m[side];
       const ps = t.players;
       const by = (pos: string[]) => ps.filter((p) => pos.includes(p.pos));

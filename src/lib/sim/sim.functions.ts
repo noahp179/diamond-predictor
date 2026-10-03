@@ -14,7 +14,7 @@ import { todayET } from "../date";
 import { buildMatchup, buildSlate, listTeams } from "./build.server";
 import { nextGameDay } from "./espn-stats.server";
 
-const League = z.enum(["nfl", "nba", "nhl", "mlb"]);
+const League = z.enum(["nfl", "cfb", "nba", "nhl", "mlb"]);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const reason = (err: unknown) =>

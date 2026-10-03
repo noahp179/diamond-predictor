@@ -1,4 +1,5 @@
 import { mlbPlan } from "@/lib/sim/mlb";
+import { CFB_STRENGTH } from "@/lib/sim/nfl";
 import type { SimLeague, SimMatchup, SimOverrides, Tendency, TeamInfo } from "@/lib/sim/types";
 
 import { AWAY_COLOR, HOME_COLOR } from "./format";
@@ -11,7 +12,9 @@ import { AWAY_COLOR, HOME_COLOR } from "./format";
  * engine's own terms: odds multipliers for rates, ratios for amounts.
  */
 
-type Kind = "ratio" | "odds" | "notOdds" | "notRatio";
+/** "rating": a schedule-adjusted rating in points, half of which moves the
+ *  offense's efficiency (nfl.ts, CFB_STRENGTH). */
+type Kind = "ratio" | "odds" | "notOdds" | "notRatio" | "rating" | "ratingAgainst";
 
 interface Factor {
   key: string;
@@ -34,6 +37,19 @@ const FACTORS: Record<SimLeague, Factor[]> = {
     { key: "neutralPass", from: "off", what: "early-down passes", kind: "ratio", upHelps: null },
     { key: "pace", from: "off", what: "plays", kind: "ratio", upHelps: null },
     { key: "fourthGo", from: "off", what: "go-for-it calls", kind: "odds", upHelps: null },
+  ],
+  // College: no coaching table (pass rate is the team's own dropbacks); the
+  // schedule-adjusted rating sets each side's overall level.
+  cfb: [
+    { key: "ratingDef", from: "def", what: "efficiency", kind: "ratingAgainst", upHelps: true },
+    { key: "ratingOff", from: "off", what: "efficiency", kind: "rating", upHelps: true },
+    { key: "defCmp", from: "def", what: "completion odds", kind: "odds", upHelps: true },
+    { key: "defYpc", from: "def", what: "yards per catch", kind: "ratio", upHelps: true },
+    { key: "defYpcRush", from: "def", what: "yards per carry", kind: "ratio", upHelps: true },
+    { key: "defSack", from: "def", what: "sack odds", kind: "odds", upHelps: false },
+    { key: "defInt", from: "def", what: "interceptions", kind: "ratio", upHelps: false },
+    { key: "passRate", from: "off", what: "passes", kind: "ratio", upHelps: null },
+    { key: "pace", from: "off", what: "plays", kind: "ratio", upHelps: null },
   ],
   nba: [
     { key: "defOpp2p", from: "def", what: "2-point make odds", kind: "odds", upHelps: true },
@@ -78,6 +94,10 @@ function effect(t: Tendency, kind: Kind): number {
       return odds(1 - v) / Math.max(1e-9, odds(1 - lg)) - 1;
     case "notRatio":
       return (1 - v) / Math.max(1e-9, 1 - lg) - 1;
+    case "rating":
+      return Math.exp((CFB_STRENGTH * (v - lg)) / 2) - 1;
+    case "ratingAgainst":
+      return Math.exp((-CFB_STRENGTH * (v - lg)) / 2) - 1;
   }
 }
 
@@ -136,6 +156,7 @@ export function MatchupFactors({
 
 const LEAGUE_NOTE: Record<SimLeague, string> = {
   nfl: "Completion, sack and interception rates combine with the quarterback's and receivers' own by odds ratio; yardage scales each ball-carrier's and receiver's own average. Pass rate (in neutral game states, so a team that trailed a lot doesn't look pass-happy), tempo and the head coach's fourth-down aggressiveness are the offense's own choices; a fourth-down call starts from what the league's coaches did from the same spot.",
+  cfb: "Completion, sack and interception rates combine with the quarterback's and receivers' own by odds ratio; yardage scales each ball-carrier's and receiver's own average. Pass rate and tempo are the offense's own. An FCS opponent's numbers came against FCS teams, so it plays at a discount against an FBS one.",
   nba: "Make probabilities combine with each shooter's own by odds ratio; trips, turnovers and rebounds scale each player's rates. Pace is both teams' combined.",
   nhl: "Shots scale each skater's own shot rate; the power play's conversion meets the penalty kill's, split between them. The goalie in net is each skater's other opponent.",
   mlb: "Most of baseball's matchup is batter against pitcher, played out plate appearance by plate appearance — including which hand each throws and hits with. The defense adds its error rate.",

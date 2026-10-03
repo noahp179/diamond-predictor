@@ -12,7 +12,7 @@ export const Route = createFileRoute("/sim/")({
       {
         name: "description",
         content:
-          "Play-by-play simulations of NFL, NBA, NHL and MLB games built from real player statistics. Watch one game unfold or run ten thousand for win probabilities, score distributions and player projections.",
+          "Play-by-play simulations of NFL, college football, NBA, NHL and MLB games built from real player statistics. Watch one game unfold or run ten thousand for win probabilities, score distributions and player projections.",
       },
       { property: "og:title", content: "Game Simulator — Diamond Edge" },
     ],
@@ -24,6 +24,11 @@ const CARDS: Record<SimLeague, { unit: string; what: string; stats: string }> = 
   nfl: {
     unit: "snap by snap",
     what: "Down, distance and clock; play calls from each team's tendencies; every carry and target to a real player.",
+    stats: "Passing, rushing and receiving lines, touchdowns, kicking, sacks, picks and tackles",
+  },
+  cfb: {
+    unit: "snap by snap",
+    what: "College rules — overtime from the 25, no ties — with every FBS team's players read from box scores, and FCS opponents at a discount.",
     stats: "Passing, rushing and receiving lines, touchdowns, kicking, sacks, picks and tackles",
   },
   nba: {
@@ -67,6 +72,14 @@ const CALIBRATION: {
     sim: "23.0",
     home: "54.3%",
     spread: "13.0 (real ≈ 13.5)",
+  },
+  {
+    league: "cfb",
+    unit: "points / team (FBS vs FBS)",
+    real: "26.3",
+    sim: "25.8",
+    home: "55.7%",
+    spread: "15.4 (real ≈ 13–16)",
   },
   {
     league: "nba",

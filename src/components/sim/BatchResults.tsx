@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { MassResult, PlayerSummary } from "@/lib/sim/aggregate";
 import { AVG_BOX, PROPS, UNITS, type PropDef } from "@/lib/sim/props";
 import type { SimLeague, SimMatchup } from "@/lib/sim/types";
+import { isFootball } from "@/lib/sim/types";
 
 import {
   AWAY_COLOR,
@@ -748,7 +749,7 @@ function VsSeason({ sim, season, digits }: { sim: number; season?: number; digit
 
 /** The headline stats per league, and the season level a player needs for a
  *  percentage change to mean anything. */
-const MOVER_STATS: Record<SimLeague, { key: string; min: number }[]> = {
+const MOVER_STATS_: Record<Exclude<SimLeague, "cfb">, { key: string; min: number }[]> = {
   nfl: [
     { key: "pyd", min: 120 },
     { key: "ryd", min: 25 },
@@ -772,6 +773,10 @@ const MOVER_STATS: Record<SimLeague, { key: string; min: number }[]> = {
     { key: "k", min: 3 },
     { key: "outs", min: 9 },
   ],
+};
+const MOVER_STATS: Record<SimLeague, { key: string; min: number }[]> = {
+  ...MOVER_STATS_,
+  cfb: MOVER_STATS_.nfl,
 };
 
 type Move = { p: PlayerSummary; def: PropDef; sim: number; season: number; rel: number };
@@ -944,7 +949,7 @@ function AverageBox({ matchup, result }: { matchup: SimMatchup; result: MassResu
                         {p.pos}
                         {p.played < 0.95
                           ? // A football player "appears" when he records a stat.
-                            ` · ${matchup.league === "nfl" ? "a stat in" : "in"} ${Math.round(p.played * 100)}% of games`
+                            ` · ${isFootball(matchup.league) ? "a stat in" : "in"} ${Math.round(p.played * 100)}% of games`
                           : ""}
                       </span>
                     </td>

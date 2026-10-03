@@ -10,7 +10,13 @@ import type { useSimWorker } from "./useSimWorker";
 /** Games per matchup when running a whole date, up to the single-game cap. */
 const SLATE_SIZES = [100, 1000, 5000, 10000, 50000, 100000, MAX_BATCH];
 /** Rough throughput across a four-core laptop's workers, for the time hint. */
-const GAMES_PER_SECOND: Record<SimLeague, number> = { nfl: 6000, nba: 7000, nhl: 4000, mlb: 4500 };
+const GAMES_PER_SECOND: Record<SimLeague, number> = {
+  nfl: 6000,
+  cfb: 5500,
+  nba: 7000,
+  nhl: 4000,
+  mlb: 4500,
+};
 
 /**
  * Every game on the date, simulated in turn. One table answers "what does the
@@ -23,6 +29,7 @@ const HEADLINE: Record<SimLeague, { key: string; label: string }> = {
   nhl: { key: "pts", label: "pts" },
   mlb: { key: "tb", label: "TB" },
   nfl: { key: "rry", label: "scrim yds" },
+  cfb: { key: "rry", label: "scrim yds" },
 };
 
 type Row =

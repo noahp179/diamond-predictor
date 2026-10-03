@@ -16,6 +16,7 @@
  * Keys by league — the engines read these names:
  *
  *   NFL  passRate, pace, defCmp, defYpc, defSack, defInt, defYpcRush, defTd, def3rd
+ *   CFB  the same, counted college's way (a sack is a rush)
  *   NBA  pace, defOpp2p, defOpp3p, defOpp3aRate, defOppFtRate, defForcedTov, defDreb
  *   NHL  shotsFor, shotsAgainst, ppPct, pkPct, pim
  *   MLB  errors, ops, era
@@ -215,6 +216,34 @@ const NFL: Spec[] = [
   },
 ];
 
+// -------------------------------------------------------------- college
+
+/**
+ * College counts a sack as a rush (and passing yards gross), so plays are
+ * attempts plus rushes, and yards per carry allowed takes the sacks back out.
+ */
+const cfbPlays = (r: Record<string, number>) =>
+  v(r, "passing.passingAttempts") + v(r, "rushing.rushingAttempts");
+
+const CFB: Spec[] = NFL.map((spec): Spec => {
+  switch (spec.key) {
+    case "passRate":
+      return { ...spec, den: (p) => cfbPlays(p.own) };
+    case "pace":
+      return { ...spec, num: (p) => cfbPlays(p.own) };
+    case "defYpcRush":
+      return {
+        ...spec,
+        num: (p) => v(p.opp, "rushing.rushingYards") + v(p.opp, "passing.sackYardsLost"),
+        den: (p) => v(p.opp, "rushing.rushingAttempts") - v(p.opp, "passing.sacks"),
+      };
+    case "defTd":
+      return { ...spec, den: (p) => cfbPlays(p.opp) };
+    default:
+      return spec;
+  }
+});
+
 // ------------------------------------------------------------------ NBA
 
 const nbaPoss = (r: Record<string, number>) =>
@@ -385,7 +414,7 @@ const MLB: Spec[] = [
   },
 ];
 
-const SPECS: Record<SimLeague, Spec[]> = { nfl: NFL, nba: NBA, nhl: NHL, mlb: MLB };
+const SPECS: Record<SimLeague, Spec[]> = { nfl: NFL, cfb: CFB, nba: NBA, nhl: NHL, mlb: MLB };
 
 /** Tendencies for every team in the league. */
 export function tendencies(
