@@ -84,6 +84,8 @@ type EspnCompetitor = {
 type EspnEvent = {
   id: string;
   date: string;
+  /** 1 preseason, 2 regular season, 3 postseason. */
+  season?: { type?: number };
   status: { type: { name: string; state: string; shortDetail?: string; completed?: boolean } };
   competitions: {
     neutralSite?: boolean;
@@ -208,6 +210,8 @@ export type SlateGame = {
    *  game is final, so both are null for anything already played. */
   total: number | null;
   homeSpread: number | null;
+  /** ESPN's season type: 1 preseason, 2 regular season, 3 postseason. */
+  seasonType: number | null;
 };
 
 type EspnTeam = {
@@ -273,6 +277,7 @@ function toSlateGame(ev: EspnEvent): SlateGame | null {
     state,
     total: typeof posted?.overUnder === "number" ? posted.overUnder : null,
     homeSpread: typeof posted?.spread === "number" ? posted.spread : null,
+    seasonType: ev.season?.type ?? null,
   };
 }
 
@@ -637,6 +642,7 @@ export async function predictSlate(
       awayScore: g.awayScore,
       winner: g.winner,
       state: g.state,
+      seasonType: g.seasonType,
       correct,
       rationale: [
         `${SPORT_LABEL[sport]} margin-of-victory Elo, replayed point-in-time (${gamesReplayed.toLocaleString()} games through ${date}).`,

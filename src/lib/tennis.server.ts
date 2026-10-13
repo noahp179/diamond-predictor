@@ -525,6 +525,39 @@ function scoreModel(model: MatchModel, f: Record<string, number>): number {
 
 // --------------------------------------------------------------- the slate
 
+/**
+ * Finished matches on the draws in play on `date`, by match id — what the
+ * tracking settler needs, and nothing more.
+ *
+ * Settling used to call tennisSlate, which rebuilds the two-year rating window
+ * (hundreds of ESPN calls) for every date it settles. With forty dates pending
+ * that never finished inside the cron's time limit, so the ledger fell three
+ * weeks behind. A date's scoreboard already carries each tournament's whole
+ * draw with winners, so two calls answer the same question.
+ */
+export async function tennisResults(
+  slug: TourSlug,
+  date: string,
+): Promise<Map<string, { winner: "a" | "b"; scoreline: string }>> {
+  const tour = tourOf(slug);
+  // Both feeds carry both draws and neither is complete alone (see loadWindow).
+  const feeds = await Promise.all([
+    fetchJson<{ events?: Event[] }>(`${API}/atp/scoreboard?dates=${ymd(date)}`),
+    fetchJson<{ events?: Event[] }>(`${API}/wta/scoreboard?dates=${ymd(date)}`),
+  ]);
+  if (feeds.every((f) => f === null)) throw new Error(`ESPN tennis ${date}: no answer`);
+  const out = new Map<string, { winner: "a" | "b"; scoreline: string }>();
+  for (const feed of feeds) {
+    for (const ev of feed?.events ?? []) {
+      for (const m of parseEvent(ev, tour.grouping)) {
+        if (!m.completed || m.players.length < 2) continue;
+        out.set(m.matchId, { winner: m.players[0].won ? "a" : "b", scoreline: m.scoreline });
+      }
+    }
+  }
+  return out;
+}
+
 export async function tennisSlate(slug: TourSlug, date: string): Promise<TennisSlate> {
   const model = tennisModelFor(slug);
   const raw = await loadWindow(slug, date);

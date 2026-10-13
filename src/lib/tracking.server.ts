@@ -31,9 +31,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { LEAGUES, type LeagueSlug } from "./soccer-leagues";
 import { TOURS, type TourSlug } from "./tennis-tours";
 import { bucketise, type Bucket } from "./ledger-stats";
-import { predictSlate } from "./espn.server";
+import { fetchScoreboard, predictSlate } from "./espn.server";
+import { leagueOf } from "./soccer-leagues";
 import { soccerSlate } from "./soccer.server";
-import { tennisSlate } from "./tennis.server";
+import { tennisResults, tennisSlate } from "./tennis.server";
+import { soccerDayResults } from "./ucl.server";
 
 /** Bumped when a model changes in a way that makes old rows incomparable. */
 export const SOCCER_MODEL_VERSION = "soccer-elo-gd-v1";
@@ -107,6 +109,44 @@ const admin = () => _admin as unknown as AnyTable | undefined;
  * read path does not depend on which bundler happened to load it.
  */
 const reader = () => admin() ?? (supabase as unknown as AnyTable);
+
+/**
+ * How far behind the settler is: unsettled rows whose event date has passed,
+ * and the oldest of them. For the cron's status page, which reported only
+ * whether the ledger COULD be written — every flag stayed green through the
+ * three weeks in which almost nothing was scored. This is the number that
+ * would have shown it.
+ */
+export async function ledgerBacklog(today: string) {
+  const db = reader();
+  const stale = new Date(`${today}T00:00:00Z`);
+  stale.setUTCDate(stale.getUTCDate() - 3);
+  const staleDate = stale.toISOString().slice(0, 10);
+  const [all, old, oldest] = await Promise.all([
+    db
+      .from("event_predictions")
+      .select("id", { count: "exact", head: true })
+      .is("settled_at", null)
+      .lt("event_date", today),
+    db
+      .from("event_predictions")
+      .select("id", { count: "exact", head: true })
+      .is("settled_at", null)
+      .lt("event_date", staleDate),
+    db
+      .from("event_predictions")
+      .select("event_date")
+      .is("settled_at", null)
+      .lt("event_date", today)
+      .order("event_date", { ascending: true })
+      .limit(1),
+  ]);
+  return {
+    unsettledPastEvents: all.count ?? null,
+    unsettledOver3Days: old.count ?? null,
+    oldestUnsettled: (oldest.data?.[0] as { event_date?: string } | undefined)?.event_date ?? null,
+  };
+}
 
 export function canTrack(): boolean {
   return Boolean(_admin);
@@ -278,6 +318,11 @@ export async function snapshotTeamSport(
       // see toSlateGame. Checking the score here meant this filter matched
       // nothing at all, in every sport, so the ledger was never written to.
       .filter((g) => g.state === "pre")
+      // Not preseason. Starters sit and rosters are trial runs, so a preseason
+      // result says nothing about the model — but its row would be scored into
+      // the same record as the real season. The NBA ledger took 53 of them in
+      // October 2026 before this check (removed by supabase/fixes SQL).
+      .filter((g) => g.seasonType !== 1)
       .map((g) => {
         const probs = { a: g.homeWinProb, draw: null, b: g.awayWinProb };
         const pick = pickOf(probs);
@@ -307,111 +352,163 @@ export async function snapshotTeamSport(
 // ------------------------------------------------------------------ settle
 
 /**
+ * Final results for one (sport, division, date), keyed by the event id the
+ * ledger recorded.
+ *
+ * WHY NOT THE SLATE
+ * -----------------
+ * Settling used to rebuild each date's full prediction slate — a Elo replay of
+ * three seasons for the team sports, a two-year tennis window, three soccer
+ * seasons — just to read the final scores off it. Every pending date paid that
+ * again, the cron hit its time limit after a handful of dates, and from late
+ * September the ledger settled about one day a day while two were being added:
+ * by 13 October nothing after 23 September had been scored, and rows older than
+ * the 21-day lookback were dropping out of reach for good. The scoreboard for
+ * the date already says who won. One call each.
+ */
+export async function resultsFor(
+  sport: string,
+  division: string,
+  date: string,
+): Promise<Map<string, { result: Outcome; score: string }>> {
+  if (sport === "soccer") return soccerDayResults(leagueOf(division).espn, date);
+  if (sport === "tennis") {
+    const out = new Map<string, { result: Outcome; score: string }>();
+    for (const [id, r] of await tennisResults(division as TourSlug, date)) {
+      out.set(id, { result: r.winner, score: r.scoreline });
+    }
+    return out;
+  }
+  // NFL, NBA and college football. "a" is always the home side, as recorded.
+  const out = new Map<string, { result: Outcome; score: string }>();
+  for (const g of await fetchScoreboard(sport as "nfl" | "nba" | "cfb", date)) {
+    if (!g.winner) continue;
+    out.set(String(g.id), {
+      result: g.winner === "home" ? "a" : "b",
+      score: `${g.homeScore ?? ""}-${g.awayScore ?? ""}`,
+    });
+  }
+  return out;
+}
+
+type PendingRow = {
+  id: number;
+  sport: string;
+  division: string;
+  event_id: string;
+  event_date: string;
+  prob_a: number;
+  prob_draw: number | null;
+  prob_b: number;
+  pick: Outcome;
+};
+
+/**
  * Score every unsettled prediction whose event has finished.
  *
- * Rows are grouped by (sport, division, date) so one slate fetch settles a whole
- * day rather than one match. Anything still unresolved — postponed, walkover,
- * not yet played — is simply left pending and picked up next run.
+ * Rows are grouped by (sport, division, date) so one scoreboard call settles a
+ * whole day. Anything still unresolved — postponed, walkover, not yet played —
+ * is left pending and picked up next run.
+ *
+ * Three things here each fixed a way the ledger fell behind:
+ *   - results come from the day's scoreboard, not a rebuilt slate (above);
+ *   - the read pages through every pending row — the API returns at most 1,000
+ *     per request, and the backlog had passed that — oldest first, reaching back
+ *     `lookbackDays` (120, a whole season's worth of stragglers, where it used
+ *     to be 21 and rows older than that were orphaned);
+ *   - dates are settled a few at a time against a time budget, and the cycle
+ *     runs this FIRST, so a slow day of snapshots can no longer starve it.
  */
-export async function settlePending(throughDate: string, lookbackDays = 21) {
+export async function settlePending(throughDate: string, lookbackDays = 120, budgetMs = 120_000) {
   const db = admin();
   if (!db) return { settled: 0, pending: 0 };
+  const deadline = Date.now() + budgetMs;
 
   const since = new Date(`${throughDate}T00:00:00Z`);
   since.setUTCDate(since.getUTCDate() - lookbackDays);
   const from = since.toISOString().slice(0, 10);
 
-  const { data, error } = await db
-    .from("event_predictions")
-    .select("id, sport, division, event_id, event_date, prob_a, prob_draw, prob_b, pick")
-    .is("settled_at", null)
-    .gte("event_date", from)
-    .lte("event_date", throughDate);
-  if (error) {
-    console.error("[tracking] settle read failed:", error.message);
-    return { settled: 0, pending: 0 };
+  const pending: PendingRow[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await db
+      .from("event_predictions")
+      .select("id, sport, division, event_id, event_date, prob_a, prob_draw, prob_b, pick")
+      .is("settled_at", null)
+      .gte("event_date", from)
+      .lte("event_date", throughDate)
+      .order("event_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + 999);
+    if (error) {
+      console.error("[tracking] settle read failed:", error.message);
+      break;
+    }
+    pending.push(...((data ?? []) as PendingRow[]));
+    if (!data || data.length < 1000) break;
   }
-  const pending = (data ?? []) as {
-    id: number;
-    sport: string;
-    division: string;
-    event_id: string;
-    event_date: string;
-    prob_a: number;
-    prob_draw: number | null;
-    prob_b: number;
-    pick: Outcome;
-  }[];
   if (pending.length === 0) return { settled: 0, pending: 0 };
 
-  // One slate call per (sport, division, date).
-  const groups = new Map<string, typeof pending>();
+  // One scoreboard call per (sport, division, date), oldest first.
+  const groups = new Map<string, PendingRow[]>();
   for (const r of pending) {
     const k = `${r.sport}|${r.division}|${r.event_date}`;
-    groups.set(k, [...(groups.get(k) ?? []), r]);
+    const g = groups.get(k);
+    if (g) g.push(r);
+    else groups.set(k, [r]);
   }
 
   let settled = 0;
-  for (const [key, rows] of groups) {
-    const [sport, division, date] = key.split("|");
-    try {
-      const outcomes = new Map<string, { result: Outcome; score: string }>();
-      if (sport === "soccer") {
-        const s = await soccerSlate(division as LeagueSlug, date);
-        for (const m of s.matches) {
-          if (!m.result) continue;
-          outcomes.set(m.id, {
-            result: m.result === "H" ? "a" : m.result === "A" ? "b" : "draw",
-            score: `${m.homeGoals}-${m.awayGoals}`,
-          });
-        }
-      } else if (sport === "tennis") {
-        const s = await tennisSlate(division as TourSlug, date);
-        for (const m of s.matches) {
-          if (!m.winner) continue;
-          outcomes.set(m.id, { result: m.winner, score: m.scoreline || "" });
-        }
-      } else {
-        // NFL and NBA. "a" is always the home side, matching the snapshot.
-        const { games } = await predictSlate(sport as "nfl" | "nba" | "cfb", date);
-        for (const g of games) {
-          if (!g.winner) continue;
-          outcomes.set(String(g.gameId), {
-            result: g.winner === "home" ? "a" : "b",
-            score: `${g.homeScore ?? ""}-${g.awayScore ?? ""}`,
-          });
-        }
+  let skipped = 0;
+  const queue = [...groups.entries()];
+  const worker = async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      if (Date.now() > deadline) {
+        skipped += 1;
+        continue;
       }
-
-      const now = new Date().toISOString();
-      for (const r of rows) {
-        const o = outcomes.get(r.event_id);
-        if (!o) continue;
-        const probs = {
-          a: Number(r.prob_a),
-          draw: r.prob_draw == null ? null : Number(r.prob_draw),
-          b: Number(r.prob_b),
-        };
-        const { brier, logLoss, rps } = scoreOutcome(probs, o.result);
-        const { error: uErr } = await db
-          .from("event_predictions")
-          .update({
-            result: o.result,
-            correct: r.pick === o.result,
-            brier,
-            log_loss: logLoss,
-            rps,
-            final_score: o.score || null,
-            settled_at: now,
-          })
-          .eq("id", r.id);
-        if (uErr) console.error(`[tracking] settle ${r.id}:`, uErr.message);
-        else settled += 1;
+      const [key, rows] = job;
+      const [sport, division, date] = key.split("|");
+      try {
+        const outcomes = await resultsFor(sport, division, date);
+        const now = new Date().toISOString();
+        const updates = rows.flatMap((r) => {
+          const o = outcomes.get(r.event_id);
+          if (!o) return [];
+          const probs = {
+            a: Number(r.prob_a),
+            draw: r.prob_draw == null ? null : Number(r.prob_draw),
+            b: Number(r.prob_b),
+          };
+          const { brier, logLoss, rps } = scoreOutcome(probs, o.result);
+          return [
+            db
+              .from("event_predictions")
+              .update({
+                result: o.result,
+                correct: r.pick === o.result,
+                brier,
+                log_loss: logLoss,
+                rps,
+                final_score: o.score || null,
+                settled_at: now,
+              })
+              .eq("id", r.id)
+              .is("settled_at", null)
+              .then(({ error }: { error: { message: string } | null }) => {
+                if (error) console.error(`[tracking] settle ${r.id}:`, error.message);
+                else settled += 1;
+              }),
+          ];
+        });
+        await Promise.all(updates);
+      } catch (err) {
+        console.error(`[tracking] settle ${key}:`, err);
       }
-    } catch (err) {
-      console.error(`[tracking] settle ${key}:`, err);
     }
-  }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  if (skipped)
+    console.warn(`[tracking] settle: time budget spent, ${skipped} dates left for next run`);
   return { settled, pending: pending.length - settled };
 }
 
@@ -420,6 +517,10 @@ export async function runTrackingCycle(today: string) {
   const tomorrow = new Date(`${today}T00:00:00Z`);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const next = tomorrow.toISOString().slice(0, 10);
+
+  // Settle FIRST. It used to run last, after every snapshot, and on a heavy
+  // day the cron's time limit arrived before it did — see settlePending.
+  const settled = await settlePending(today);
 
   const soccer = (await snapshotSoccer(today)) + (await snapshotSoccer(next));
   const tennis = (await snapshotTennis(today)) + (await snapshotTennis(next));
@@ -465,7 +566,6 @@ export async function runTrackingCycle(today: string) {
   const parMlb = await snapshotParlays("mlb", today);
   const parSettled = await settleParlays(today);
 
-  const settled = await settlePending(today);
   return {
     today,
     recorded: { soccer, tennis, nfl, nba, cfb, tdCfb, tdNfl, tb2, parCfb, parNfl, parMlb },

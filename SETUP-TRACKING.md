@@ -51,6 +51,58 @@ kicked off yet.
 
 ---
 
+## Why the Track Records froze (found 2026-10-13)
+
+Every status flag was green — `writable`, `ledgerReady`, the cron secret — and
+rows were being written every morning. Almost nothing was being **scored**.
+By 13 October nothing in `event_predictions` dated after 23 September had
+settled: NFL 17 of 64, college football 75 of 267, ATP 53 of 318.
+
+**The settler fell behind by a day every day.** It settled each pending date by
+rebuilding that date's full prediction slate — a three-season Elo replay for
+the team sports, a two-year tennis window (hundreds of ESPN calls), three
+soccer seasons — just to read the final scores off it. It ran last in a cycle
+that already builds five sports, so the function's time limit arrived after a
+handful of dates. Two dates were added a day and about one was settled.
+
+**Rows older than 21 days were then orphaned.** The settler only looked back
+21 days, so whatever it had not reached by then was never looked at again.
+
+**Soccer stopped writing on 16 September.** ESPN began answering date-range
+scoreboard queries with a 400, and every soccer slate is built from a season
+range. Recording and settling both failed, silently, from then on.
+
+**The NBA ledger was recording preseason games** — all 53 of its rows (3-14
+October) were ESPN season type 1.
+
+Fixed in code:
+
+- Settlement reads only the date's scoreboard (`resultsFor` in
+  `tracking.server.ts`; `tennisResults`, `soccerDayResults`). The whole
+  backlog — 107 dates, 1,037 rows — resolves in about four seconds.
+- It runs **first** in the cycle, pages past the API's 1,000-row cap, reaches
+  back 120 days, works six dates at a time, and stops at a time budget.
+- Soccer reads seasons a month at a time when ESPN refuses the range.
+- Team sports skip preseason games.
+- The status endpoint now reports `settleBacklog` — unsettled rows whose date
+  has passed, how many are over three days old, and the oldest. That number
+  should be zero or a few postponements; if it grows, the settler is behind.
+
+**What to do once:**
+
+1. Run `supabase/fixes/20261013_remove_nba_preseason.sql` in the SQL editor
+   (deletes the preseason NBA rows; none had settled).
+2. Run `supabase/migrations/20261013120000_ledger_health.sql` (a read-only
+   view — `select * from ledger_health order by oldest_pending;`).
+3. Deploy. The next 08:20 UTC cron clears the backlog — or trigger it now:
+   `curl -H "Authorization: Bearer $CRON_SECRET" https://diamond-predictor-three.vercel.app/api/public/hooks/track-predictions`
+4. Check `settleBacklog.unsettledOver3Days` on the status URL is near zero.
+
+`npx tsx scripts/test-settle.ts` checks every sport's result lookup against
+live ESPN.
+
+---
+
 ## What runs, and when
 
 `vercel.json` schedules two jobs. Vercel Cron invokes them with **GET**, sending

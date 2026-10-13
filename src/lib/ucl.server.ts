@@ -230,6 +230,28 @@ async function ratingsBefore(
   return { state, live };
 }
 
+/**
+ * Finished matches in one competition on one date, by ESPN event id, settled on
+ * the 90-minute result — what the tracking settler needs and nothing more. One
+ * call, against the full rating replay a slate costs.
+ */
+export async function soccerDayResults(
+  comp: string,
+  date: string,
+): Promise<Map<string, { result: "a" | "draw" | "b"; score: string }>> {
+  const events = await fetchEvents(comp, date.replace(/-/g, ""));
+  const out = new Map<string, { result: "a" | "draw" | "b"; score: string }>();
+  for (const e of events) {
+    const r = resultOf(comp, e);
+    if (!r) continue;
+    out.set(r.id, {
+      result: r.r90 === "H" ? "a" : r.r90 === "D" ? "draw" : "b",
+      score: `${r.hg}-${r.ag}`,
+    });
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ slate
 
 export type UclTeam = { id: string; abbr: string; name: string; logo?: string; record?: string };

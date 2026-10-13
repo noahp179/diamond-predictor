@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { canTrack, readLedger, runTrackingCycle } from "@/lib/tracking.server";
+import { canTrack, ledgerBacklog, readLedger, runTrackingCycle } from "@/lib/tracking.server";
 import { readTdLedger } from "@/lib/td-ledger.server";
 
 /**
@@ -54,8 +54,10 @@ function verifyCronSecret(request: Request): Response | null {
 async function diagnose(): Promise<Response> {
   const { readParlayLedger } = await import("@/lib/parlay-ledger.server");
   const { readTb2Ledger } = await import("@/lib/tb2-ledger.server");
-  const [events, cfbTd, nflTd, mlbTb2, cfbPar, nflPar, mlbPar] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const [events, backlog, cfbTd, nflTd, mlbTb2, cfbPar, nflPar, mlbPar] = await Promise.all([
     readLedger("tennis", "atp"),
+    ledgerBacklog(today).catch(() => null),
     readTdLedger("cfb"),
     readTdLedger("nfl"),
     readTb2Ledger(),
@@ -76,6 +78,10 @@ async function diagnose(): Promise<Response> {
     // event_predictions — match outcomes
     ledgerReady: events.status === "ok",
     ledgerStatus: events.status,
+    // Is the settler keeping up? Writable-and-ready stayed true for three
+    // weeks while almost nothing was scored; this is what would have shown it.
+    // unsettledOver3Days should be 0 or a few postponements.
+    settleBacklog: backlog,
     // player_predictions — touchdown scorers
     tdLedgerReady: players.every((l) => l.status === "ok"),
     tdLedgerStatus: { cfb: cfbTd.status, nfl: nflTd.status, mlb: mlbTb2.status },
@@ -90,7 +96,7 @@ async function diagnose(): Promise<Response> {
     parlaysPending: sum((p) => p.totals.pending),
     parlaysWon: sum((p) => p.totals.won),
     parlaysExpected: Math.round(sum((p) => p.totals.expected) * 1000) / 1000,
-    today: new Date().toISOString().slice(0, 10),
+    today,
   });
 }
 
