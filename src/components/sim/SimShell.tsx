@@ -48,6 +48,13 @@ export function SimShell({
                 {LEAGUE_LABEL[l]} →
               </Link>
             ))}
+            <Link
+              to="/soccer/$league/simulate"
+              params={{ league: "ucl" }}
+              className="border border-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+            >
+              UCL →
+            </Link>
             <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               each one lives in its sport&apos;s section
             </span>

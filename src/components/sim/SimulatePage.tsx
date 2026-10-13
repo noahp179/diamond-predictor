@@ -111,7 +111,7 @@ export function SimulatePage({
       view="simulate"
       eyebrow={`Diamond Edge · ${LEAGUE_LABEL[league]}`}
       title={`${LEAGUE_LABEL[league]} Game Simulator`}
-      blurb={`Pick a game — or build one — and play it out ${SPORT_NAME[league] === "baseball" ? "plate appearance by plate appearance" : "play by play"} from every player's season numbers and each team's tendencies on both sides of the ball. Run it ten times or a hundred thousand: you get the win probability, the average box score, and every player's projected line against his season average. Every run is fresh randomness, so results move a little from run to run — that is the simulation.`}
+      blurb={`Pick a game, or build one, and play it out ${SPORT_NAME[league] === "baseball" ? "plate appearance by plate appearance" : "play by play"} from every player's season numbers and each team's tendencies. Run it up to 250,000 times for the win probability, the score and every player's projected line — or watch one game unfold.`}
       date={date}
       onDateChange={(d) => setSearch({ date: d })}
       footerNote="Data · ESPN season stats, team splits, rosters & injury reports · Simulations run in your browser · Not affiliated with any league"
@@ -336,13 +336,15 @@ function CustomMatchup({
     </label>
   );
   return (
-    <div className="mt-6 border border-border bg-card p-5 sm:p-6">
-      <div className="font-display text-2xl">Or build your own matchup</div>
-      <p className="mt-1 text-sm text-muted-foreground">
+    <div className="mt-4 border border-border bg-card px-5 py-4 sm:px-6">
+      <div className="font-mono text-[11px] uppercase tracking-widest text-foreground">
+        Or build your own matchup
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
         Any two {LEAGUE_LABEL[league]} teams, today&apos;s rosters, at the home team&apos;s
         building.
       </p>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
         {select(a, setA, "Away")}
         <span className="hidden pb-2 font-display text-2xl text-muted-foreground sm:block">@</span>
         {select(h, setH, "Home")}
@@ -475,52 +477,6 @@ function MatchupWorkspace({
         </div>
       </div>
 
-      <MatchupFactors matchup={matchup} overrides={overrides} />
-
-      {/* Lineups */}
-      <div className="border border-border bg-card">
-        <button
-          onClick={() => setShowRoster((s) => !s)}
-          className="flex w-full items-center justify-between px-5 py-4 text-left sm:px-8"
-          aria-expanded={showRoster}
-        >
-          <span>
-            <span className="font-display text-2xl">Lineups & injuries</span>
-            <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              sit anyone, start anyone
-              {overrides.benched.length + overrides.activated.length > 0
-                ? ` · ${overrides.benched.length + overrides.activated.length} changed`
-                : ""}
-            </span>
-          </span>
-          <span className="font-mono text-xs text-muted-foreground">{showRoster ? "▲" : "▼"}</span>
-        </button>
-        {showRoster && (
-          <div className="border-t border-border">
-            <RosterPanel matchup={matchup} overrides={overrides} onChange={setOverrides} />
-            {(overrides.benched.length > 0 ||
-              overrides.activated.length > 0 ||
-              overrides.starter) && (
-              <div className="border-t border-border px-5 py-3 sm:px-8">
-                <button
-                  onClick={() =>
-                    setOverrides({
-                      benched: [],
-                      activated: [],
-                      neutral: overrides.neutral,
-                      playoff: overrides.playoff,
-                    })
-                  }
-                  className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
-                >
-                  Reset to the injury report
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Mode */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex" role="tablist">
@@ -564,6 +520,50 @@ function MatchupWorkspace({
           >
             ▶ {PLAY_VERB[matchup.league]}
           </button>
+        )}
+      </div>
+
+      {/* Lineups */}
+      <div className="border border-border bg-card">
+        <button
+          onClick={() => setShowRoster((s) => !s)}
+          className="flex w-full items-center justify-between px-5 py-4 text-left sm:px-8"
+          aria-expanded={showRoster}
+        >
+          <span>
+            <span className="font-display text-2xl">Lineups & injuries</span>
+            <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              sit anyone, start anyone
+              {overrides.benched.length + overrides.activated.length > 0
+                ? ` · ${overrides.benched.length + overrides.activated.length} changed`
+                : ""}
+            </span>
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">{showRoster ? "▲" : "▼"}</span>
+        </button>
+        {showRoster && (
+          <div className="border-t border-border">
+            <RosterPanel matchup={matchup} overrides={overrides} onChange={setOverrides} />
+            {(overrides.benched.length > 0 ||
+              overrides.activated.length > 0 ||
+              overrides.starter) && (
+              <div className="border-t border-border px-5 py-3 sm:px-8">
+                <button
+                  onClick={() =>
+                    setOverrides({
+                      benched: [],
+                      activated: [],
+                      neutral: overrides.neutral,
+                      playoff: overrides.playoff,
+                    })
+                  }
+                  className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+                >
+                  Reset to the injury report
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -618,6 +618,9 @@ function MatchupWorkspace({
           )}
         </div>
       )}
+
+      {/* Why the numbers move — reference, so it sits under the results. */}
+      <MatchupFactors matchup={matchup} overrides={overrides} />
     </div>
   );
 }
@@ -770,45 +773,51 @@ const HOW: Record<SimLeague, string[]> = {
 
 function Methodology({ league }: { league: SimLeague }) {
   return (
-    <section className="mt-12 grid gap-6 border border-border bg-card p-5 sm:p-8 md:grid-cols-2">
-      <div>
-        <h2 className="font-display text-3xl">
-          How the {LEAGUE_LABEL[league]} engine plays a game
-        </h2>
-        <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
-          {HOW[league].map((t) => (
-            <li key={t} className="flex gap-3">
-              <span className="mt-2 inline-block h-1 w-3 shrink-0 bg-primary" aria-hidden />
-              <span>{t}</span>
+    <details className="group mt-12 border border-border bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 sm:px-8">
+        <span className="font-display text-2xl">
+          How the {LEAGUE_LABEL[league]} engine works, and what it can&apos;t know
+        </span>
+        <span className="font-mono text-xs text-muted-foreground group-open:rotate-180">▼</span>
+      </summary>
+      <section className="grid gap-6 border-t border-border p-5 sm:p-8 md:grid-cols-2">
+        <div>
+          <h3 className="font-display text-xl">How it plays a game</h3>
+          <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
+            {HOW[league].map((t) => (
+              <li key={t} className="flex gap-3">
+                <span className="mt-2 inline-block h-1 w-3 shrink-0 bg-primary" aria-hidden />
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3 className="font-display text-xl">What it can&apos;t know</h3>
+          <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
+            <li>
+              <strong className="text-foreground">Today&apos;s news.</strong> Late scratches, a
+              minutes limit, wind and rain. Edit the lineups to account for what you know.
             </li>
-          ))}
-        </ul>
-      </div>
-      <div>
-        <h2 className="font-display text-3xl">What it can&apos;t know</h2>
-        <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
-          <li>
-            <strong className="text-foreground">Today&apos;s news.</strong> Late scratches, a
-            minutes limit, wind and rain. Edit the lineups to account for what you know.
-          </li>
-          <li>
-            <strong className="text-foreground">Matchups inside the matchup.</strong> The engines
-            use each defense&apos;s season splits — against the pass, the run, threes, the power
-            play — but not who guards whom: a shutdown corner on one receiver, a scheme built for
-            one opponent. Position-by-position defense isn&apos;t in the public data.
-          </li>
-          <li>
-            <strong className="text-foreground">Whether a player&apos;s season is real.</strong>{" "}
-            Small samples are pulled toward the league average, which is right on average and wrong
-            for the occasional genuine breakout.
-          </li>
-          <li>
-            <strong className="text-foreground">That it isn&apos;t betting advice.</strong> The
-            probabilities are the simulation&apos;s own. Where it disagrees with the market, the
-            market usually knows something it doesn&apos;t.
-          </li>
-        </ul>
-      </div>
-    </section>
+            <li>
+              <strong className="text-foreground">Matchups inside the matchup.</strong> The engines
+              use each defense&apos;s season splits — against the pass, the run, threes, the power
+              play — but not who guards whom: a shutdown corner on one receiver, a scheme built for
+              one opponent. Position-by-position defense isn&apos;t in the public data.
+            </li>
+            <li>
+              <strong className="text-foreground">Whether a player&apos;s season is real.</strong>{" "}
+              Small samples are pulled toward the league average, which is right on average and
+              wrong for the occasional genuine breakout.
+            </li>
+            <li>
+              <strong className="text-foreground">That it isn&apos;t betting advice.</strong> The
+              probabilities are the simulation&apos;s own. Where it disagrees with the market, the
+              market usually knows something it doesn&apos;t.
+            </li>
+          </ul>
+        </div>
+      </section>
+    </details>
   );
 }

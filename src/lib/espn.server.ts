@@ -682,20 +682,6 @@ export function pickConfidence(homeWinProb: number): number {
   return Math.max(homeWinProb, 1 - homeWinProb);
 }
 
-/** Today's slate ranked by model confidence — the Recommended surface.
- *  Reuses predictSlate; no extra fetches. */
-export async function recommendedSlate(
-  sport: Sport,
-  date: string,
-): Promise<{ games: PredictedGame[]; picks: PredictedGame[]; season: number }> {
-  const { games, season } = await predictSlate(sport, date);
-  const upcoming = games; // include finals too so the page can score itself
-  const picks = [...upcoming]
-    .sort((a, b) => pickConfidence(b.homeWinProb) - pickConfidence(a.homeWinProb))
-    .slice(0, 5);
-  return { games, picks, season };
-}
-
 // ------------------------------------------------------------------ odds
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));

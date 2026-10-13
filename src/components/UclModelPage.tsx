@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { SoccerShell } from "@/components/SoccerShell";
+import { UclRecord } from "@/components/UclRecord";
 import { Stat, StatBar } from "@/components/SportShell";
 import { SOCCER_SIM } from "@/lib/sim/soccer";
 import { UCL_MODEL } from "@/lib/ucl-model";
@@ -331,6 +332,8 @@ export function UclModelPage() {
           />
         </Section>
       )}
+
+      <UclRecord />
 
       <Section title="Honest limits">
         <ul className="list-disc space-y-1.5 pl-5">

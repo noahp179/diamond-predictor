@@ -1,9 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { RecommendedView } from "@/components/RecommendedView";
-import { getCfbRecommended } from "@/lib/sports.functions";
-
+/**
+ * Recommended ranked the slate by model confidence — exactly what Best Odds
+ * shows by default, beside two other rankings — so the two pages were one.
+ * The address is kept for bookmarks.
+ */
 export const Route = createFileRoute("/cfb/recommended")({
-  head: () => ({ meta: [{ title: "College Football Recommended — Diamond Edge" }] }),
-  component: () => <RecommendedView sport="cfb" fetchRecommended={getCfbRecommended} />,
+  beforeLoad: () => {
+    throw redirect({ to: "/cfb/best-odds", replace: true });
+  },
 });

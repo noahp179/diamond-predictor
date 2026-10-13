@@ -6,9 +6,10 @@ import { pickOf, scoreOutcome } from "@/lib/ledger-stats";
 import { getUclRecord } from "@/lib/soccer.functions";
 
 /**
- * The Champions League's replayed record, shown under the live ledger and never
- * merged into it: every match since 2017-18 as the model priced it that
- * morning, with what happened. Seasons up to 2025-26 are the walk-forward
+ * The Champions League's replayed record: every match since 2017-18 as the model
+ * priced it that morning, with what happened. It lives on the Model & Backtest
+ * page, not Track Record — a replay is a backtest, and the Track Record pages
+ * show only predictions written before the event (SETUP-TRACKING.md). Seasons up to 2025-26 are the walk-forward
  * backtest; 2026-27 is the shipped model on matches it never saw.
  */
 
@@ -39,7 +40,7 @@ export function UclRecord() {
   const recent = [...scored].reverse().slice(0, shown);
 
   return (
-    <section className="mt-10 border border-border bg-card">
+    <section className="mb-6 border border-border bg-card">
       <div className="border-b border-border px-5 py-4">
         <h2 className="font-display text-2xl">Replayed record — every match since 2017-18</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">

@@ -181,18 +181,11 @@ const VIEWS: Record<SportKey, ViewKey[]> = {
     "stacks",
     "trackRecord",
   ],
-  nfl: [
-    "slate",
-    "simulate",
-    "recommended",
-    "bestOdds",
-    "props",
-    "tdScorers",
-    "parlay",
-    "trackRecord",
-  ],
-  cfb: ["slate", "simulate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
-  nba: ["slate", "simulate", "recommended", "bestOdds", "trackRecord"],
+  nfl: ["slate", "simulate", "bestOdds", "props", "tdScorers", "parlay", "trackRecord"],
+  // NFL, college and NBA have no Recommended tab: it ranked the slate by model
+  // confidence, which is Best Odds' default view. MLB's builds parlay slips.
+  cfb: ["slate", "simulate", "bestOdds", "tdScorers", "parlay", "trackRecord"],
+  nba: ["slate", "simulate", "bestOdds", "trackRecord"],
   // No picks model for hockey yet: the simulator is the section.
   nhl: ["simulate"],
   soccer: ["slate", "props", "model", "trackRecord"],

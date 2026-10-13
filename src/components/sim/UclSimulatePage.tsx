@@ -206,7 +206,7 @@ export function UclSimulatePage({
       current="simulate"
       eyebrow="Diamond Edge · Champions League"
       title="Simulate"
-      blurb="Play any Champions League match minute by minute, as many times as you like. Each side scores at its model goal rate, bent by the minute (stoppage time is busy), the score (level matches are the open ones) and red cards — every effect fitted on the goal logs of 9,000 European matches. Goals go to players by their share of their club's goals. Nothing is replayable: every run draws fresh numbers."
+      blurb="Play any Champions League match minute by minute, up to 100,000 times: win, draw and loss, the likeliest scores and every likely goalscorer, next to the model and the market — or watch one match unfold. Goal rates come from the match model; the minute, the score and red cards bend them, each effect fitted on 9,000 European matches."
       date={date}
       onDateChange={(d) => pick({ date: d })}
       statBar={

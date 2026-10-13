@@ -8,11 +8,11 @@ import { SIM_LEAGUES, type SimLeague } from "@/lib/sim/types";
 export const Route = createFileRoute("/sim/")({
   head: () => ({
     meta: [
-      { title: "Game Simulator — NFL, NBA, NHL, MLB — Diamond Edge" },
+      { title: "Game Simulator — NFL, CFB, NBA, NHL, MLB, UCL — Diamond Edge" },
       {
         name: "description",
         content:
-          "Play-by-play simulations of NFL, college football, NBA, NHL and MLB games built from real player statistics. Watch one game unfold or run ten thousand for win probabilities, score distributions and player projections.",
+          "Play-by-play simulations of NFL, college football, NBA, NHL, MLB and Champions League games built from real player statistics. Watch one game unfold or run ten thousand for win probabilities, score distributions and player projections.",
       },
       { property: "og:title", content: "Game Simulator — Diamond Edge" },
     ],
@@ -112,7 +112,7 @@ function SimHub() {
   return (
     <SimShell
       title="Game Simulator"
-      blurb="Every game here is played out one play at a time from the players' real season statistics and each team's tendencies on both sides of the ball — who shoots, who gets the carry, who's on the ice, who's on the mound, and what the defense across from them allows. Each sport's simulator lives in its own section; pick one below."
+      blurb="Every game here is played out one play at a time from the players' real season statistics and each team's tendencies on both sides of the ball — who shoots, who gets the carry, who's on the ice, who's on the mound, who scores in Europe — and what the defense across from them allows. Each sport's simulator lives in its own section; pick one below."
     >
       <div className="grid gap-4 md:grid-cols-2">
         {SIM_LEAGUES.map((l) => (
@@ -139,6 +139,30 @@ function SimHub() {
             </div>
           </Link>
         ))}
+        <Link
+          to="/soccer/$league/simulate"
+          params={{ league: "ucl" }}
+          search={{ date }}
+          className="group border border-border bg-card p-5 transition-colors hover:border-primary/60"
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-display text-4xl group-hover:text-primary">UCL</span>
+            <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+              minute by minute
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Champions League goals from one rating of every club in Europe, bent by the minute, the
+            score and red cards; knockouts with extra time, penalties and second legs.
+          </p>
+          <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            <span className="text-foreground">Player stats:</span> goalscorers — anytime, two or
+            more, first
+          </p>
+          <div className="mt-4 font-mono text-[11px] uppercase tracking-widest text-primary">
+            Open the UCL simulator →
+          </div>
+        </Link>
       </div>
 
       <section className="mt-10 grid gap-px bg-border md:grid-cols-3">
