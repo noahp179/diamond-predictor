@@ -69,8 +69,8 @@ export const SPORT_NAME: Record<SimLeague, string> = {
   mlb: "baseball",
 };
 
-/** One-click batch sizes; any other number can be typed in. */
-export const BATCH_SIZES = [10, 100, 1000, 5000, 10000, 50000, 100000];
+/** One-click batch sizes — quick, steadier, steadiest; any other number can be typed in. */
+export const BATCH_SIZES = [1000, 10000, 100000];
 /** The most games one batch may play — a few minutes for the slowest sport. */
 export const MAX_BATCH = 250000;
 

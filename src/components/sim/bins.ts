@@ -34,3 +34,26 @@ export function toBins(
   for (let x = lo; x <= hi; x++) out.push({ x, p: (hist[x] ?? 0) / n, color: color(x) });
   return out;
 }
+
+/**
+ * Group one-point bins into wider bars when the range is too wide to read
+ * one point at a time — a basketball total runs across a hundred values, and
+ * at a thousand games each one-point bar is mostly noise. Bars start on a
+ * multiple of the width (225–229, 230–234), so the axis reads in round
+ * numbers. Ranges of 80 or less are left alone: a football margin's 3 and 7
+ * are real and worth seeing.
+ */
+export function widen(bins: Bin[], maxSpan = 80, width = 5): Bin[] {
+  if (bins.length <= maxSpan) return bins;
+  const out = new Map<number, Bin>();
+  for (const b of bins) {
+    const x = Math.floor(b.x / width) * width;
+    const cur = out.get(x);
+    if (cur) cur.p += b.p;
+    else out.set(x, { x, p: b.p, color: b.color, w: width });
+  }
+  return [...out.values()].sort((a, b) => a.x - b.x);
+}
+
+/** "230" for a one-point bar, "230–234" for a wider one. */
+export const binRange = (b: Bin) => (b.w && b.w > 1 ? `${b.x}–${b.x + b.w - 1}` : String(b.x));

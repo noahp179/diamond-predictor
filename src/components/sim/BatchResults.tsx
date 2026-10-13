@@ -17,8 +17,10 @@ import {
   signed,
   spreadText,
 } from "./format";
-import { toBins } from "./bins";
+import { binRange, toBins, widen } from "./bins";
 import { BinTable, Histogram, WinBar } from "./SimCharts";
+
+type Tab = "scores" | "players" | "line";
 
 /**
  * What a batch of simulated games says: who wins and how often, where the
@@ -38,6 +40,7 @@ export function BatchResults({
 }) {
   const u = UNITS[matchup.league];
   const { home, away } = matchup;
+  const [tab, setTab] = useState<Tab>("scores");
   const n = result.n;
   const hasTeamAverages = Object.keys(result.team.home).some((k) => TEAM_LABELS[k]);
 
@@ -48,9 +51,11 @@ export function BatchResults({
       ),
     [result, n],
   );
-  const totalBins = useMemo(() => toBins(result.total, n, () => NEUTRAL_SERIES), [result, n]);
+  const totalBins = useMemo(
+    () => widen(toBins(result.total, n, () => NEUTRAL_SERIES)),
+    [result, n],
+  );
 
-  const meanMargin = result.avgHome - result.avgAway;
   const medianMargin = medianOf(result.margin, n);
   const line = result.line;
   const mkt = matchup.ctx.line;
@@ -62,6 +67,17 @@ export function BatchResults({
 
   const winnerOf = (x: number) => (x > 0 ? home.abbr : x < 0 ? away.abbr : null);
 
+  const totalLabel = u.pts;
+  const overText =
+    line?.total != null
+      ? `Over ${line.total}: ${pct(line.over, 0)} of games · under: ${pct(line.under, 0)}`
+      : null;
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "scores", label: "Scores" },
+    { key: "players", label: "Players" },
+    ...(mkt ? [{ key: "line" as Tab, label: "vs the betting line" }] : []),
+  ];
+
   return (
     <div className="space-y-6">
       {partial && (
@@ -71,15 +87,17 @@ export function BatchResults({
         </div>
       )}
 
-      {/* Headline */}
-      <div className="grid gap-px bg-border lg:grid-cols-[3fr_2fr]">
-        <div className="bg-card p-5 sm:p-6">
-          <div className="mb-4 flex items-baseline justify-between gap-3">
-            <h3 className="font-display text-3xl">Win probability</h3>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              {n.toLocaleString()} games · {(result.ms / 1000).toFixed(1)}s
-            </span>
-          </div>
+      {/* The answer, in words. Everything else is detail below it. */}
+      <section className="border border-border bg-card">
+        <div className="px-5 pt-6 sm:px-6">
+          <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            We played this game {n.toLocaleString()} times
+          </p>
+          <h3 className="mt-2 font-display text-3xl sm:text-4xl">
+            {fav.name} win {Math.round(favP * 100)} times out of 100
+          </h3>
+        </div>
+        <div className="px-5 pb-2 pt-5 sm:px-6">
           <WinBar
             away={result.awayWins}
             home={result.homeWins}
@@ -89,200 +107,238 @@ export function BatchResults({
             awayColor={AWAY_COLOR}
             homeColor={HOME_COLOR}
           />
-          <p className="mt-4 text-sm text-muted-foreground">
-            {fav.name} win {pct(favP)} of simulated games{" "}
-            <span className="font-mono text-xs">(±{(winMoe * 100).toFixed(1)})</span>
-            {decided < 1 ? ` (${pct(result.ties)} end tied)` : ""}. Fair price{" "}
-            <span className="font-mono text-foreground">{fairOdds(favP)}</span>.
-            {result.ot > 0.001 &&
-              ` ${pct(result.ot)} ${matchup.league === "mlb" ? "go to extra innings" : "go to overtime"}${
-                result.so > 0 ? `, ${pct(result.so)} to a shootout` : ""
-              }.`}
-          </p>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            ± is the 95% Monte Carlo error: rerun with fresh randomness and the number lands within
-            it.{" "}
-            {n < 10000
-              ? `Run ${(n < 1000 ? 1000 : 10000).toLocaleString()} games to get it under ±${(moeP(0.5, n < 1000 ? 1000 : 10000) * 100).toFixed(1)}.`
-              : ""}
-          </p>
         </div>
-        <div className="grid grid-cols-2 gap-px bg-border">
-          <Tile
-            label={`Avg ${away.abbr} ${u.pts}`}
-            value={result.avgAway.toFixed(1)}
-            moe={moeMean(result.sd.away, n)}
+        <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">
+          <Fact
+            label="Average score"
+            value={`${away.abbr} ${Math.round(result.avgAway)} – ${home.abbr} ${Math.round(result.avgHome)}`}
+            note={`the average over all ${n.toLocaleString()} games`}
           />
-          <Tile
-            label={`Avg ${home.abbr} ${u.pts}`}
-            value={result.avgHome.toFixed(1)}
-            moe={moeMean(result.sd.home, n)}
-          />
-          <Tile
-            label="Median margin"
+          <Fact
+            label="Middle result"
             value={
-              medianMargin === 0 ? "Even" : `${winnerOf(medianMargin)} by ${Math.abs(medianMargin)}`
+              medianMargin === 0
+                ? "A tie"
+                : `${winnerOf(medianMargin)} by ${Math.abs(medianMargin)}`
             }
+            note={`line all ${n.toLocaleString()} games up from the biggest ${away.abbr} win to the biggest ${home.abbr} win: this is the one in the middle`}
           />
-          <Tile
-            label="Avg total"
-            value={(result.avgHome + result.avgAway).toFixed(1)}
-            moe={moeMean(result.sd.total, n)}
+          <Fact
+            label={`Total ${totalLabel}`}
+            value={`about ${Math.round(result.avgHome + result.avgAway)}`}
+            note={overText ?? "both teams together"}
           />
         </div>
-      </div>
+        <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-6">
+          {result.ot > 0.001 &&
+            `${pct(result.ot, 0)} of games ${matchup.league === "mlb" ? "went to extra innings" : "went to overtime"}${
+              result.so > 0 ? `, ${pct(result.so, 0)} to a shootout` : ""
+            }. `}
+          How sure: run it again and the {Math.round(favP * 100)} could come out about{" "}
+          {Math.max(1, Math.round(winMoe * 100))} higher or lower
+          {n < 10000 ? " — play 10,000 games to narrow that." : "."}
+        </p>
+      </section>
 
-      {/* Market */}
-      {mkt && (
-        <section className="border border-border bg-card">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-4 sm:px-6">
-            <h3 className="font-display text-3xl">Simulation vs the market</h3>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Posted by {mkt.provider} · the simulation never sees these numbers
-            </span>
-          </div>
-          <div className="grid gap-px bg-border md:grid-cols-3">
-            <MarketCell
-              title="Moneyline"
-              posted={
-                mkt.homeMl != null && mkt.awayMl != null
-                  ? `${away.abbr} ${mkt.awayMl > 0 ? "+" : ""}${mkt.awayMl} · ${home.abbr} ${mkt.homeMl > 0 ? "+" : ""}${mkt.homeMl}`
-                  : "—"
-              }
-              rows={[
-                ["Market (no vig)", mktHome != null ? `${home.abbr} ${pct(mktHome)}` : "—"],
-                [
-                  "Simulation",
-                  `${home.abbr} ${pct(result.homeWins / Math.max(1e-9, decided || 1))}`,
-                ],
-                [
-                  "Difference",
-                  mktHome != null
-                    ? `${signed((result.homeWins / Math.max(1e-9, decided || 1) - mktHome) * 100)} pts`
-                    : "—",
-                ],
-              ]}
-            />
-            <MarketCell
-              title={
-                matchup.league === "mlb"
-                  ? "Run line"
-                  : matchup.league === "nhl"
-                    ? "Puck line"
-                    : "Spread"
-              }
-              posted={line?.spread != null ? spreadText(home.abbr, line.spread) : "—"}
-              rows={
-                line?.spread != null
-                  ? [
-                      [`${home.abbr} covers`, pct(line.homeCover)],
-                      [`${away.abbr} covers`, pct(1 - line.homeCover - line.push)],
-                      ["Sim median line", spreadText(home.abbr, -medianMargin)],
-                    ]
-                  : [["", "No spread posted"]]
-              }
-            />
-            <MarketCell
-              title="Total"
-              posted={line?.total != null ? `O/U ${line.total}` : "—"}
-              rows={
-                line?.total != null
-                  ? [
-                      ["Over", pct(line.over)],
-                      ["Under", pct(line.under)],
-                      ["Sim mean total", (result.avgHome + result.avgAway).toFixed(1)],
-                    ]
-                  : [["", "No total posted"]]
-              }
-            />
-          </div>
-          <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-6">
-            A gap between the two is a disagreement, not an edge. Books price injuries, rest,
-            weather and news the simulation cannot see; where they differ, start by asking what the
-            market knows.
-          </p>
-        </section>
-      )}
-
-      {/* Distributions */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard
-          title="Final margin"
-          subtitle={`${home.abbr} − ${away.abbr}, share of simulated games. Mean ${signed(meanMargin)}.`}
-          legend={
-            <>
-              <LegendKey color={AWAY_COLOR} label={`${away.abbr} win`} />
-              <LegendKey color={HOME_COLOR} label={`${home.abbr} win`} />
-            </>
-          }
-        >
-          <Histogram
-            bins={marginBins}
-            refs={
-              line?.spread != null
-                ? [{ x: -line.spread, label: `Line ${spreadText(home.abbr, line.spread)}` }]
-                : []
-            }
-            xFmt={(x) => (x > 0 ? `+${x}` : String(x))}
-            ariaLabel="Distribution of the final margin"
-            describe={(b) => [
-              pct(b.p),
-              b.x === 0 ? "Tied" : `${winnerOf(b.x)} by ${Math.abs(b.x)}`,
-            ]}
-          />
-          <BinTable bins={marginBins} xLabel="Margin" xFmt={(x) => (x > 0 ? `+${x}` : String(x))} />
-        </ChartCard>
-        <ChartCard
-          title={`Total ${u.pts}`}
-          subtitle={`Both teams combined. Mean ${(result.avgHome + result.avgAway).toFixed(1)}.`}
-        >
-          <Histogram
-            bins={totalBins}
-            refs={line?.total != null ? [{ x: line.total, label: `O/U ${line.total}` }] : []}
-            ariaLabel="Distribution of the total score"
-            describe={(b) => [pct(b.p), `${b.x} total ${u.pts}`]}
-          />
-          <BinTable bins={totalBins} xLabel="Total" xFmt={String} />
-        </ChartCard>
-      </div>
-
-      <div className={`grid gap-6 ${hasTeamAverages ? "lg:grid-cols-[2fr_3fr]" : ""}`}>
-        <section className="border border-border bg-card p-5 sm:p-6">
-          <h3 className="font-display text-2xl">Most likely final scores</h3>
-          <ol
-            className={`mt-3 divide-y divide-border/60 font-mono text-sm tabular-nums ${
-              hasTeamAverages ? "" : "sm:grid sm:grid-cols-2 sm:gap-x-10 sm:divide-y-0"
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="More detail">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setTab(t.key)}
+            className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+              tab === t.key
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
-            {result.topScores.map((s, i) => (
-              <li key={i} className="flex items-center justify-between py-1.5">
-                <span className="text-foreground">
-                  {away.abbr} {s.away} – {home.abbr} {s.home}
-                </span>
-                <span className="text-muted-foreground">{pct(s.count)}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-        {/* Basketball's engine keeps no team-level stats beyond the box score
-            below, so the card would be an empty frame; it only renders when
-            there is something in it. */}
-        {hasTeamAverages && (
-          <section className="border border-border bg-card p-5 sm:p-6">
-            <h3 className="font-display text-2xl">Team averages</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Per game, across all {n.toLocaleString()} simulations.
-            </p>
-            <TeamAverages matchup={matchup} result={result} />
-          </section>
-        )}
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      <Movers matchup={matchup} result={result} />
+      {tab === "scores" && (
+        <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ChartCard
+              title="Who wins, and by how much"
+              subtitle={`Each bar is one final margin; the taller the bar, the more often it happened. Bars left of 0 are ${away.name} wins, right of 0 ${home.name} wins.${line?.spread != null ? " The upright line is the betting spread." : ""}`}
+              legend={
+                <>
+                  <LegendKey color={AWAY_COLOR} label={`${away.abbr} win`} />
+                  <LegendKey color={HOME_COLOR} label={`${home.abbr} win`} />
+                </>
+              }
+            >
+              <Histogram
+                bins={marginBins}
+                refs={
+                  line?.spread != null
+                    ? [{ x: -line.spread, label: `Line ${spreadText(home.abbr, line.spread)}` }]
+                    : []
+                }
+                xFmt={(x) => (x === 0 ? "0" : String(Math.abs(x)))}
+                ariaLabel="How often each final margin happened"
+                describe={(b) => [
+                  `${pct(b.p)} of games`,
+                  b.x === 0 ? "Tied" : `${winnerOf(b.x)} by ${Math.abs(b.x)}`,
+                ]}
+              />
+              <div className="mt-1 flex justify-between font-mono text-[11px] text-muted-foreground">
+                <span>← {away.abbr} win by more</span>
+                <span>{home.abbr} win by more →</span>
+              </div>
+              <BinTable
+                bins={marginBins}
+                xLabel="Margin"
+                xFmt={(x) => (x === 0 ? "tie" : `${winnerOf(x)} by ${Math.abs(x)}`)}
+              />
+            </ChartCard>
+            <ChartCard
+              title={`How many ${totalLabel} in total`}
+              subtitle={
+                line?.total != null
+                  ? `Each bar is a combined score for both teams. The upright line is the betting total (${line.total}): bars to its right went over, bars to its left under.`
+                  : "Each bar is a combined score for both teams; the taller the bar, the more often it happened."
+              }
+            >
+              <Histogram
+                bins={totalBins}
+                refs={line?.total != null ? [{ x: line.total, label: `Line ${line.total}` }] : []}
+                ariaLabel={`How often each total number of ${totalLabel} happened`}
+                describe={(b) => [`${pct(b.p)} of games`, `${binRange(b)} total ${totalLabel}`]}
+              />
+              {overText && (
+                <p className="mt-2 font-mono text-[11px] text-muted-foreground">{overText}</p>
+              )}
+              <BinTable bins={totalBins} xLabel="Total" xFmt={String} />
+            </ChartCard>
+          </div>
 
-      <AverageBox matchup={matchup} result={result} />
+          <div className={`grid gap-6 ${hasTeamAverages ? "lg:grid-cols-[2fr_3fr]" : ""}`}>
+            <section className="border border-border bg-card p-5 sm:p-6">
+              <h3 className="font-display text-2xl">Most likely exact scores</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Even the likeliest single score is rare — there are many ways a game can end.
+              </p>
+              <ol
+                className={`mt-3 divide-y divide-border/60 font-mono text-sm tabular-nums ${
+                  hasTeamAverages ? "" : "sm:grid sm:grid-cols-2 sm:gap-x-10 sm:divide-y-0"
+                }`}
+              >
+                {result.topScores.map((sc, i) => (
+                  <li key={i} className="flex items-center justify-between py-1.5">
+                    <span className="text-foreground">
+                      {away.abbr} {sc.away} – {home.abbr} {sc.home}
+                    </span>
+                    <span className="text-muted-foreground">{pct(sc.count)} of games</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+            {/* Basketball's engine keeps no team-level stats beyond the box score,
+                so the card would be an empty frame; it renders only with content. */}
+            {hasTeamAverages && (
+              <section className="border border-border bg-card p-5 sm:p-6">
+                <h3 className="font-display text-2xl">Team averages</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Per game, across all {n.toLocaleString()} simulations.
+                </p>
+                <TeamAverages matchup={matchup} result={result} />
+              </section>
+            )}
+          </div>
+        </div>
+      )}
 
-      <PlayerTable matchup={matchup} result={result} />
+      {tab === "players" && (
+        <div className="space-y-6">
+          <PlayerTable matchup={matchup} result={result} />
+          <Movers matchup={matchup} result={result} />
+          <AverageBox matchup={matchup} result={result} />
+        </div>
+      )}
+
+      {tab === "line" && mkt && (
+        <div className="space-y-6">
+          <section className="border border-border bg-card">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-4 sm:px-6">
+              <h3 className="font-display text-3xl">Simulation vs the market</h3>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Posted by {mkt.provider} · the simulation never sees these numbers
+              </span>
+            </div>
+            <div className="grid gap-px bg-border md:grid-cols-3">
+              <MarketCell
+                title="Moneyline"
+                posted={
+                  mkt.homeMl != null && mkt.awayMl != null
+                    ? `${away.abbr} ${mkt.awayMl > 0 ? "+" : ""}${mkt.awayMl} · ${home.abbr} ${mkt.homeMl > 0 ? "+" : ""}${mkt.homeMl}`
+                    : "—"
+                }
+                rows={[
+                  ["Market (no vig)", mktHome != null ? `${home.abbr} ${pct(mktHome)}` : "—"],
+                  [
+                    "Simulation",
+                    `${home.abbr} ${pct(result.homeWins / Math.max(1e-9, decided || 1))}`,
+                  ],
+                  [
+                    "Difference",
+                    mktHome != null
+                      ? `${signed((result.homeWins / Math.max(1e-9, decided || 1) - mktHome) * 100)} pts`
+                      : "—",
+                  ],
+                ]}
+              />
+              <MarketCell
+                title={
+                  matchup.league === "mlb"
+                    ? "Run line"
+                    : matchup.league === "nhl"
+                      ? "Puck line"
+                      : "Spread"
+                }
+                posted={line?.spread != null ? spreadText(home.abbr, line.spread) : "—"}
+                rows={
+                  line?.spread != null
+                    ? [
+                        [`${home.abbr} covers`, pct(line.homeCover)],
+                        [`${away.abbr} covers`, pct(1 - line.homeCover - line.push)],
+                        ["Sim median line", spreadText(home.abbr, -medianMargin)],
+                      ]
+                    : [["", "No spread posted"]]
+                }
+              />
+              <MarketCell
+                title="Total"
+                posted={line?.total != null ? `O/U ${line.total}` : "—"}
+                rows={
+                  line?.total != null
+                    ? [
+                        ["Over", pct(line.over)],
+                        ["Under", pct(line.under)],
+                        ["Sim mean total", (result.avgHome + result.avgAway).toFixed(1)],
+                      ]
+                    : [["", "No total posted"]]
+                }
+              />
+            </div>
+            <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-6">
+              A gap between the two is a disagreement, not an edge. Books price injuries, rest,
+              weather and news the simulation cannot see; where they differ, start by asking what
+              the market knows.
+            </p>
+          </section>
+          <p className="text-xs text-muted-foreground">
+            <strong className="text-foreground">Fair price</strong> for {fav.name}:{" "}
+            <span className="font-mono text-foreground">{fairOdds(favP)}</span> — the odds at which
+            a bet on them would break even if the simulation is right. A book paying more than that
+            is offering value by the simulation&apos;s own numbers; paying less, it is not.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -299,20 +355,15 @@ function medianOf(h: Record<number, number>, n: number): number {
   return 0;
 }
 
-function Tile({ label, value, moe }: { label: string; value: string; moe?: number }) {
+/** One plain fact under the headline: a label, the number, a line saying what it means. */
+function Fact({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className="bg-card p-5">
+    <div className="bg-card px-5 py-4 sm:px-6">
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold text-foreground">
-        {value}
-        {moe != null && (
-          <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">
-            ±{moe < 0.1 ? moe.toFixed(2) : moe.toFixed(1)}
-          </span>
-        )}
-      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{note}</div>
     </div>
   );
 }
@@ -452,12 +503,12 @@ function PlayerTable({ matchup, result }: { matchup: SimMatchup; result: MassRes
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
         <div>
-          <h3 className="font-display text-3xl">Player projections</h3>
+          <h3 className="font-display text-3xl">What each player did</h3>
           <p className="max-w-3xl text-xs text-muted-foreground">
-            Each player&apos;s stat across all {result.n.toLocaleString()} games — games he sat
-            count as zero — next to his season per-game average (this season blended with last, the
-            numbers the engine starts from). Percentages are the share of games at or above the
-            line. Click a player for his distribution and every stat.
+            Pick a stat. &ldquo;Per game&rdquo; is the player&apos;s average across all{" "}
+            {result.n.toLocaleString()} games, next to what he usually does. The columns on the
+            right are how often he reached each number &mdash; 60% means 60 games in 100. Click a
+            player to see every stat.
           </p>
         </div>
         <button
@@ -510,20 +561,25 @@ function PlayerTable({ matchup, result }: { matchup: SimMatchup; result: MassRes
               <th className="px-5 py-2 text-left font-normal sm:px-6">Player</th>
               <th
                 className="px-2 py-2 text-right font-normal"
-                title="Simulated average per game, ± its 95% Monte Carlo error"
+                title="Average per game across the simulated games"
               >
-                Sim avg
+                Per game
               </th>
               <th className="px-2 py-2 text-right font-normal" title="Season average per game">
-                Season
+                Usually
               </th>
-              <th className="px-2 py-2 text-right font-normal">vs season</th>
-              <th className="px-2 py-2 text-right font-normal">Median</th>
+              <th className="px-2 py-2 text-right font-normal">Difference</th>
               <th
                 className="px-2 py-2 text-right font-normal"
-                title="80% of simulated games land in this range"
+                title="Half the games were above this, half below"
               >
-                10th–90th
+                Middle game
+              </th>
+              <th
+                className="px-2 py-2 text-right font-normal"
+                title="8 games in 10 land in this range"
+              >
+                Most games
               </th>
               {def.lines.map((l) => (
                 <th key={l} className="px-2 py-2 text-right font-normal">

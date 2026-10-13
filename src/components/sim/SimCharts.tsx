@@ -12,7 +12,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
  * and a table view beneath for anyone who would rather read numbers.
  */
 
-export type Bin = { x: number; p: number; color: string };
+/** One bar: values x .. x + w - 1 (w defaults to 1), p the share of games. */
+export type Bin = { x: number; p: number; color: string; w?: number };
 export type RefMark = { x: number; label: string };
 
 function useWidth<T extends HTMLElement>() {
@@ -58,6 +59,7 @@ export function Histogram({
   const plotH = height - pad.t - pad.b;
   const n = bins.length;
   const xmin = bins[0]?.x ?? 0;
+  const unit = bins[0]?.w ?? 1;
   const step = n ? plotW / n : plotW;
   const barW = Math.max(1, Math.min(24, step - 2));
   const maxP = Math.max(1e-6, ...bins.map((b) => b.p));
@@ -68,10 +70,10 @@ export function Histogram({
     for (let v = 0; v <= yTop + 1e-9; v += yStep) t.push(v);
     return t;
   }, [yTop, yStep]);
-  const xEvery = Math.max(1, niceStep(34 / Math.max(step, 0.1)));
+  const xEvery = Math.max(unit, niceStep((34 / Math.max(step, 0.1)) * unit));
   const y = (p: number) => pad.t + plotH - (p / yTop) * plotH;
   const xc = (i: number) => pad.l + (i + 0.5) * step;
-  const xAt = (v: number) => pad.l + (v - xmin + 0.5) * step;
+  const xAt = (v: number) => pad.l + ((v - xmin + 0.5) / unit) * step;
 
   const onKey = (e: KeyboardEvent) => {
     if (!n) return;
@@ -145,19 +147,19 @@ export function Histogram({
               </g>
             );
           })}
-          {bins
-            .filter((b) => b.x % xEvery === 0)
-            .map((b) => (
+          {bins.map((b, i) =>
+            b.x % xEvery !== 0 ? null : (
               <text
                 key={`t${b.x}`}
-                x={xAt(b.x)}
+                x={xc(i)}
                 y={height - pad.b + 16}
                 textAnchor="middle"
                 className="fill-muted-foreground font-mono text-[10px] tabular-nums"
               >
                 {xFmt(b.x)}
               </text>
-            ))}
+            ),
+          )}
           <line
             x1={pad.l}
             x2={width - pad.r}
@@ -222,6 +224,7 @@ export function WinBar({
   homeLabel,
   awayColor,
   homeColor,
+  tieLabel = "Tie",
 }: {
   away: number;
   home: number;
@@ -230,6 +233,7 @@ export function WinBar({
   homeLabel: string;
   awayColor: string;
   homeColor: string;
+  tieLabel?: string;
 }) {
   const seg = (p: number) => `${Math.max(0, p) * 100}%`;
   return (
@@ -259,7 +263,7 @@ export function WinBar({
         <span className="text-3xl font-semibold text-foreground">{(away * 100).toFixed(1)}%</span>
         {tie > 0.0005 && (
           <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            Tie {(tie * 100).toFixed(1)}%
+            {tieLabel} {(tie * 100).toFixed(1)}%
           </span>
         )}
         <span className="text-3xl font-semibold text-foreground">{(home * 100).toFixed(1)}%</span>
@@ -293,6 +297,7 @@ export function BinTable({
             >
               <span className="text-muted-foreground">
                 {xLabel} {xFmt(b.x)}
+                {b.w && b.w > 1 ? `–${xFmt(b.x + b.w - 1)}` : ""}
               </span>
               <span className="text-foreground">{(b.p * 100).toFixed(1)}%</span>
             </div>
