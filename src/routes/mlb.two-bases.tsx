@@ -1,17 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { MlbTwoBasesView } from "@/components/MlbTwoBasesView";
-
+/** The 2+ bases board is now a board on the MLB Props page; the address is kept for bookmarks. */
 export const Route = createFileRoute("/mlb/two-bases")({
-  head: () => ({
-    meta: [
-      { title: "MLB 2+ Total Bases — Diamond Edge" },
-      {
-        name: "description",
-        content:
-          "The chance every MLB hitter picks up two or more total bases today — a double, a home run, or two hits — from a backtested logistic model, with the reason for each projection in plain English.",
-      },
-    ],
-  }),
-  component: () => <MlbTwoBasesView />,
+  beforeLoad: () => {
+    throw redirect({ to: "/mlb/props", search: { board: "two-bases" }, replace: true });
+  },
 });

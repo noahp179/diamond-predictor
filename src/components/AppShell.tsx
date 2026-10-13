@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { BoardRecord } from "@/components/BoardRecord";
+import { PropsBoardBar, usePropsBoards } from "@/components/PropsBoards";
 import { Link, type LinkProps } from "@tanstack/react-router";
 
 import {
@@ -74,6 +76,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   const views = sport ? viewsFor(sport, league) : [];
+  // A props board highlights the one Props tab, whichever board it is.
+  const boards = usePropsBoards();
+  if (boards) view = "props";
 
   return (
     <div className="min-h-screen">
@@ -126,7 +131,13 @@ export function AppShell({
         </nav>
       )}
 
-      <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+      {boards && <PropsBoardBar />}
+
+      <main className="mx-auto max-w-6xl px-6 py-10">
+        {children}
+        {/* Every props board ends with its own forward record, in one place. */}
+        {boards && <BoardRecord sport={boards.sport} board={boards.board} />}
+      </main>
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">

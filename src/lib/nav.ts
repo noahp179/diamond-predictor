@@ -170,21 +170,13 @@ const LABELS: Record<ViewKey, string> = {
 };
 
 const VIEWS: Record<SportKey, ViewKey[]> = {
-  mlb: [
-    "slate",
-    "simulate",
-    "recommended",
-    "bestOdds",
-    "props",
-    "twoBases",
-    "parlay",
-    "stacks",
-    "trackRecord",
-  ],
-  nfl: ["slate", "simulate", "bestOdds", "props", "tdScorers", "parlay", "trackRecord"],
+  // One Props tab per sport: player props, 2+ bases, parlays and stacks are
+  // boards on it (PropsBoards.tsx), no longer tabs of their own.
+  mlb: ["slate", "simulate", "recommended", "bestOdds", "props", "trackRecord"],
+  nfl: ["slate", "simulate", "bestOdds", "props", "trackRecord"],
   // NFL, college and NBA have no Recommended tab: it ranked the slate by model
   // confidence, which is Best Odds' default view. MLB's builds parlay slips.
-  cfb: ["slate", "simulate", "bestOdds", "tdScorers", "parlay", "trackRecord"],
+  cfb: ["slate", "simulate", "bestOdds", "props", "trackRecord"],
   nba: ["slate", "simulate", "bestOdds", "trackRecord"],
   // No picks model for hockey yet: the simulator is the section.
   nhl: ["simulate"],
@@ -227,7 +219,9 @@ const SEGMENT: Record<ViewKey, string> = {
 const VIEW_LABEL: Partial<Record<SportKey, Partial<Record<ViewKey, string>>>> = {
   soccer: { slate: "Matches" },
   tennis: { slate: "Draw" },
-  mlb: { parlay: "Base Parlays" },
+  mlb: { props: "Props" },
+  nfl: { props: "Props" },
+  cfb: { props: "Props" },
 };
 
 /**

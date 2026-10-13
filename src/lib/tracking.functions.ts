@@ -129,3 +129,213 @@ export const getParlayLedger = createServerFn({ method: "GET" })
     const { readParlayLedger } = await import("./parlay-ledger.server");
     return readParlayLedger(data.sport);
   });
+
+// ------------------------------------------------------------ board records
+
+/**
+ * How one prop board's picks have actually done, in one plain shape for every
+ * board — single picks, slips and stacks alike — so one component can show
+ * any of them the same way: how many hit, how many the board said would, and
+ * the same per bet type. See BoardRecord.tsx.
+ */
+export type BoardRecordData = {
+  status: "ok" | "not-provisioned" | "unreadable";
+  /** What one unit is called: "picks", "slips", "cards". */
+  unit: string;
+  n: number;
+  hits: number;
+  /** Mean published probability of the settled ones — what the board said. */
+  expected: number | null;
+  pending: number;
+  voided: number;
+  firstDate: string | null;
+  lastDate: string | null;
+  byType: { label: string; n: number; hits: number; expected: number | null }[];
+  recent: {
+    date: string;
+    who: string;
+    what: string;
+    prob: number;
+    result: "hit" | "miss" | "void" | "pending";
+  }[];
+  /** Said once, plainly, when the board cannot have a record yet. */
+  note: string | null;
+};
+
+const boardInput = z.object({ sport: z.string(), board: z.string() });
+
+export const getBoardRecord = createServerFn({ method: "GET" })
+  .inputValidator(boardInput)
+  .handler(async ({ data }): Promise<BoardRecordData> => {
+    const { sport, board } = data;
+    const empty: BoardRecordData = {
+      status: "ok",
+      unit: "picks",
+      n: 0,
+      hits: 0,
+      expected: null,
+      pending: 0,
+      voided: 0,
+      firstDate: null,
+      lastDate: null,
+      byType: [],
+      recent: [],
+      note: null,
+    };
+
+    // ---- slips
+    if (board === "parlays" && (sport === "mlb" || sport === "nfl" || sport === "cfb")) {
+      const { readParlayLedger } = await import("./parlay-ledger.server");
+      const v = await readParlayLedger(sport);
+      return {
+        ...empty,
+        status: v.status,
+        unit: "slips",
+        n: v.totals.slips,
+        hits: v.totals.won,
+        expected: v.totals.slips ? v.totals.expected / v.totals.slips : null,
+        pending: v.totals.pending,
+        firstDate: v.firstDate,
+        lastDate: v.lastDate,
+        byType: v.bySize
+          .filter((s) => s.slips > 0)
+          .map((s) => ({
+            label: `${s.size}-leg slip`,
+            n: s.slips,
+            hits: s.won,
+            expected: s.slips ? s.expected / s.slips : null,
+          })),
+        recent: v.recent.map((r) => ({
+          date: r.date,
+          who: `${r.size}-leg slip`,
+          what: r.legsHit != null ? `${r.legsHit} of ${r.legCount} legs hit` : `${r.legCount} legs`,
+          prob: r.stated,
+          result: r.won == null ? "pending" : r.won ? "hit" : "miss",
+        })),
+        note:
+          sport === "mlb"
+            ? "Baseball's boards cover the regular season; slips resume in March."
+            : null,
+      };
+    }
+
+    // ---- stacks
+    if (board === "stacks" && sport === "mlb") {
+      const { readStackLedger } = await import("./prop-ledger.server");
+      const v = await readStackLedger();
+      const settled = v.byKind.reduce((s, k) => s + k.n, 0);
+      const won = v.byKind.reduce((s, k) => s + k.won, 0);
+      const exp = v.byKind.reduce((s, k) => s + (k.expected ?? 0) * k.n, 0);
+      return {
+        ...empty,
+        status: v.status,
+        unit: "cards",
+        n: settled,
+        hits: won,
+        expected: settled ? exp / settled : null,
+        pending: v.pending,
+        byType: v.byKind
+          .filter((k) => k.n > 0)
+          .map((k) => ({
+            label: k.kind === "total" ? "Team runs over the line" : "Team + hitter stacks",
+            n: k.n,
+            hits: k.won,
+            expected: k.expected,
+          })),
+        recent: v.recent.map((r) => ({
+          date: r.date,
+          who: r.team,
+          what: r.label,
+          prob: r.prob,
+          result: !r.settled ? "pending" : r.won == null ? "void" : r.won ? "hit" : "miss",
+        })),
+        note: "Recorded from the start of next season — the stacks board covers the regular season only.",
+      };
+    }
+
+    // ---- single picks
+    const labels = await marketLabels(sport);
+    let view: import("./td-ledger.server").TdLedgerView | null = null;
+    let note: string | null = null;
+    if (board === "td-scorers" && (sport === "nfl" || sport === "cfb")) {
+      const { readTdLedger } = await import("./td-ledger.server");
+      view = await readTdLedger(sport);
+    } else if (board === "two-bases" && sport === "mlb") {
+      const { readTb2Ledger } = await import("./tb2-ledger.server");
+      view = await readTb2Ledger();
+      note = "Baseball's boards cover the regular season; picks resume in March.";
+    } else if (board === "players" && (sport === "mlb" || sport === "nfl")) {
+      const { readPropBoard } = await import("./prop-ledger.server");
+      view = await readPropBoard(sport);
+      if (sport === "mlb")
+        note = "Recorded from the start of next season — the board covers the regular season only.";
+    } else if (sport === "soccer") {
+      const { readPropBoard } = await import("./prop-ledger.server");
+      const { isLeagueSlug } = await import("./soccer-leagues");
+      if (isLeagueSlug(board) && board !== "ucl") view = await readPropBoard(board);
+    }
+    if (!view) return empty;
+    const s = view.summary;
+    const exp = view.byMarket.reduce((t, m) => t + (m.expected ?? 0) * m.n, 0);
+    return {
+      ...empty,
+      status: view.status,
+      n: s.n,
+      hits: s.hits,
+      expected: s.n ? exp / s.n : null,
+      pending: s.pending,
+      voided: s.voided,
+      firstDate: s.firstDate,
+      lastDate: s.lastDate,
+      byType: view.byMarket.map((m) => ({
+        label: labels[m.market] ?? m.market,
+        n: m.n,
+        hits: m.hits,
+        expected: m.expected,
+      })),
+      recent: view.recent.slice(0, 30).map((r) => ({
+        date: r.date,
+        who: r.player,
+        what: labels[r.market] ?? r.market,
+        prob: r.prob,
+        result:
+          r.scored == null
+            ? r.touchdowns == null
+              ? "pending"
+              : "void"
+            : r.scored
+              ? "hit"
+              : "miss",
+      })),
+      note: s.n === 0 ? note : null,
+    };
+  });
+
+/** Bet names as the boards print them, keyed by the ledger's market codes. */
+async function marketLabels(sport: string): Promise<Record<string, string>> {
+  const base: Record<string, string> = {
+    anytime_td: "Anytime touchdown",
+    tb2: "2+ total bases",
+  };
+  if (sport === "mlb") {
+    const m = (await import("./mlb-props-model.json")).default as {
+      markets: Record<string, { label: string }>;
+    };
+    for (const [k, v] of Object.entries(m.markets)) base[k] = v.label;
+  }
+  if (sport === "nfl") {
+    const m = (await import("./nfl-props-model.json")).default as unknown as {
+      markets: Record<string, { label: string }>;
+    };
+    for (const [k, v] of Object.entries(m.markets)) base[k] = v.label;
+  }
+  if (sport === "soccer") {
+    const m = (await import("./soccer-props-model.json")).default as unknown as Record<
+      string,
+      { markets: Record<string, { label: string }> }
+    >;
+    for (const v of Object.values(m))
+      for (const [k, x] of Object.entries(v.markets)) base[k] = x.label;
+  }
+  return base;
+}

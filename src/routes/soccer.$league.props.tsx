@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { BoardRecord } from "@/components/BoardRecord";
 import { SoccerShell } from "@/components/SoccerShell";
 import { StatBar, Stat, Note } from "@/components/SportShell";
 import { getSoccerProps } from "@/lib/soccer.functions";
@@ -212,6 +213,8 @@ function SoccerPropsPage() {
           </p>
         </div>
       )}
+
+      {slug !== "ucl" && <BoardRecord sport="soccer" board={slug} />}
     </SoccerShell>
   );
 }

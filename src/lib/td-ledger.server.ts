@@ -354,6 +354,8 @@ export type TdLedgerRow = {
   tier: string | null;
   scored: boolean | null;
   touchdowns: number | null;
+  /** Settled with no result = a void (did not play); unsettled = pending. */
+  settled: boolean;
 };
 
 export type TdLedgerGroup = { label: string; n: number; hits: number; hitRate: number | null };
@@ -694,6 +696,7 @@ export async function readPlayerLedger(opts: {
         tier: r.tier,
         scored: r.scored,
         touchdowns: r.touchdowns,
+        settled: r.settled_at != null,
       })),
     };
   } catch (err) {

@@ -1,17 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { MlbStacksView } from "@/components/MlbStacksView";
-
+/** Team stacks are now a board on the MLB Props page; the address is kept for bookmarks. */
 export const Route = createFileRoute("/mlb/stacks")({
-  head: () => ({
-    meta: [
-      { title: "MLB Team Stacks — Diamond Edge" },
-      {
-        name: "description",
-        content:
-          "The night's highest-scoring MLB offences and the 2+ total-base hitters off those lineups, priced together through a backtested correlation rather than as independent legs.",
-      },
-    ],
-  }),
-  component: () => <MlbStacksView />,
+  beforeLoad: () => {
+    throw redirect({ to: "/mlb/props", search: { board: "stacks" }, replace: true });
+  },
 });
