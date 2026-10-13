@@ -1,0 +1,1172 @@
+[
+ {
+  "id": "401915436",
+  "home": "Sabah FK",
+  "away": "Slavia Prague",
+  "kickoff": "2026-10-13T16:45Z",
+  "n": 20000,
+  "home_win": 0.4589,
+  "draw": 0.20955,
+  "away_win": 0.33155,
+  "avg_home": 1.6856,
+  "avg_away": 1.369,
+  "over25": 0.59185,
+  "btts": 0.58955,
+  "home_clean_sheet": 0.25725,
+  "away_clean_sheet": 0.19025,
+  "scores": [
+   {
+    "score": "1-1",
+    "p": 0.0984
+   },
+   {
+    "score": "2-1",
+    "p": 0.09175
+   },
+   {
+    "score": "1-0",
+    "p": 0.07995
+   },
+   {
+    "score": "1-2",
+    "p": 0.07865
+   },
+   {
+    "score": "2-0",
+    "p": 0.0741
+   },
+   {
+    "score": "0-1",
+    "p": 0.0705
+   }
+  ],
+  "model": {
+   "home": 0.4364333066688556,
+   "draw": 0.2519325391908306,
+   "away": 0.3116341541403138
+  },
+  "market": {
+   "home": 0.24473534433693794,
+   "draw": 0.24473534433693794,
+   "away": 0.510529311326124,
+   "overround": 0.047704233750745395,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Veljko Simic",
+    "pos": "F",
+    "share": 0.23240073670685282,
+    "anytime": 0.3232113637427121
+   },
+   {
+    "name": "Joy Lance Mickels",
+    "pos": "F",
+    "share": 0.16834059653813235,
+    "anytime": 0.24651329567267477
+   },
+   {
+    "name": "Patrick Orphe M'Bina",
+    "pos": "F",
+    "share": 0.0689433122664986,
+    "anytime": 0.10960423832767063
+   },
+   {
+    "name": "Christian Nwachukwu",
+    "pos": "F",
+    "share": 0.0689433122664986,
+    "anytime": 0.10960423832767063
+   },
+   {
+    "name": "Umarali Rakhmonaliev",
+    "pos": "M",
+    "share": 0.049197268064253334,
+    "anytime": 0.07952436909804617
+   },
+   {
+    "name": "Xander Severina",
+    "pos": "M",
+    "share": 0.046311465258597445,
+    "anytime": 0.07504250248304489
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Danijel Sturm",
+    "pos": "F",
+    "share": 0.2662032196963555,
+    "anytime": 0.3052746948628584
+   },
+   {
+    "name": "Ivan Schranz",
+    "pos": "F",
+    "share": 0.07023038357535367,
+    "anytime": 0.09166147393893154
+   },
+   {
+    "name": "Tom\u00e1s Chor\u00fd",
+    "pos": "F",
+    "share": 0.07023038357535367,
+    "anytime": 0.09166147393893154
+   },
+   {
+    "name": "Mojm\u00edr Chytil",
+    "pos": "F",
+    "share": 0.07023038357535367,
+    "anytime": 0.09166147393893154
+   },
+   {
+    "name": "Adonija Bryan Ouanda",
+    "pos": "F",
+    "share": 0.07023038357535367,
+    "anytime": 0.09166147393893154
+   },
+   {
+    "name": "Step\u00e1n Chaloupek",
+    "pos": "D",
+    "share": 0.03650122483052391,
+    "anytime": 0.04874053949270196
+   }
+  ]
+ },
+ {
+  "id": "401915418",
+  "home": "Lens",
+  "away": "Sporting CP",
+  "kickoff": "2026-10-13T16:45Z",
+  "n": 20000,
+  "home_win": 0.3276,
+  "draw": 0.2019,
+  "away_win": 0.4705,
+  "avg_home": 1.3667,
+  "avg_away": 1.701,
+  "over25": 0.6014,
+  "btts": 0.59155,
+  "home_clean_sheet": 0.18365,
+  "away_clean_sheet": 0.2588,
+  "scores": [
+   {
+    "score": "1-1",
+    "p": 0.09445
+   },
+   {
+    "score": "1-2",
+    "p": 0.09245
+   },
+   {
+    "score": "0-1",
+    "p": 0.08305
+   },
+   {
+    "score": "2-1",
+    "p": 0.0797
+   },
+   {
+    "score": "0-2",
+    "p": 0.07205
+   },
+   {
+    "score": "1-0",
+    "p": 0.06895
+   }
+  ],
+  "model": {
+   "home": 0.31117456579249214,
+   "draw": 0.2513972447168102,
+   "away": 0.43742818949069756
+  },
+  "market": {
+   "home": 0.3660407039622456,
+   "draw": 0.26074132337036676,
+   "away": 0.37321797266738765,
+   "overround": 0.05074485010020857,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Florian Thauvin",
+    "pos": "F",
+    "share": 0.2253456802965835,
+    "anytime": 0.2648200962435616
+   },
+   {
+    "name": "Odsonne \u00c9douard",
+    "pos": "F",
+    "share": 0.11189935795885193,
+    "anytime": 0.14174405055206285
+   },
+   {
+    "name": "Abdallah Sima",
+    "pos": "F",
+    "share": 0.09956252877470073,
+    "anytime": 0.12716528488667156
+   },
+   {
+    "name": "Matthieu Udol",
+    "pos": "D",
+    "share": 0.08007871651231097,
+    "anytime": 0.10363092162381438
+   },
+   {
+    "name": "Franjo Ivanovic",
+    "pos": "F",
+    "share": 0.07817494063383118,
+    "anytime": 0.10129736089694341
+   },
+   {
+    "name": "Florian Sotoca",
+    "pos": "F",
+    "share": 0.07202756549628175,
+    "anytime": 0.09372033511347688
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Luis Su\u00e1rez",
+    "pos": "F",
+    "share": 0.3667348480934222,
+    "anytime": 0.46417865632530597
+   },
+   {
+    "name": "Geny Catamo",
+    "pos": "M",
+    "share": 0.0849032070440176,
+    "anytime": 0.13449268555601335
+   },
+   {
+    "name": "Fl\u00e1vio Gon\u00e7alves",
+    "pos": "F",
+    "share": 0.07325702990653289,
+    "anytime": 0.1171718339039679
+   },
+   {
+    "name": "Rodrigo Zalazar",
+    "pos": "M",
+    "share": 0.06846322899895664,
+    "anytime": 0.10994205075920693
+   },
+   {
+    "name": "Maxi Ara\u00fajo",
+    "pos": "M",
+    "share": 0.06548911264870591,
+    "anytime": 0.1054269428776381
+   },
+   {
+    "name": "Fotis Ioannidis",
+    "pos": "F",
+    "share": 0.06230283101766153,
+    "anytime": 0.10056436113963685
+   }
+  ]
+ },
+ {
+  "id": "401915434",
+  "home": "RB Leipzig",
+  "away": "PSV Eindhoven",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.46225,
+  "draw": 0.20885,
+  "away_win": 0.3289,
+  "avg_home": 1.68855,
+  "avg_away": 1.3714,
+  "over25": 0.59285,
+  "btts": 0.5934,
+  "home_clean_sheet": 0.2574,
+  "away_clean_sheet": 0.18365,
+  "scores": [
+   {
+    "score": "1-1",
+    "p": 0.10165
+   },
+   {
+    "score": "2-1",
+    "p": 0.0935
+   },
+   {
+    "score": "1-0",
+    "p": 0.0835
+   },
+   {
+    "score": "1-2",
+    "p": 0.07835
+   },
+   {
+    "score": "2-0",
+    "p": 0.07055
+   },
+   {
+    "score": "0-1",
+    "p": 0.06915
+   }
+  ],
+  "model": {
+   "home": 0.44057235421797447,
+   "draw": 0.25149845731153236,
+   "away": 0.3079291884704931
+  },
+  "market": {
+   "home": 0.6092362344582594,
+   "draw": 0.19538188277087035,
+   "away": 0.19538188277087035,
+   "overround": 0.0445269016697587,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Christopher Nkunku",
+    "pos": "F",
+    "share": 0.13516218039280173,
+    "anytime": 0.2040056325598678
+   },
+   {
+    "name": "Antonio Nusa",
+    "pos": "M",
+    "share": 0.12016008960179249,
+    "anytime": 0.18359359601749825
+   },
+   {
+    "name": "R\u00f4mulo",
+    "pos": "F",
+    "share": 0.1017272686169436,
+    "anytime": 0.15779481561112718
+   },
+   {
+    "name": "Christoph Baumgartner",
+    "pos": "M",
+    "share": 0.09269103615147763,
+    "anytime": 0.14485099232695142
+   },
+   {
+    "name": "Tidiam Gomis",
+    "pos": "F",
+    "share": 0.08037614506098852,
+    "anytime": 0.12688928905863472
+   },
+   {
+    "name": "Ridle Baku",
+    "pos": "D",
+    "share": 0.07003742928907779,
+    "anytime": 0.11151838291342775
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Ricardo Pepi",
+    "pos": "F",
+    "share": 0.16619648740136392,
+    "anytime": 0.20342333755741604
+   },
+   {
+    "name": "Guus Til",
+    "pos": "M",
+    "share": 0.1590558423126267,
+    "anytime": 0.1956165306387364
+   },
+   {
+    "name": "Ivan Perisic",
+    "pos": "F",
+    "share": 0.08927741699605636,
+    "anytime": 0.11510770618778587
+   },
+   {
+    "name": "Sven Mijnans",
+    "pos": "M",
+    "share": 0.07711728713499856,
+    "anytime": 0.10025996724685571
+   },
+   {
+    "name": "Dennis Man",
+    "pos": "F",
+    "share": 0.05667793015648606,
+    "anytime": 0.07472901911643404
+   },
+   {
+    "name": "Sergi\u00f1o Dest",
+    "pos": "D",
+    "share": 0.053285485970027704,
+    "anytime": 0.07042061701405689
+   }
+  ]
+ },
+ {
+  "id": "401915411",
+  "home": "Viking FK",
+  "away": "Bayern Munich",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.08505,
+  "draw": 0.1136,
+  "away_win": 0.80135,
+  "avg_home": 0.801,
+  "avg_away": 2.85,
+  "over25": 0.7105,
+  "btts": 0.50665,
+  "home_clean_sheet": 0.0533,
+  "away_clean_sheet": 0.45805,
+  "scores": [
+   {
+    "score": "0-2",
+    "p": 0.10995
+   },
+   {
+    "score": "0-3",
+    "p": 0.1054
+   },
+   {
+    "score": "1-2",
+    "p": 0.0863
+   },
+   {
+    "score": "1-3",
+    "p": 0.07825
+   },
+   {
+    "score": "0-1",
+    "p": 0.07695
+   },
+   {
+    "score": "0-4",
+    "p": 0.0736
+   }
+  ],
+  "model": {
+   "home": 0.08249587386331236,
+   "draw": 0.1436933473579327,
+   "away": 0.7738107787787547
+  },
+  "market": {
+   "home": 0.05640107430617726,
+   "draw": 0.09131602506714412,
+   "away": 0.8522829006266787,
+   "overround": 0.04295051353874868,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Peter Christiansen",
+    "pos": "F",
+    "share": 0.18775886831393718,
+    "anytime": 0.13901824645036398
+   },
+   {
+    "name": "Zlatko Tripic",
+    "pos": "F",
+    "share": 0.12630249265779206,
+    "anytime": 0.09592735027337074
+   },
+   {
+    "name": "Simen Kvia-Egeskog",
+    "pos": "M",
+    "share": 0.09762280074712791,
+    "anytime": 0.07503835860417607
+   },
+   {
+    "name": "Henrik Heggheim",
+    "pos": "D",
+    "share": 0.072520369305902,
+    "anytime": 0.056333417391357554
+   },
+   {
+    "name": "Kristoffer Askildsen",
+    "pos": "M",
+    "share": 0.060492217107862824,
+    "anytime": 0.04722852228354457
+   },
+   {
+    "name": "Kristoffer Haugen",
+    "pos": "D",
+    "share": 0.04720788181695796,
+    "anytime": 0.03706406862165312
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Harry Kane",
+    "pos": "F",
+    "share": 0.2749869397986638,
+    "anytime": 0.5445263435700445
+   },
+   {
+    "name": "Michael Olise",
+    "pos": "M",
+    "share": 0.18239345912495888,
+    "anytime": 0.40597658833197425
+   },
+   {
+    "name": "Luis D\u00edaz",
+    "pos": "F",
+    "share": 0.10886773153318097,
+    "anytime": 0.2669832799194999
+   },
+   {
+    "name": "Jamal Musiala",
+    "pos": "M",
+    "share": 0.06407442085518132,
+    "anytime": 0.1669910153214812
+   },
+   {
+    "name": "Lennart Karl",
+    "pos": "M",
+    "share": 0.05349622325358185,
+    "anytime": 0.1414681099880719
+   },
+   {
+    "name": "Serge Gnabry",
+    "pos": "F",
+    "share": 0.046565246040128294,
+    "anytime": 0.12432571412618543
+   }
+  ]
+ },
+ {
+  "id": "401915413",
+  "home": "Internazionale",
+  "away": "Club Brugge",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.6454,
+  "draw": 0.1708,
+  "away_win": 0.1838,
+  "avg_home": 2.19385,
+  "avg_away": 1.0442,
+  "over25": 0.6381,
+  "btts": 0.5659,
+  "home_clean_sheet": 0.3535,
+  "away_clean_sheet": 0.10915,
+  "scores": [
+   {
+    "score": "2-1",
+    "p": 0.1028
+   },
+   {
+    "score": "2-0",
+    "p": 0.09605
+   },
+   {
+    "score": "1-0",
+    "p": 0.08895
+   },
+   {
+    "score": "1-1",
+    "p": 0.07985
+   },
+   {
+    "score": "3-1",
+    "p": 0.0743
+   },
+   {
+    "score": "3-0",
+    "p": 0.07275
+   }
+  ],
+  "model": {
+   "home": 0.6116521655118887,
+   "draw": 0.21301830800337113,
+   "away": 0.17532952648474015
+  },
+  "market": {
+   "home": 0.7657295850066934,
+   "draw": 0.14725568942436407,
+   "away": 0.08701472556894242,
+   "overround": 0.04475524475524484,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Lautaro Mart\u00ednez",
+    "pos": "F",
+    "share": 0.1773956829302956,
+    "anytime": 0.32283311195510067
+   },
+   {
+    "name": "Marcus Thuram",
+    "pos": "F",
+    "share": 0.14626026314749196,
+    "anytime": 0.27480647308022743
+   },
+   {
+    "name": "Hakan \u00c7alhanoglu",
+    "pos": "M",
+    "share": 0.09966622082560839,
+    "anytime": 0.19656266209872608
+   },
+   {
+    "name": "Pio Esposito",
+    "pos": "F",
+    "share": 0.09930601645354822,
+    "anytime": 0.19592631074938993
+   },
+   {
+    "name": "Piotr Zielinski",
+    "pos": "M",
+    "share": 0.0569461881884559,
+    "anytime": 0.11750039276424673
+   },
+   {
+    "name": "Ange-Yoan Bonny",
+    "pos": "F",
+    "share": 0.04604335353026844,
+    "anytime": 0.09611660197264393
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Nicolo Tresoldi",
+    "pos": "F",
+    "share": 0.24403888433055757,
+    "anytime": 0.2246924046279022
+   },
+   {
+    "name": "Hugo Vetlesen",
+    "pos": "M",
+    "share": 0.13633157743649757,
+    "anytime": 0.13259447492018994
+   },
+   {
+    "name": "Carlos Forbs",
+    "pos": "F",
+    "share": 0.11623669933453655,
+    "anytime": 0.11422692873964768
+   },
+   {
+    "name": "Hans Vanaken",
+    "pos": "M",
+    "share": 0.06769908781693079,
+    "anytime": 0.06822472305284177
+   },
+   {
+    "name": "Brandon Mechele",
+    "pos": "D",
+    "share": 0.06748411368037323,
+    "anytime": 0.06801569970475085
+   },
+   {
+    "name": "Romeo Vermant",
+    "pos": "F",
+    "share": 0.061084632404301266,
+    "anytime": 0.06177161979678458
+   }
+  ]
+ },
+ {
+  "id": "401915435",
+  "home": "Galatasaray",
+  "away": "Barcelona",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.121,
+  "draw": 0.1301,
+  "away_win": 0.7489,
+  "avg_home": 0.9005,
+  "avg_away": 2.5868,
+  "over25": 0.6827,
+  "btts": 0.53665,
+  "home_clean_sheet": 0.0716,
+  "away_clean_sheet": 0.41235,
+  "scores": [
+   {
+    "score": "0-2",
+    "p": 0.10785
+   },
+   {
+    "score": "1-2",
+    "p": 0.09715
+   },
+   {
+    "score": "0-3",
+    "p": 0.08685
+   },
+   {
+    "score": "0-1",
+    "p": 0.08515
+   },
+   {
+    "score": "1-3",
+    "p": 0.0794
+   },
+   {
+    "score": "1-1",
+    "p": 0.0597
+   }
+  ],
+  "model": {
+   "home": 0.11475681316135572,
+   "draw": 0.1727009160602893,
+   "away": 0.7125422707783551
+  },
+  "market": {
+   "home": 0.11212266411116432,
+   "draw": 0.14662194537613796,
+   "away": 0.7412553905126976,
+   "overround": 0.04927099044746108,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Victor Osimhen",
+    "pos": "F",
+    "share": 0.2603986925220599,
+    "anytime": 0.20821874266305984
+   },
+   {
+    "name": "Yunus Akg\u00fcn",
+    "pos": "F",
+    "share": 0.08828144721327938,
+    "anytime": 0.07631220644817571
+   },
+   {
+    "name": "Baris Alper Yilmaz",
+    "pos": "F",
+    "share": 0.08650572474912853,
+    "anytime": 0.07483830684901183
+   },
+   {
+    "name": "Gabriel Sara",
+    "pos": "M",
+    "share": 0.08288269847018863,
+    "anytime": 0.0718235214777806
+   },
+   {
+    "name": "Mario Lemina",
+    "pos": "M",
+    "share": 0.06024810500975865,
+    "anytime": 0.052756730030845245
+   },
+   {
+    "name": "Abd\u00fclkerim Bardak\u00e7i",
+    "pos": "D",
+    "share": 0.05061482675656869,
+    "anytime": 0.044519094559022365
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Raphinha",
+    "pos": "F",
+    "share": 0.2892311952496372,
+    "anytime": 0.5279850441455531
+   },
+   {
+    "name": "Lamine Yamal",
+    "pos": "F",
+    "share": 0.2195376898355234,
+    "anytime": 0.43408154735655313
+   },
+   {
+    "name": "Ferm\u00edn L\u00f3pez",
+    "pos": "M",
+    "share": 0.10264587241681228,
+    "anytime": 0.2334142134694821
+   },
+   {
+    "name": "Gabriel Jesus",
+    "pos": "F",
+    "share": 0.05914028333887096,
+    "anytime": 0.14193542056022412
+   },
+   {
+    "name": "Karim Adeyemi",
+    "pos": "F",
+    "share": 0.054718052106324584,
+    "anytime": 0.13205163307668333
+   },
+   {
+    "name": "Dani Olmo",
+    "pos": "M",
+    "share": 0.032937314770010606,
+    "anytime": 0.0816991977148156
+   }
+  ]
+ },
+ {
+  "id": "401915412",
+  "home": "Atl\u00e9tico Madrid",
+  "away": "Manchester United",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.4059,
+  "draw": 0.21015,
+  "away_win": 0.38395,
+  "avg_home": 1.5462,
+  "avg_away": 1.4953,
+  "over25": 0.5912,
+  "btts": 0.5921,
+  "home_clean_sheet": 0.22405,
+  "away_clean_sheet": 0.2208,
+  "scores": [
+   {
+    "score": "1-1",
+    "p": 0.09655
+   },
+   {
+    "score": "2-1",
+    "p": 0.0904
+   },
+   {
+    "score": "1-2",
+    "p": 0.0812
+   },
+   {
+    "score": "0-1",
+    "p": 0.0774
+   },
+   {
+    "score": "1-0",
+    "p": 0.0754
+   },
+   {
+    "score": "2-0",
+    "p": 0.06165
+   }
+  ],
+  "model": {
+   "home": 0.38705135037953975,
+   "draw": 0.2550217260722787,
+   "away": 0.3579269235481815
+  },
+  "market": {
+   "home": 0.5004353504571181,
+   "draw": 0.2514148889856334,
+   "away": 0.24814976055724858,
+   "overround": 0.04670767828662559,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Alexander S\u00f8rloth",
+    "pos": "F",
+    "share": 0.13749856155723586,
+    "anytime": 0.1912401302912271
+   },
+   {
+    "name": "Juli\u00e1n \u00c1lvarez",
+    "pos": "F",
+    "share": 0.10693733293618315,
+    "anytime": 0.15222552196396577
+   },
+   {
+    "name": "\u00c1lex Baena",
+    "pos": "M",
+    "share": 0.09430062008850194,
+    "anytime": 0.13553874862207738
+   },
+   {
+    "name": "Ademola Lookman",
+    "pos": "F",
+    "share": 0.0888187938380476,
+    "anytime": 0.12819648978694653
+   },
+   {
+    "name": "Giuliano Simeone",
+    "pos": "F",
+    "share": 0.08462874039285806,
+    "anytime": 0.12254168052138847
+   },
+   {
+    "name": "Jonathan David",
+    "pos": "F",
+    "share": 0.0814188789936939,
+    "anytime": 0.11818450622971632
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Bryan Mbeumo",
+    "pos": "F",
+    "share": 0.17769433357155803,
+    "anytime": 0.233397815993445
+   },
+   {
+    "name": "Bruno Fernandes",
+    "pos": "M",
+    "share": 0.1723384880343747,
+    "anytime": 0.22723046872578812
+   },
+   {
+    "name": "Benjamin Sesko",
+    "pos": "F",
+    "share": 0.16333162272513388,
+    "anytime": 0.21674697586031444
+   },
+   {
+    "name": "Matheus Cunha",
+    "pos": "F",
+    "share": 0.16193239410024968,
+    "anytime": 0.21510565372477464
+   },
+   {
+    "name": "Patrick Dorgu",
+    "pos": "D",
+    "share": 0.038051962357647684,
+    "anytime": 0.055314850626768
+   },
+   {
+    "name": "Joshua Zirkzee",
+    "pos": "F",
+    "share": 0.03134198254330529,
+    "anytime": 0.045787356643266275
+   }
+  ]
+ },
+ {
+  "id": "401915417",
+  "home": "Arsenal",
+  "away": "Lille",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.8759,
+  "draw": 0.07725,
+  "away_win": 0.04685,
+  "avg_home": 3.3459,
+  "avg_away": 0.64965,
+  "over25": 0.7675,
+  "btts": 0.45495,
+  "home_clean_sheet": 0.52625,
+  "away_clean_sheet": 0.03075,
+  "scores": [
+   {
+    "score": "3-0",
+    "p": 0.12025
+   },
+   {
+    "score": "2-0",
+    "p": 0.10465
+   },
+   {
+    "score": "4-0",
+    "p": 0.09665
+   },
+   {
+    "score": "3-1",
+    "p": 0.0731
+   },
+   {
+    "score": "2-1",
+    "p": 0.0681
+   },
+   {
+    "score": "5-0",
+    "p": 0.06675
+   }
+  ],
+  "model": {
+   "home": 0.8594766148443871,
+   "draw": 0.09750836911764969,
+   "away": 0.043015016037963025
+  },
+  "market": {
+   "home": 0.7954545454545456,
+   "draw": 0.13636363636363633,
+   "away": 0.06818181818181816,
+   "overround": 0.04761904761904745,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Bukayo Saka",
+    "pos": "F",
+    "share": 0.15289049343738462,
+    "anytime": 0.40087016552470733
+   },
+   {
+    "name": "Viktor Gy\u00f6keres",
+    "pos": "F",
+    "share": 0.14936171945452503,
+    "anytime": 0.3937310022393812
+   },
+   {
+    "name": "Kai Havertz",
+    "pos": "F",
+    "share": 0.1306544275834531,
+    "anytime": 0.354452141455311
+   },
+   {
+    "name": "Martin \u00d8degaard",
+    "pos": "M",
+    "share": 0.08432199756810588,
+    "anytime": 0.24596629353039912
+   },
+   {
+    "name": "Eberechi Eze",
+    "pos": "M",
+    "share": 0.06317662895868796,
+    "anytime": 0.19061535612884872
+   },
+   {
+    "name": "Noni Madueke",
+    "pos": "F",
+    "share": 0.06307331871526585,
+    "anytime": 0.1903352489953315
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Olivier Giroud",
+    "pos": "F",
+    "share": 0.14452351038297043,
+    "anytime": 0.08943904725208962
+   },
+   {
+    "name": "Ayase Ueda",
+    "pos": "F",
+    "share": 0.12772995939883092,
+    "anytime": 0.07948942599405928
+   },
+   {
+    "name": "H\u00e1kon Haraldsson",
+    "pos": "M",
+    "share": 0.10829227205877122,
+    "anytime": 0.06783154842317018
+   },
+   {
+    "name": "Dilane Bakwa",
+    "pos": "F",
+    "share": 0.0970277809329176,
+    "anytime": 0.06100521128358527
+   },
+   {
+    "name": "Tiago Santos",
+    "pos": "D",
+    "share": 0.06879098775029015,
+    "anytime": 0.043663309712909215
+   },
+   {
+    "name": "Hamza Igmane",
+    "pos": "F",
+    "share": 0.06649026440898365,
+    "anytime": 0.042235646273738214
+   }
+  ]
+ },
+ {
+  "id": "401915410",
+  "home": "Villarreal",
+  "away": "Napoli",
+  "kickoff": "2026-10-13T19:00Z",
+  "n": 20000,
+  "home_win": 0.41705,
+  "draw": 0.20625,
+  "away_win": 0.3767,
+  "avg_home": 1.57045,
+  "avg_away": 1.47975,
+  "over25": 0.5988,
+  "btts": 0.5979,
+  "home_clean_sheet": 0.22905,
+  "away_clean_sheet": 0.20645,
+  "scores": [
+   {
+    "score": "1-1",
+    "p": 0.0978
+   },
+   {
+    "score": "2-1",
+    "p": 0.0932
+   },
+   {
+    "score": "1-2",
+    "p": 0.0884
+   },
+   {
+    "score": "1-0",
+    "p": 0.0775
+   },
+   {
+    "score": "0-1",
+    "p": 0.07355
+   },
+   {
+    "score": "2-0",
+    "p": 0.0641
+   }
+  ],
+  "model": {
+   "home": 0.38866427247734625,
+   "draw": 0.25498422359127965,
+   "away": 0.35635150393137427
+  },
+  "market": {
+   "home": 0.46385486693065664,
+   "draw": 0.2605212266322866,
+   "away": 0.27562390643705686,
+   "overround": 0.05163255325227456,
+   "provider": "DraftKings"
+  },
+  "home_scorers": [
+   {
+    "name": "Georges Mikautadze",
+    "pos": "F",
+    "share": 0.16935093284706698,
+    "anytime": 0.23383963764379045
+   },
+   {
+    "name": "Gerard Moreno",
+    "pos": "F",
+    "share": 0.13134398014736873,
+    "anytime": 0.18658521045177912
+   },
+   {
+    "name": "Nicolas P\u00e9p\u00e9",
+    "pos": "F",
+    "share": 0.11849524946130394,
+    "anytime": 0.16996738541925793
+   },
+   {
+    "name": "Alberto Moleiro",
+    "pos": "M",
+    "share": 0.11142896017476857,
+    "anytime": 0.16068564987771006
+   },
+   {
+    "name": "Pape Gueye",
+    "pos": "M",
+    "share": 0.1075660158912127,
+    "anytime": 0.15556828005385248
+   },
+   {
+    "name": "Ayoze P\u00e9rez",
+    "pos": "F",
+    "share": 0.08842227499862863,
+    "anytime": 0.1297491853985384
+   }
+  ],
+  "away_scorers": [
+   {
+    "name": "Rasmus H\u00f8jlund",
+    "pos": "F",
+    "share": 0.189167982681252,
+    "anytime": 0.24409445810196218
+   },
+   {
+    "name": "Kevin De Bruyne",
+    "pos": "M",
+    "share": 0.12306967726110501,
+    "anytime": 0.16646161466826048
+   },
+   {
+    "name": "Scott McTominay",
+    "pos": "M",
+    "share": 0.11433150907896573,
+    "anytime": 0.1556177677941636
+   },
+   {
+    "name": "Matteo Politano",
+    "pos": "F",
+    "share": 0.06895163524777612,
+    "anytime": 0.09698759309176641
+   },
+   {
+    "name": "Alisson Santos",
+    "pos": "F",
+    "share": 0.06571080422530613,
+    "anytime": 0.09264767004419594
+   },
+   {
+    "name": "Noa Lang",
+    "pos": "F",
+    "share": 0.05842253870520267,
+    "anytime": 0.08281116160702473
+   }
+  ]
+ }
+]

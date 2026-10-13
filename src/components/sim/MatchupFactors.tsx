@@ -121,17 +121,25 @@ export function MatchupFactors({
   const any = factors.some((f) => matchup.home.tend?.[f.key] || matchup.away.tend?.[f.key]);
   const platoon = matchup.league === "mlb" ? mlbPlatoon(matchup, overrides) : null;
   if (!any && !platoon) return null;
+  // Collapsed by default: it explains the result rather than being one, so it
+  // sits under the results and opens on request.
   return (
-    <section className="border border-border bg-card">
-      <div className="border-b border-border px-5 py-4 sm:px-8">
-        <h3 className="font-display text-2xl">Matchup factors</h3>
-        <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-          The team numbers this game is played with, on top of every player&apos;s own rates. Each
-          row is a season figure — pulled toward the league average by how much it has been played —
-          next to the league&apos;s, and what it does to the offense facing it.{" "}
-          {LEAGUE_NOTE[matchup.league]}
-        </p>
-      </div>
+    <details className="group border border-border bg-card">
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-4 border-border px-5 py-4 group-open:border-b sm:px-8">
+        <span>
+          <span className="font-display text-2xl">Matchup factors</span>
+          <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            why the numbers move
+          </span>
+          <span className="mt-1 hidden max-w-3xl text-xs text-muted-foreground group-open:block">
+            The team numbers this game is played with, on top of every player&apos;s own rates. Each
+            row is a season figure — pulled toward the league average by how much it has been played
+            — next to the league&apos;s, and what it does to the offense facing it.{" "}
+            {LEAGUE_NOTE[matchup.league]}
+          </span>
+        </span>
+        <span className="font-mono text-xs text-muted-foreground group-open:rotate-180">▼</span>
+      </summary>
       <div className="grid gap-px bg-border md:grid-cols-2">
         <Direction
           off={matchup.away}
@@ -150,7 +158,7 @@ export function MatchupFactors({
           extra={platoon?.home}
         />
       </div>
-    </section>
+    </details>
   );
 }
 

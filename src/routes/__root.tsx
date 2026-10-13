@@ -121,7 +121,7 @@ function RootShell({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-6xl px-6 py-4 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             ⚠️ Disclaimer: This site is for research and educational purposes only. The creator is
             not responsible for any losses, decisions, or actions taken based on the content
-            displayed. All MLB predictions are probabilistic estimates and should not be considered
+            displayed. All predictions are probabilistic estimates and should not be considered
             financial or betting advice. Past performance does not guarantee future results.
           </div>
         </div>

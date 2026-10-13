@@ -34,6 +34,19 @@ added back together — so 100,000 games cost the server nothing (about 12
 seconds for the NBA on a four-core laptop, 3 seconds for 20,000 NFL games) and
 a what-if (bench a star, start the backup goalie) needs no round trip.
 
+## Soccer — the Champions League
+
+The Champions League has its own simulator at `/soccer/ucl/simulate`, built
+differently from the four above because football is decided by so few events:
+a match is played **minute by minute**, each side scoring at its model goal
+rate bent by the minute, the score and red cards — every effect fitted on the
+goal logs of 9,000+ European matches — with goals credited to players by their
+share of their club's goals. Knockout ties get extra time and penalties, and a
+second leg plays from the first leg's score. Backtested on 1,253 Champions
+League matches: same RPS as the closed-form model, better log loss, and the
+draw rate right (18.6% simulated, 19.3% real). Engine `src/lib/sim/soccer.ts`;
+everything else in [UCL-ANALYSIS.md](UCL-ANALYSIS.md).
+
 ## Where things live
 
 | File | What it does |

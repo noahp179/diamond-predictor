@@ -5,6 +5,7 @@ import { readLedger } from "./tracking.server";
 import { isLeagueSlug, LEAGUES } from "./soccer-leagues";
 import { isTourSlug, TOURS } from "./tennis-tours";
 import soccerModels from "./soccer-match-model.json";
+import { UCL_MODEL } from "./ucl-model";
 import tennisModels from "./tennis-match-model.json";
 
 /**
@@ -35,6 +36,10 @@ function claimFor(sport: string, division: string) {
   // honest number to put in the "claimed" column, so the column stays empty
   // rather than being filled with the replay it just replaced.
   if (sport === "nfl" || sport === "nba") return null;
+  if (sport === "soccer" && division === "ucl") {
+    const b = UCL_MODEL.backtest.pooled.goals;
+    return { accuracy: b.acc, brier: b.brier, logLoss: b.logloss, rps: b.rps, n: b.n };
+  }
   if (sport === "soccer") {
     const m = SOCCER[division];
     if (!m) return null;

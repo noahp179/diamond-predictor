@@ -2,14 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { addDays, todayET } from "./date";
-import {
-  bestOddsSlate,
-  nextPlayableDate,
-  predictSlate,
-  recommendedSlate,
-  seasonOf,
-  type Sport,
-} from "./espn.server";
+import { bestOddsSlate, nextPlayableDate, predictSlate, seasonOf, type Sport } from "./espn.server";
 import type { ParlayCandidate } from "./td-parlay";
 
 function seasonLabel(sport: Sport, season: number): string {
@@ -66,46 +59,6 @@ export const getNflSlate = createServerFn({ method: "GET" })
 export const getCfbSlate = createServerFn({ method: "GET" })
   .inputValidator(z.object({ date: z.string().optional() }).optional())
   .handler(async ({ data }) => buildSlate("cfb", data?.date ?? todayET()));
-
-// ---------------------------------------------------------------- Recommended
-
-async function buildRecommended(sport: Sport, date: string) {
-  try {
-    const { games, picks, season } = await recommendedSlate(sport, date);
-    return {
-      date,
-      games,
-      picks,
-      season,
-      seasonLabel: seasonLabel(sport, season),
-      note: offseasonNote(sport, date),
-      source: "live" as const,
-    };
-  } catch (err) {
-    console.error(`[${sport}Recommended] failed:`, err);
-    return {
-      date,
-      games: [],
-      picks: [],
-      season: 0,
-      seasonLabel: "",
-      note: "The ESPN scoreboard is unreachable right now. Try refreshing in a moment.",
-      source: "error" as const,
-    };
-  }
-}
-
-export const getNbaRecommended = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildRecommended("nba", data?.date ?? todayET()));
-
-export const getNflRecommended = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildRecommended("nfl", data?.date ?? todayET()));
-
-export const getCfbRecommended = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ date: z.string().optional() }).optional())
-  .handler(async ({ data }) => buildRecommended("cfb", data?.date ?? todayET()));
 
 // ------------------------------------------------------------------ Best Odds
 

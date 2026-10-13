@@ -30,6 +30,8 @@
 import matchModels from "./soccer-match-model.json";
 import { leagueOf, type LeagueSlug } from "./soccer-leagues";
 import { pickOf, scoreOutcome, type ScoredCall } from "./ledger-stats";
+import { UCL_MODEL } from "./ucl-model";
+import { uclHistoryRows, uclSlate, type UclSlate } from "./ucl.server";
 
 type MatchModel = {
   league: string;
@@ -54,8 +56,36 @@ type MatchModel = {
 
 const MODELS = matchModels as Record<string, MatchModel>;
 
+/**
+ * The Champions League's card in the same shape, so the shared pages can read
+ * its headline numbers. Its model is not this file's `elo_gd` — see
+ * ucl-model.ts — so `calibration` is empty and nothing here replays it.
+ */
+const UCL_CARD: MatchModel = {
+  league: "ucl",
+  name: UCL_MODEL.name,
+  algorithm: UCL_MODEL.algorithm,
+  elo: {
+    init: UCL_MODEL.elo.euro_prior,
+    k: UCL_MODEL.elo.k,
+    hfa: UCL_MODEL.elo.hfa,
+    gdExp: UCL_MODEL.elo.gd_exp,
+    carry: UCL_MODEL.elo.carry,
+  },
+  calibration: { coef: [], intercept: [] },
+  backtest: {
+    ...UCL_MODEL.backtest.pooled.goals,
+    seasons: UCL_MODEL.backtest.perSeason.map((r) => r.season).filter((y) => y <= 2025),
+    trainedThrough: UCL_MODEL.goals.trainedThrough,
+    bakeoffRank: null,
+    bakeoffOf: null,
+    rpsBehindBest: null,
+  },
+  priors: UCL_MODEL.priors,
+};
+
 export function matchModelFor(slug: LeagueSlug): MatchModel {
-  return MODELS[slug];
+  return slug === "ucl" ? UCL_CARD : MODELS[slug];
 }
 
 // ------------------------------------------------------------------- types
@@ -89,10 +119,12 @@ export type SoccerMatch = {
 export type SoccerSlate = {
   league: LeagueSlug;
   date: string;
-  matches: SoccerMatch[];
+  matches: (SoccerMatch & Partial<Pick<UclSlate["matches"][number], "price" | "market">>)[];
   season: number;
   /** Elo table after every completed match up to `date`. */
   table: { team: SoccerTeam; rating: number; played: number }[];
+  /** Champions League only: where its cross-league ratings came from. */
+  ratings?: UclSlate["ratings"];
 };
 
 // ------------------------------------------------------------------- fetch
@@ -131,7 +163,7 @@ const API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
  * attempts with a growing pause clears it; anything that survives that is a
  * real failure and is thrown.
  */
-async function espnFetch(espn: string, dates: string): Promise<EspnEvent[]> {
+async function espnFetchOnce(espn: string, dates: string): Promise<EspnEvent[]> {
   let last = "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * 3 ** (attempt - 1)));
@@ -147,6 +179,49 @@ async function espnFetch(espn: string, dates: string): Promise<EspnEvent[]> {
     if (res.status !== 403 && res.status !== 429 && res.status < 500) break;
   }
   throw new Error(`ESPN soccer ${espn} ${dates}: ${last}`);
+}
+
+/**
+ * A scoreboard query. A `YYYYMMDD-YYYYMMDD` range that ESPN refuses is read
+ * again one month at a time.
+ *
+ * ESPN began refusing range queries with a 400 ("Failed to get events
+ * endpoint") in autumn 2026, across every sport, while single days, months
+ * (`YYYYMM`) and years still answer. A season is twelve months, so the
+ * fallback costs twelve calls where the range cost one; seasons are cached as
+ * before, so that is paid once per process.
+ */
+export async function espnFetch(espn: string, dates: string): Promise<EspnEvent[]> {
+  const range = dates.match(/^(\d{8})-(\d{8})$/);
+  if (!range) return espnFetchOnce(espn, dates);
+  try {
+    return await espnFetchOnce(espn, dates);
+  } catch {
+    // Fall through to months.
+  }
+  const [from, to] = [range[1], range[2]];
+  const months: string[] = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(4, 6));
+  while (y * 100 + m <= Number(to.slice(0, 6))) {
+    months.push(`${y}${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  const out: EspnEvent[] = [];
+  // Sequential: a season is a dozen calls and ESPN throttles a burst.
+  for (const mo of months) out.push(...(await espnFetchOnce(espn, mo)));
+  const lo = `${from.slice(0, 4)}-${from.slice(4, 6)}-${from.slice(6, 8)}`;
+  const hi = `${to.slice(0, 4)}-${to.slice(4, 6)}-${to.slice(6, 8)}T23:59Z`;
+  const seen = new Set<string>();
+  return out.filter((e) => {
+    if (seen.has(e.id) || e.date < lo || e.date > hi) return false;
+    seen.add(e.id);
+    return true;
+  });
 }
 
 function team(c: EspnCompetitor): SoccerTeam {
@@ -371,6 +446,10 @@ function calibrate(model: MatchModel, gap: number) {
 // --------------------------------------------------------------- the slate
 
 export async function soccerSlate(slug: LeagueSlug, date: string): Promise<SoccerSlate> {
+  if (slug === "ucl") {
+    const u = await uclSlate(date);
+    return { league: "ucl", ...u };
+  }
   const league = leagueOf(slug);
   const model = matchModelFor(slug);
   const season = seasonOf(date);
@@ -512,6 +591,12 @@ export async function soccerHistoryRows(
   upTo: string,
   days = HISTORY_DAYS,
 ): Promise<HistoricMatch[]> {
+  if (slug === "ucl") {
+    const from = new Date(`${upTo}T00:00:00Z`);
+    from.setUTCDate(from.getUTCDate() - days);
+    const rows = await uclHistoryRows(upTo, from.toISOString().slice(0, 10));
+    return rows.map((r) => ({ ...r, venue: "" }));
+  }
   const league = leagueOf(slug);
   const model = matchModelFor(slug);
   const currentSeason = seasonOf(new Date().toISOString().slice(0, 10));

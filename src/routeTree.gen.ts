@@ -64,6 +64,7 @@ import { Route as TennisTourRouteImport } from './routes/tennis.$tour'
 import { Route as SoccerLeagueIndexRouteImport } from './routes/soccer.$league.index'
 import { Route as SoccerLeagueModelRouteImport } from './routes/soccer.$league.model'
 import { Route as SoccerLeaguePropsRouteImport } from './routes/soccer.$league.props'
+import { Route as SoccerLeagueSimulateRouteImport } from './routes/soccer.$league.simulate'
 import { Route as SoccerLeagueTrackRecordRouteImport } from './routes/soccer.$league.track-record'
 import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index'
 import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model'
@@ -346,6 +347,11 @@ const SoccerLeaguePropsRoute = SoccerLeaguePropsRouteImport.update({
   path: '/props',
   getParentRoute: () => SoccerLeagueRoute,
 } as any)
+const SoccerLeagueSimulateRoute = SoccerLeagueSimulateRouteImport.update({
+  id: '/simulate',
+  path: '/simulate',
+  getParentRoute: () => SoccerLeagueRoute,
+} as any)
 const SoccerLeagueTrackRecordRoute = SoccerLeagueTrackRecordRouteImport.update({
   id: '/track-record',
   path: '/track-record',
@@ -434,6 +440,7 @@ export interface FileRoutesByFullPath {
   '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/simulate': typeof SoccerLeagueSimulateRoute
   '/soccer/$league/track-record': typeof SoccerLeagueTrackRecordRoute
   '/tennis/$tour/model': typeof TennisTourModelRoute
   '/tennis/$tour/track-record': typeof TennisTourTrackRecordRoute
@@ -487,6 +494,7 @@ export interface FileRoutesByTo {
   '/tennis': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/simulate': typeof SoccerLeagueSimulateRoute
   '/soccer/$league/track-record': typeof SoccerLeagueTrackRecordRoute
   '/tennis/$tour/model': typeof TennisTourModelRoute
   '/tennis/$tour/track-record': typeof TennisTourTrackRecordRoute
@@ -551,6 +559,7 @@ export interface FileRoutesById {
   '/tennis/': typeof TennisIndexRoute
   '/soccer/$league/model': typeof SoccerLeagueModelRoute
   '/soccer/$league/props': typeof SoccerLeaguePropsRoute
+  '/soccer/$league/simulate': typeof SoccerLeagueSimulateRoute
   '/soccer/$league/track-record': typeof SoccerLeagueTrackRecordRoute
   '/tennis/$tour/model': typeof TennisTourModelRoute
   '/tennis/$tour/track-record': typeof TennisTourTrackRecordRoute
@@ -616,6 +625,7 @@ export interface FileRouteTypes {
     | '/tennis/'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/soccer/$league/simulate'
     | '/soccer/$league/track-record'
     | '/tennis/$tour/model'
     | '/tennis/$tour/track-record'
@@ -669,6 +679,7 @@ export interface FileRouteTypes {
     | '/tennis'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/soccer/$league/simulate'
     | '/soccer/$league/track-record'
     | '/tennis/$tour/model'
     | '/tennis/$tour/track-record'
@@ -732,6 +743,7 @@ export interface FileRouteTypes {
     | '/tennis/'
     | '/soccer/$league/model'
     | '/soccer/$league/props'
+    | '/soccer/$league/simulate'
     | '/soccer/$league/track-record'
     | '/tennis/$tour/model'
     | '/tennis/$tour/track-record'
@@ -1148,6 +1160,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SoccerLeaguePropsRouteImport
       parentRoute: typeof SoccerLeagueRoute
     }
+    '/soccer/$league/simulate': {
+      id: '/soccer/$league/simulate'
+      path: '/simulate'
+      fullPath: '/soccer/$league/simulate'
+      preLoaderRoute: typeof SoccerLeagueSimulateRouteImport
+      parentRoute: typeof SoccerLeagueRoute
+    }
     '/soccer/$league/track-record': {
       id: '/soccer/$league/track-record'
       path: '/track-record'
@@ -1310,6 +1329,7 @@ const SimRouteWithChildren = SimRoute._addFileChildren(SimRouteChildren)
 interface SoccerLeagueRouteChildren {
   SoccerLeagueModelRoute: typeof SoccerLeagueModelRoute
   SoccerLeaguePropsRoute: typeof SoccerLeaguePropsRoute
+  SoccerLeagueSimulateRoute: typeof SoccerLeagueSimulateRoute
   SoccerLeagueTrackRecordRoute: typeof SoccerLeagueTrackRecordRoute
   SoccerLeagueIndexRoute: typeof SoccerLeagueIndexRoute
 }
@@ -1317,6 +1337,7 @@ interface SoccerLeagueRouteChildren {
 const SoccerLeagueRouteChildren: SoccerLeagueRouteChildren = {
   SoccerLeagueModelRoute: SoccerLeagueModelRoute,
   SoccerLeaguePropsRoute: SoccerLeaguePropsRoute,
+  SoccerLeagueSimulateRoute: SoccerLeagueSimulateRoute,
   SoccerLeagueTrackRecordRoute: SoccerLeagueTrackRecordRoute,
   SoccerLeagueIndexRoute: SoccerLeagueIndexRoute,
 }

@@ -84,6 +84,8 @@ type EspnCompetitor = {
 type EspnEvent = {
   id: string;
   date: string;
+  /** 1 preseason, 2 regular season, 3 postseason. */
+  season?: { type?: number };
   status: { type: { name: string; state: string; shortDetail?: string; completed?: boolean } };
   competitions: {
     neutralSite?: boolean;
@@ -208,6 +210,8 @@ export type SlateGame = {
    *  game is final, so both are null for anything already played. */
   total: number | null;
   homeSpread: number | null;
+  /** ESPN's season type: 1 preseason, 2 regular season, 3 postseason. */
+  seasonType: number | null;
 };
 
 type EspnTeam = {
@@ -273,6 +277,7 @@ function toSlateGame(ev: EspnEvent): SlateGame | null {
     state,
     total: typeof posted?.overUnder === "number" ? posted.overUnder : null,
     homeSpread: typeof posted?.spread === "number" ? posted.spread : null,
+    seasonType: ev.season?.type ?? null,
   };
 }
 
@@ -637,6 +642,7 @@ export async function predictSlate(
       awayScore: g.awayScore,
       winner: g.winner,
       state: g.state,
+      seasonType: g.seasonType,
       correct,
       rationale: [
         `${SPORT_LABEL[sport]} margin-of-victory Elo, replayed point-in-time (${gamesReplayed.toLocaleString()} games through ${date}).`,
@@ -674,20 +680,6 @@ function toTeamSide(t: EspnTeam, elo: number): TeamSide {
 /** The confidence in a pick's outcome (how likely the favored side is to win). */
 export function pickConfidence(homeWinProb: number): number {
   return Math.max(homeWinProb, 1 - homeWinProb);
-}
-
-/** Today's slate ranked by model confidence — the Recommended surface.
- *  Reuses predictSlate; no extra fetches. */
-export async function recommendedSlate(
-  sport: Sport,
-  date: string,
-): Promise<{ games: PredictedGame[]; picks: PredictedGame[]; season: number }> {
-  const { games, season } = await predictSlate(sport, date);
-  const upcoming = games; // include finals too so the page can score itself
-  const picks = [...upcoming]
-    .sort((a, b) => pickConfidence(b.homeWinProb) - pickConfidence(a.homeWinProb))
-    .slice(0, 5);
-  return { games, picks, season };
 }
 
 // ------------------------------------------------------------------ odds

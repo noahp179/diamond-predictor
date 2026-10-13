@@ -37,7 +37,7 @@
 
 import propsModels from "./soccer-props-model.json";
 import { leagueOf, type LeagueSlug } from "./soccer-leagues";
-import { seasonOf } from "./soccer.server";
+import { espnFetch, seasonOf } from "./soccer.server";
 
 type Tier = { label: string; minProb: number; hitRate: number; n: number };
 
@@ -239,16 +239,11 @@ async function seasonForm(slug: LeagueSlug, season: number): Promise<SeasonForm>
   if (hit && Date.now() - hit.at < FORM_TTL) return hit;
 
   const league = leagueOf(slug);
-  const sb = await fetchJson<{
-    events?: {
-      id: string;
-      date: string;
-      status?: { type?: { completed?: boolean } };
-      competitions?: { competitors?: { homeAway: string; team: { id: string } }[] }[];
-    }[];
-  }>(`${API}/${league.espn}/scoreboard?dates=${season}0701-${season + 1}0630&limit=1000`, 20000);
+  // Through espnFetch, which reads the season a month at a time when ESPN
+  // refuses the range query (it has since autumn 2026).
+  const events = await espnFetch(league.espn, `${season}0701-${season + 1}0630`).catch(() => []);
 
-  const played = (sb?.events ?? [])
+  const played = events
     .filter((e) => e.status?.type?.completed)
     .map((e) => {
       const cs = e.competitions?.[0]?.competitors ?? [];

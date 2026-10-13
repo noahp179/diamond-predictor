@@ -2,8 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/AppShell";
 import { SPORTS, viewsFor, type SportKey } from "@/lib/nav";
-import { LEAGUES } from "@/lib/soccer-leagues";
-import matchModels from "@/lib/soccer-match-model.json";
 
 /**
  * The hub.
@@ -39,15 +37,12 @@ export const Route = createFileRoute("/")({
   component: Hub,
 });
 
-type MatchModel = { backtest: { rps: number; acc: number; n: number } };
-const SOCCER = matchModels as Record<string, MatchModel>;
-
 export function Hub() {
   return (
     <AppShell
       eyebrow="Diamond Edge"
       title="Every model, in one place"
-      blurb="Win probabilities, player props and parlays across four sports and five soccer leagues. Every model here was scored on seasons it never trained on, and every page shows that number — including where the model loses."
+      blurb="Win probabilities, player props, parlays and game simulations across baseball, football, basketball, hockey, soccer and tennis. Every model here was scored on seasons it never trained on, and every page shows that number — including where the model loses."
       footerNote="Data · MLB Stats API · ESPN · Not affiliated with any league"
     >
       <Link
@@ -57,15 +52,15 @@ export function Hub() {
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <span className="font-display text-3xl group-hover:text-primary">Game Simulator</span>
           <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            NFL · NBA · NHL · MLB
+            NFL · CFB · NBA · NHL · MLB · UCL
           </span>
         </div>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
           Play any game out one play at a time from the players&apos; season numbers and each
           team&apos;s offensive and defensive tendencies. Run it ten times or a hundred thousand for
           the win probability, the average box score, and every player&apos;s projected line against
-          his season — or watch one unfold with a live box score. A Simulate tab in the NFL, NBA,
-          MLB and NHL sections.
+          his season — or watch one unfold with a live box score. A Simulate tab in every section
+          that has one, the Champions League included.
         </p>
         <span className="mt-3 inline-block font-mono text-[11px] uppercase tracking-widest text-primary">
           Open the simulator →
@@ -77,37 +72,6 @@ export function Hub() {
           <SportCard key={s.key} sport={s.key} label={s.label} blurb={s.blurb} />
         ))}
       </div>
-
-      <section className="mt-10">
-        <h2 className="font-display text-2xl">Soccer, league by league</h2>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Five separate models, because the leagues are not the same problem. Draws run from 23.9%
-          in England to 27.4% in Italy — one calibration across all of them would be wrong at both
-          ends. RPS is the three-way scoring rule; lower is better, and predicting the base rates
-          scores about 0.465.
-        </p>
-        <div className="mt-4 grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
-          {LEAGUES.map((l) => {
-            const m = SOCCER[l.slug];
-            return (
-              <Link
-                key={l.slug}
-                to="/soccer/$league"
-                params={{ league: l.slug }}
-                className="group bg-card px-5 py-4 transition-colors hover:bg-secondary/40"
-              >
-                <div className="font-display text-xl group-hover:text-primary">{l.name}</div>
-                <div className="mt-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                  {l.country}
-                  {m
-                    ? ` · RPS ${m.backtest.rps.toFixed(4)} · ${m.backtest.n.toLocaleString()} tested`
-                    : ""}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
 
       <section className="mt-10 border border-border bg-card p-6">
         <h2 className="font-display text-2xl">How to read anything here</h2>

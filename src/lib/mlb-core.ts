@@ -73,6 +73,9 @@ export interface PredictedGame {
    * Null when no market line is available. See CONFIDENCE-MODEL.md.
    */
   pickConfidence?: number | null;
+  /** ESPN's season type for the team sports: 1 preseason, 2 regular season,
+   *  3 postseason. Unset for MLB, which comes from a different feed. */
+  seasonType?: number | null;
 }
 
 export interface StandingsRow {

@@ -128,7 +128,8 @@ export const SPORTS: SportNav[] = [
     key: "soccer",
     label: "Soccer",
     phrase: "soccer",
-    blurb: "Europe's big five — each league its own model, calibration and backtest.",
+    blurb:
+      "Europe's big five and the Champions League — each competition its own model, calibration and backtest, plus a Champions League match simulator.",
     href: "/soccer",
     leagued: true,
   },
@@ -180,22 +181,23 @@ const VIEWS: Record<SportKey, ViewKey[]> = {
     "stacks",
     "trackRecord",
   ],
-  nfl: [
-    "slate",
-    "simulate",
-    "recommended",
-    "bestOdds",
-    "props",
-    "tdScorers",
-    "parlay",
-    "trackRecord",
-  ],
-  cfb: ["slate", "simulate", "recommended", "bestOdds", "tdScorers", "parlay", "trackRecord"],
-  nba: ["slate", "simulate", "recommended", "bestOdds", "trackRecord"],
+  nfl: ["slate", "simulate", "bestOdds", "props", "tdScorers", "parlay", "trackRecord"],
+  // NFL, college and NBA have no Recommended tab: it ranked the slate by model
+  // confidence, which is Best Odds' default view. MLB's builds parlay slips.
+  cfb: ["slate", "simulate", "bestOdds", "tdScorers", "parlay", "trackRecord"],
+  nba: ["slate", "simulate", "bestOdds", "trackRecord"],
   // No picks model for hockey yet: the simulator is the section.
   nhl: ["simulate"],
   soccer: ["slate", "props", "model", "trackRecord"],
   tennis: ["slate", "model", "trackRecord"],
+};
+
+/**
+ * Divisions whose pages differ from their sport's. The Champions League has a
+ * simulator and no prop models, so it swaps one tab for the other.
+ */
+const DIVISION_VIEWS: Partial<Record<DivisionSlug, ViewKey[]>> = {
+  ucl: ["slate", "simulate", "model", "trackRecord"],
 };
 
 /** Path segment for a view; the slate is the section index, so it has none. */
@@ -235,14 +237,21 @@ const VIEW_LABEL: Partial<Record<SportKey, Partial<Record<ViewKey, string>>>> = 
  */
 export function viewHref(sport: SportKey, view: ViewKey, division?: DivisionSlug): string {
   const divs = divisionsOf(sport);
-  const base = divs.length ? `/${sport}/${division ?? divs[0].slug}` : `/${sport}`;
-  const seg = SEGMENT[view];
+  const div = division ?? divs[0]?.slug;
+  const base = divs.length ? `/${sport}/${div}` : `/${sport}`;
+  // A division without this view (props in the Champions League, the
+  // simulator in a domestic league) lands on its matches instead of a dead end.
+  const seg = div && !viewKeys(sport, div).includes(view) ? "" : SEGMENT[view];
   return seg ? `${base}/${seg}` : base;
+}
+
+function viewKeys(sport: SportKey, division?: DivisionSlug): ViewKey[] {
+  return (division && DIVISION_VIEWS[division]) || VIEWS[sport];
 }
 
 /** Every view in a sport, in tab order, with hrefs already resolved. */
 export function viewsFor(sport: SportKey, division?: DivisionSlug): NavItem[] {
-  return VIEWS[sport].map((key) => ({
+  return viewKeys(sport, division).map((key) => ({
     key,
     label: VIEW_LABEL[sport]?.[key] ?? LABELS[key],
     href: viewHref(sport, key, division),

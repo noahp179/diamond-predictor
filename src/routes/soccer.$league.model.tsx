@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { SoccerShell } from "@/components/SoccerShell";
+import { UclModelPage } from "@/components/UclModelPage";
 import { StatBar, Stat } from "@/components/SportShell";
 import { getSoccerModelCard } from "@/lib/soccer.functions";
 import { leagueOf, type LeagueSlug } from "@/lib/soccer-leagues";
@@ -24,7 +25,10 @@ export const Route = createFileRoute("/soccer/$league/model")({
         { title: `${l.name} Model & Backtest — Diamond Edge` },
         {
           name: "description",
-          content: `How the ${l.name} match and player-prop models were built, and how they scored on held-out seasons.`,
+          content:
+            l.slug === "ucl"
+              ? "How the Champions League's cross-league Elo and match simulator were built, and how they scored on nine held-out seasons."
+              : `How the ${l.name} match and player-prop models were built, and how they scored on held-out seasons.`,
         },
       ],
     };
@@ -36,6 +40,10 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
 function SoccerModelPage() {
   const { league } = Route.useParams();
+  return league === "ucl" ? <UclModelPage /> : <LeagueModelPage league={league} />;
+}
+
+function LeagueModelPage({ league }: { league: string }) {
   const slug = league as LeagueSlug;
   const l = leagueOf(league);
   const run = useServerFn(getSoccerModelCard);

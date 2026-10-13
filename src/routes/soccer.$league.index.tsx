@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -16,7 +16,10 @@ export const Route = createFileRoute("/soccer/$league/")({
         { title: `${l.name} — Diamond Edge` },
         {
           name: "description",
-          content: `${l.name} match predictions: home, draw and away probabilities from a goal-difference Elo calibrated on ${l.name} seasons alone.`,
+          content:
+            l.slug === "ucl"
+              ? "Champions League match predictions: home, draw and away, expected goals and likely scores from one Elo rating every club in Europe, against the posted market."
+              : `${l.name} match predictions: home, draw and away probabilities from a goal-difference Elo calibrated on ${l.name} seasons alone.`,
         },
       ],
     };
@@ -45,6 +48,9 @@ function SoccerSlatePage() {
   });
 
   const matches = data?.matches ?? [];
+  // The Champions League rates from a snapshot; before its cut-off the table
+  // shows the snapshot, not that date.
+  const cutoff = data && "ratings" in data ? data.ratings?.cutoff : undefined;
   const priced = matches.filter((m) => m.probs != null);
   const surest = priced.reduce<Match | null>((best, m) => {
     const p = Math.max(m.probs!.home, m.probs!.draw, m.probs!.away);
@@ -58,7 +64,11 @@ function SoccerSlatePage() {
       current="slate"
       eyebrow={`Diamond Edge · ${l.name}`}
       title={l.name}
-      blurb={`Home, draw and away for every fixture. The model is a goal-difference Elo replayed over completed ${l.name} matches, then mapped to three probabilities by a calibration fitted on ${l.name} seasons alone — no other league feeds it.`}
+      blurb={
+        slug === "ucl"
+          ? "Home, draw and away, expected goals and the likeliest scores for every fixture. The clubs come from twenty leagues, so the ratings are ONE Elo across all of them — 91,000 domestic and European matches since 2013 — and the market price sits alongside for comparison. Every match can be played out on the Simulate page."
+          : `Home, draw and away for every fixture. The model is a goal-difference Elo replayed over completed ${l.name} matches, then mapped to three probabilities by a calibration fitted on ${l.name} seasons alone — no other league feeds it.`
+      }
       date={date}
       onDateChange={setDate}
       statBar={
@@ -76,7 +86,11 @@ function SoccerSlatePage() {
           />
         </StatBar>
       }
-      footerNote={`Data · ESPN soccer API · goal-difference Elo calibrated on ${l.name}`}
+      footerNote={
+        slug === "ucl"
+          ? "Data · ESPN soccer API · cross-league Elo with Dixon-Coles scorelines · market prices as ESPN posts them"
+          : `Data · ESPN soccer API · goal-difference Elo calibrated on ${l.name}`
+      }
     >
       {isLoading && <div className="h-56 animate-pulse border border-border bg-card" />}
       {isError && (
@@ -89,7 +103,7 @@ function SoccerSlatePage() {
       {!isLoading && matches.length > 0 && (
         <div className="grid gap-4">
           {matches.map((m) => (
-            <MatchCard key={m.id} match={m} />
+            <MatchCard key={m.id} match={m} league={slug} date={date} />
           ))}
         </div>
       )}
@@ -99,20 +113,24 @@ function SoccerSlatePage() {
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-display text-2xl">Power ratings</h2>
             <p className="mt-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              Elo after every completed match this season · 1500 is average
+              {slug === "ucl"
+                ? `This season's clubs · one Elo across every league · ratings as of ${cutoff && date < cutoff ? cutoff : date}`
+                : "Elo after every completed match this season · 1500 is average"}
             </p>
           </div>
           <ol>
-            {data!.table.slice(0, 20).map((r, i) => (
+            {data!.table.slice(0, slug === "ucl" ? 36 : 20).map((r, i) => (
               <li
                 key={r.team.id}
                 className="flex items-center gap-3 border-t border-border px-5 py-2.5"
               >
                 <span className="w-6 shrink-0 font-mono text-[11px] text-primary/70">{i + 1}</span>
                 <span className="min-w-0 flex-1 truncate font-display text-lg">{r.team.name}</span>
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                  {r.played} pl
-                </span>
+                {slug !== "ucl" && (
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                    {r.played} pl
+                  </span>
+                )}
                 <span className="w-16 shrink-0 text-right font-display text-xl">
                   {Math.round(r.rating)}
                 </span>
@@ -125,7 +143,7 @@ function SoccerSlatePage() {
   );
 }
 
-function MatchCard({ match }: { match: Match }) {
+function MatchCard({ match, league, date }: { match: Match; league: LeagueSlug; date: string }) {
   const p = match.probs;
   const played = match.result != null;
   // The side the model leaned on, and whether the match bore it out.
@@ -192,6 +210,61 @@ function MatchCard({ match }: { match: Match }) {
           One of these sides has no rating yet — a promoted club early in the season, most likely.
           Rather than invent a number, this fixture is left unpriced.
         </div>
+      )}
+      {match.price && <Scorelines match={match} league={league} date={date} />}
+    </div>
+  );
+}
+
+/** The Champions League's extra row: goals, scorelines and the market. */
+function Scorelines({ match, league, date }: { match: Match; league: LeagueSlug; date: string }) {
+  const pr = match.price!;
+  const mk = match.market;
+  return (
+    <div className="grid gap-3 border-t border-border/60 px-5 py-4 font-mono text-[11px] text-muted-foreground sm:grid-cols-[1fr_auto]">
+      <div className="space-y-1.5">
+        <div>
+          <span className="uppercase tracking-widest">Expected goals</span>{" "}
+          <span className="text-foreground">
+            {pr.xgHome.toFixed(2)} – {pr.xgAway.toFixed(2)}
+          </span>
+          <span className="ml-3 uppercase tracking-widest">Over 2.5</span>{" "}
+          <span className="text-foreground">{pct(pr.over25)}</span>
+          <span className="ml-3 uppercase tracking-widest">Both score</span>{" "}
+          <span className="text-foreground">{pct(pr.btts)}</span>
+        </div>
+        {pr.scores.length > 0 && (
+          <div>
+            <span className="uppercase tracking-widest">Likeliest</span>{" "}
+            {pr.scores.slice(0, 4).map((s, i) => (
+              <span key={s.score} className={i === 0 ? "text-foreground" : ""}>
+                {i > 0 && " · "}
+                {s.score} ({(s.p * 100).toFixed(0)}%)
+              </span>
+            ))}
+          </div>
+        )}
+        {mk && (
+          <div>
+            <span className="uppercase tracking-widest">Market</span>{" "}
+            <span className="text-foreground">
+              {pct(mk.home)} · {pct(mk.draw)} · {pct(mk.away)}
+            </span>{" "}
+            <span>
+              ({mk.provider || "posted"}, {(mk.overround * 100).toFixed(1)}% margin removed)
+            </span>
+          </div>
+        )}
+      </div>
+      {league === "ucl" && !match.completed && (
+        <Link
+          to="/soccer/$league/simulate"
+          params={{ league }}
+          search={{ date, game: match.id }}
+          className="self-center border border-border px-3 py-2 uppercase tracking-widest text-foreground transition-colors hover:border-primary hover:text-primary"
+        >
+          Simulate →
+        </Link>
       )}
     </div>
   );

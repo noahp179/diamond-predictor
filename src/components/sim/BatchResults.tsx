@@ -39,6 +39,7 @@ export function BatchResults({
   const u = UNITS[matchup.league];
   const { home, away } = matchup;
   const n = result.n;
+  const hasTeamAverages = Object.keys(result.team.home).some((k) => TEAM_LABELS[k]);
 
   const marginBins = useMemo(
     () =>
@@ -245,10 +246,14 @@ export function BatchResults({
         </ChartCard>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
+      <div className={`grid gap-6 ${hasTeamAverages ? "lg:grid-cols-[2fr_3fr]" : ""}`}>
         <section className="border border-border bg-card p-5 sm:p-6">
           <h3 className="font-display text-2xl">Most likely final scores</h3>
-          <ol className="mt-3 divide-y divide-border/60 font-mono text-sm tabular-nums">
+          <ol
+            className={`mt-3 divide-y divide-border/60 font-mono text-sm tabular-nums ${
+              hasTeamAverages ? "" : "sm:grid sm:grid-cols-2 sm:gap-x-10 sm:divide-y-0"
+            }`}
+          >
             {result.topScores.map((s, i) => (
               <li key={i} className="flex items-center justify-between py-1.5">
                 <span className="text-foreground">
@@ -259,13 +264,18 @@ export function BatchResults({
             ))}
           </ol>
         </section>
-        <section className="border border-border bg-card p-5 sm:p-6">
-          <h3 className="font-display text-2xl">Team averages</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Per game, across all {n.toLocaleString()} simulations.
-          </p>
-          <TeamAverages matchup={matchup} result={result} />
-        </section>
+        {/* Basketball's engine keeps no team-level stats beyond the box score
+            below, so the card would be an empty frame; it only renders when
+            there is something in it. */}
+        {hasTeamAverages && (
+          <section className="border border-border bg-card p-5 sm:p-6">
+            <h3 className="font-display text-2xl">Team averages</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Per game, across all {n.toLocaleString()} simulations.
+            </p>
+            <TeamAverages matchup={matchup} result={result} />
+          </section>
+        )}
       </div>
 
       <Movers matchup={matchup} result={result} />
@@ -368,22 +378,24 @@ function LegendKey({ color, label }: { color: string; label: string }) {
   );
 }
 
+const TEAM_LABELS: Record<string, string> = {
+  YDS: "Total yards",
+  PASS: "Passing yards",
+  RUSH: "Rushing yards",
+  FD: "First downs",
+  TO: "Turnovers",
+  SACKS: "Sacked",
+  PLAYS: "Offensive plays",
+  SOG: "Shots on goal",
+  PPO: "Power plays",
+  PPG: "Power-play goals",
+  H: "Hits",
+  E: "Errors",
+  LOB: "Left on base",
+};
+
 function TeamAverages({ matchup, result }: { matchup: SimMatchup; result: MassResult }) {
-  const labels: Record<string, string> = {
-    YDS: "Total yards",
-    PASS: "Passing yards",
-    RUSH: "Rushing yards",
-    FD: "First downs",
-    TO: "Turnovers",
-    SACKS: "Sacked",
-    PLAYS: "Offensive plays",
-    SOG: "Shots on goal",
-    PPO: "Power plays",
-    PPG: "Power-play goals",
-    H: "Hits",
-    E: "Errors",
-    LOB: "Left on base",
-  };
+  const labels = TEAM_LABELS;
   const keys = Object.keys(result.team.home).filter((k) => labels[k]);
   if (!keys.length) return null;
   return (
