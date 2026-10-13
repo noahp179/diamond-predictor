@@ -1,4 +1,5 @@
 import { useServerFn } from "@tanstack/react-start";
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
@@ -42,12 +43,15 @@ export function LedgerView({
   division,
   title,
   eyebrow,
+  children,
 }: {
   sport: SportKey;
   /** Soccer's league or tennis's tour. NFL and NBA have none. */
   division?: DivisionSlug;
   title: string;
   eyebrow: string;
+  /** Rendered below the ledger — a replayed record, kept visibly separate. */
+  children?: ReactNode;
 }) {
   const run = useServerFn(getTrackLedger);
   const { data, isLoading, isError, error } = useQuery({
@@ -355,6 +359,7 @@ export function LedgerView({
           accuracy that describes neither. Football only — no other sport has a
           player board wired to the forward ledger. */}
       {(sport === "cfb" || sport === "nfl") && <TdTrackRecord sport={sport} />}
+      {children}
     </AppShell>
   );
 }

@@ -37,6 +37,9 @@ import { tennisSlate } from "./tennis.server";
 
 /** Bumped when a model changes in a way that makes old rows incomparable. */
 export const SOCCER_MODEL_VERSION = "soccer-elo-gd-v1";
+/** The Champions League's own model — a cross-league Elo priced through
+ *  scorelines (ucl-model.ts) — so its rows never mix with `elo_gd`'s. */
+export const UCL_MODEL_VERSION = "ucl-cross-elo-dc-v1";
 export const TENNIS_MODEL_VERSION = "tennis-logistic-no-h2h-v1";
 /**
  * NFL and NBA use the same Elo-with-market-blend that builds their daily slate.
@@ -50,9 +53,9 @@ export const CFB_MODEL_VERSION = "cfb-elo-market-v1";
 
 export type Outcome = "a" | "draw" | "b";
 
-/** Which model's rows belong to a sport. */
-export function modelVersionFor(sport: string): string {
-  if (sport === "soccer") return SOCCER_MODEL_VERSION;
+/** Which model's rows belong to a sport (and, for soccer, a competition). */
+export function modelVersionFor(sport: string, division?: string): string {
+  if (sport === "soccer") return division === "ucl" ? UCL_MODEL_VERSION : SOCCER_MODEL_VERSION;
   if (sport === "tennis") return TENNIS_MODEL_VERSION;
   if (sport === "nfl") return NFL_MODEL_VERSION;
   if (sport === "cfb") return CFB_MODEL_VERSION;
@@ -176,23 +179,28 @@ async function insertNew(rows: Partial<LedgerRow>[]): Promise<number> {
   return count ?? 0;
 }
 
-/** Record every priced soccer fixture for a date, across all five leagues. */
+/** Record every priced soccer fixture for a date, across all six competitions. */
 export async function snapshotSoccer(date: string): Promise<number> {
   let written = 0;
   for (const l of LEAGUES) {
     try {
       const slate = await soccerSlate(l.slug as LeagueSlug, date);
+      const now = new Date().toISOString();
       const rows = slate.matches
         // Unpriced fixtures are not predictions; a promoted club with no rating
         // has nothing to be right or wrong about.
         .filter((m) => m.probs != null)
+        // The Champions League's ratings move with every result in Europe, so a
+        // row written after kick-off would not be what the page showed before
+        // it. Only fixtures still to start are recorded.
+        .filter((m) => l.slug !== "ucl" || m.date > now)
         .map((m) => {
           const probs = { a: m.probs!.home, draw: m.probs!.draw, b: m.probs!.away };
           const pick = pickOf(probs);
           return {
             sport: "soccer",
             division: l.slug,
-            model_version: SOCCER_MODEL_VERSION,
+            model_version: modelVersionFor("soccer", l.slug),
             event_id: m.id,
             event_date: date,
             subject_a: m.home.name,
@@ -542,7 +550,7 @@ export async function readLedger(
   division: string,
   provenance: "forward" | "reconstructed" = "forward",
 ): Promise<LedgerView> {
-  const modelVersion = modelVersionFor(sport);
+  const modelVersion = modelVersionFor(sport, division);
   const empty: LedgerView = {
     sport,
     division,

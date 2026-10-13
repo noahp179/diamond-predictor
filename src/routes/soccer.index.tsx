@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { LEAGUES } from "@/lib/soccer-leagues";
 import matchModels from "@/lib/soccer-match-model.json";
+import { UCL_MODEL } from "@/lib/ucl-model";
 
 /**
  * The Soccer landing page: pick a competition.
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/soccer/")({
       {
         name: "description",
         content:
-          "Match and player-prop models for the Premier League, La Liga, Bundesliga, Serie A and Ligue 1 — each fitted, calibrated and backtested on its own seasons.",
+          "Match and player-prop models for the Premier League, La Liga, Bundesliga, Serie A and Ligue 1, and a cross-league Champions League model with a match simulator — each fitted, calibrated and backtested on its own seasons.",
       },
     ],
   }),
@@ -42,7 +43,13 @@ type ModelFile = Record<
   }
 >;
 
-const MODELS = matchModels as ModelFile;
+const MODELS: ModelFile = {
+  ...(matchModels as ModelFile),
+  ucl: {
+    backtest: { ...UCL_MODEL.backtest.pooled.goals, bakeoffRank: null, bakeoffOf: null },
+    priors: UCL_MODEL.priors,
+  },
+};
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
 function SoccerIndex() {
@@ -50,8 +57,8 @@ function SoccerIndex() {
     <AppShell
       sport="soccer"
       eyebrow="Diamond Edge · Soccer"
-      title="Five Leagues"
-      blurb="Europe's big five, each with its own match model and its own set of player-prop models. Nothing is shared between them: draw rates run from 23.9% in England to 27.4% in Italy, so a calibration borrowed across borders would be wrong at both ends. Every number below is from seasons the model never trained on."
+      title="Leagues & Europe"
+      blurb="Europe's big five, each with its own match model and its own set of player-prop models, and the Champions League, rated by one Elo across every league its clubs come from and played out by a match simulator. Nothing is shared between them: draw rates run from 19% in the Champions League to 27.4% in Italy, so a calibration borrowed across borders would be wrong at both ends. Every number below is from seasons the model never trained on."
       footerNote="Data · ESPN soccer API · Not affiliated with any league"
     >
       <div className="grid gap-4 md:grid-cols-2">
@@ -91,9 +98,10 @@ function SoccerIndex() {
       <div className="mt-8 border border-border bg-card p-5 font-mono text-[11px] text-muted-foreground">
         RPS is the ranked probability score — the three-way equivalent of Brier, and the right
         metric for a market whose outcomes are ordered home &gt; draw &gt; away. Lower is better;
-        always predicting the league's base rates scores about 0.465. Accuracy is shown because it
-        is familiar, not because it is the better measure: a model can gain accuracy while getting
-        worse at pricing, which is what RPS catches and accuracy does not.
+        always predicting the league's base rates scores about 0.465 (0.475 in the Champions
+        League). Accuracy is shown because it is familiar, not because it is the better measure: a
+        model can gain accuracy while getting worse at pricing, which is what RPS catches and
+        accuracy does not.
       </div>
     </AppShell>
   );

@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { SPORTS, viewsFor, type SportKey } from "@/lib/nav";
 import { LEAGUES } from "@/lib/soccer-leagues";
 import matchModels from "@/lib/soccer-match-model.json";
+import { UCL_MODEL } from "@/lib/ucl-model";
 
 /**
  * The hub.
@@ -40,7 +41,10 @@ export const Route = createFileRoute("/")({
 });
 
 type MatchModel = { backtest: { rps: number; acc: number; n: number } };
-const SOCCER = matchModels as Record<string, MatchModel>;
+const SOCCER: Record<string, MatchModel> = {
+  ...(matchModels as Record<string, MatchModel>),
+  ucl: { backtest: UCL_MODEL.backtest.pooled.goals },
+};
 
 export function Hub() {
   return (
@@ -79,12 +83,12 @@ export function Hub() {
       </div>
 
       <section className="mt-10">
-        <h2 className="font-display text-2xl">Soccer, league by league</h2>
+        <h2 className="font-display text-2xl">Soccer, competition by competition</h2>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Five separate models, because the leagues are not the same problem. Draws run from 23.9%
-          in England to 27.4% in Italy — one calibration across all of them would be wrong at both
-          ends. RPS is the three-way scoring rule; lower is better, and predicting the base rates
-          scores about 0.465.
+          Six separate models, because the competitions are not the same problem. Draws run from 19%
+          in the Champions League to 27.4% in Italy — one calibration across all of them would be
+          wrong at both ends. RPS is the three-way scoring rule; lower is better, and predicting the
+          base rates scores about 0.465.
         </p>
         <div className="mt-4 grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
           {LEAGUES.map((l) => {

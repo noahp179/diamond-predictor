@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { LedgerView } from "@/components/LedgerView";
+import { UclRecord } from "@/components/UclRecord";
 import { leagueOf, type LeagueSlug } from "@/lib/soccer-leagues";
 
 export const Route = createFileRoute("/soccer/$league/track-record")({
@@ -25,7 +26,9 @@ export const Route = createFileRoute("/soccer/$league/track-record")({
         division={league as LeagueSlug}
         eyebrow={`Diamond Edge · ${l.name}`}
         title="Track Record"
-      />
+      >
+        {league === "ucl" && <UclRecord />}
+      </LedgerView>
     );
   },
 });

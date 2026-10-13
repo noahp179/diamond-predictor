@@ -5,7 +5,7 @@ import type { LeagueSlug } from "@/lib/soccer-leagues";
 import type { ViewKey } from "@/lib/nav";
 
 /** Thin adapter over AppShell for the soccer pages, which carry a league. */
-export type SoccerTabKey = Extract<ViewKey, "slate" | "props" | "model">;
+export type SoccerTabKey = Extract<ViewKey, "slate" | "props" | "model" | "simulate">;
 
 export function SoccerShell({
   league,

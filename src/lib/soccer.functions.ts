@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { matchModelFor, soccerSlate } from "./soccer.server";
 import { propsModelFor, soccerProps } from "./soccer-props.server";
-import { LEAGUES, isLeagueSlug, type LeagueSlug } from "./soccer-leagues";
+import { DOMESTIC_LEAGUES, isLeagueSlug, type LeagueSlug } from "./soccer-leagues";
+import { uclClubs, uclHistoryRows, uclSlate, uclSquad } from "./ucl.server";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -63,6 +64,16 @@ export const getSoccerProps = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const league = slugOf(data?.league);
     const date = data?.date ?? todayISO();
+    if (league === "ucl") {
+      return {
+        league,
+        date,
+        fixtures: [],
+        markets: [],
+        note: "The Champions League has no player-prop models — its clubs come from twenty leagues and ESPN's shot data covers five. The Simulate page prices goalscorers instead.",
+        source: "error" as const,
+      };
+    }
     try {
       return { ...(await soccerProps(league, date)), source: "live" as const };
     } catch (err) {
@@ -88,7 +99,8 @@ export const getSoccerProps = createServerFn({ method: "GET" })
 export const getSoccerModelCard = createServerFn({ method: "GET" })
   .inputValidator(input)
   .handler(async ({ data }) => {
-    const league = slugOf(data?.league);
+    // The Champions League's model page reads ucl-model.json directly.
+    const league = slugOf(data?.league) === "ucl" ? "epl" : slugOf(data?.league);
     const match = matchModelFor(league);
     const props = propsModelFor(league);
     return {
@@ -109,6 +121,51 @@ export const getSoccerModelCard = createServerFn({ method: "GET" })
         n: m.n,
         tiers: m.tiers,
       })),
-      leagues: LEAGUES,
+      leagues: DOMESTIC_LEAGUES,
     };
   });
+
+// --------------------------------------------------------- Champions League
+
+const dateInput = z.object({ date: z.string().optional() }).optional();
+
+/**
+ * Everything the Champions League simulator needs for a date: the fixtures
+ * with each side's live rating and goal rate, ESPN's posted prices, and every
+ * club in this season's competition for building a matchup of your own. The
+ * matches are played in the browser; the server only gathers ratings.
+ */
+export const getUclSimData = createServerFn({ method: "GET" })
+  .inputValidator(dateInput)
+  .handler(async ({ data }) => {
+    const date = data?.date ?? todayISO();
+    try {
+      const [slate, clubs] = await Promise.all([uclSlate(date), uclClubs(date)]);
+      return { date, slate, clubs, note: null as string | null };
+    } catch (err) {
+      console.error(`[uclSimData] ${date}:`, err);
+      return {
+        date,
+        slate: null,
+        clubs: [],
+        note: "ESPN's soccer feed is unreachable right now. Try refreshing in a moment.",
+      };
+    }
+  });
+
+/** One club's goalscorers as shares of its goals, for the simulator. */
+export const getUclSquad = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ teamId: z.string().regex(/^\d+$/) }))
+  .handler(async ({ data }) => uclSquad(data.teamId));
+
+/**
+ * The replayed record: every Champions League match since 2017-18 as the model
+ * priced it that morning, with what actually happened.
+ */
+export const getUclRecord = createServerFn({ method: "GET" }).handler(async () => {
+  const rows = await uclHistoryRows(todayISO()).catch((err) => {
+    console.error("[uclRecord]", err);
+    return [];
+  });
+  return { rows };
+});
