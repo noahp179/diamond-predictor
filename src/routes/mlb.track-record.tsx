@@ -16,7 +16,7 @@ import {
 
 import { getTrackRecord, type ModelTrack, type TrackedGame } from "@/lib/mlb.functions";
 import { bucketise } from "@/lib/ledger-stats";
-import { BucketAccuracy } from "@/components/LedgerCharts";
+import { CalibrationTable } from "@/components/CalibrationTable";
 import { TRACKED_MODELS, TRACK_RECORD_START } from "@/lib/mlb-models";
 import { AppShell } from "@/components/AppShell";
 import { TdTrackRecord } from "@/components/TdTrackRecord";
@@ -296,10 +296,10 @@ function HistoryPage() {
           {confidenceBuckets.length > 0 && (
             <ChartCard
               title="Is it right more often when it is confident?"
-              subtitle={`Every settled prediction ${modelLabel(selected)} has made, sorted by how sure it was. Bars are how many games landed in each bucket; the solid line is how often those were right; the dotted line is what the model claimed. A model whose confident calls are no better than its coin flips is not much use, however good its overall number looks.`}
+              subtitle={`Every settled prediction ${modelLabel(selected)} has made, grouped by how sure it was. The hollow dot is what it said, the filled dot how often its team actually won — close together means its percentages can be taken at face value. A model whose confident calls are no better than its coin flips is not much use, however good its overall number looks.`}
               better="up"
             >
-              <BucketAccuracy calibration={confidenceBuckets} />
+              <CalibrationTable rows={confidenceBuckets} unit="games" verb="won" />
             </ChartCard>
           )}
 

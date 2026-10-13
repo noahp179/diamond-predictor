@@ -7,6 +7,10 @@
     {
       "path": "/api/public/hooks/track-predictions",
       "schedule": "20 8 * * *"
+    },
+    {
+      "path": "/api/public/hooks/track-props",
+      "schedule": "40 8 * * *"
     }
   ]
 }

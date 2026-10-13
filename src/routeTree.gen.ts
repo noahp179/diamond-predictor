@@ -27,6 +27,7 @@ import { Route as TennisRouteImport } from './routes/tennis'
 import { Route as CfbIndexRouteImport } from './routes/cfb.index'
 import { Route as CfbBestOddsRouteImport } from './routes/cfb.best-odds'
 import { Route as CfbParlaysRouteImport } from './routes/cfb.parlays'
+import { Route as CfbPropsRouteImport } from './routes/cfb.props'
 import { Route as CfbRecommendedRouteImport } from './routes/cfb.recommended'
 import { Route as CfbSimulateRouteImport } from './routes/cfb.simulate'
 import { Route as CfbTdScorersRouteImport } from './routes/cfb.td-scorers'
@@ -71,6 +72,7 @@ import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model
 import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 import { Route as ApiPublicHooksTrackPredictionsRouteImport } from './routes/api/public/hooks/track-predictions'
+import { Route as ApiPublicHooksTrackPropsRouteImport } from './routes/api/public/hooks/track-props'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -160,6 +162,11 @@ const CfbBestOddsRoute = CfbBestOddsRouteImport.update({
 const CfbParlaysRoute = CfbParlaysRouteImport.update({
   id: '/parlays',
   path: '/parlays',
+  getParentRoute: () => CfbRoute,
+} as any)
+const CfbPropsRoute = CfbPropsRouteImport.update({
+  id: '/props',
+  path: '/props',
   getParentRoute: () => CfbRoute,
 } as any)
 const CfbRecommendedRoute = CfbRecommendedRouteImport.update({
@@ -384,6 +391,12 @@ const ApiPublicHooksTrackPredictionsRoute =
     path: '/api/public/hooks/track-predictions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksTrackPropsRoute =
+  ApiPublicHooksTrackPropsRouteImport.update({
+    id: '/api/public/hooks/track-props',
+    path: '/api/public/hooks/track-props',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -403,6 +416,7 @@ export interface FileRoutesByFullPath {
   '/tennis': typeof TennisRouteWithChildren
   '/cfb/best-odds': typeof CfbBestOddsRoute
   '/cfb/parlays': typeof CfbParlaysRoute
+  '/cfb/props': typeof CfbPropsRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
   '/cfb/simulate': typeof CfbSimulateRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
@@ -448,6 +462,7 @@ export interface FileRoutesByFullPath {
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
+  '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -459,6 +474,7 @@ export interface FileRoutesByTo {
   '/teams': typeof TeamsRoute
   '/cfb/best-odds': typeof CfbBestOddsRoute
   '/cfb/parlays': typeof CfbParlaysRoute
+  '/cfb/props': typeof CfbPropsRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
   '/cfb/simulate': typeof CfbSimulateRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
@@ -502,6 +518,7 @@ export interface FileRoutesByTo {
   '/tennis/$tour': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
+  '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -522,6 +539,7 @@ export interface FileRoutesById {
   '/tennis': typeof TennisRouteWithChildren
   '/cfb/best-odds': typeof CfbBestOddsRoute
   '/cfb/parlays': typeof CfbParlaysRoute
+  '/cfb/props': typeof CfbPropsRoute
   '/cfb/recommended': typeof CfbRecommendedRoute
   '/cfb/simulate': typeof CfbSimulateRoute
   '/cfb/td-scorers': typeof CfbTdScorersRoute
@@ -567,6 +585,7 @@ export interface FileRoutesById {
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
+  '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -588,6 +607,7 @@ export interface FileRouteTypes {
     | '/tennis'
     | '/cfb/best-odds'
     | '/cfb/parlays'
+    | '/cfb/props'
     | '/cfb/recommended'
     | '/cfb/simulate'
     | '/cfb/td-scorers'
@@ -633,6 +653,7 @@ export interface FileRouteTypes {
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
     | '/api/public/hooks/track-predictions'
+    | '/api/public/hooks/track-props'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -644,6 +665,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/cfb/best-odds'
     | '/cfb/parlays'
+    | '/cfb/props'
     | '/cfb/recommended'
     | '/cfb/simulate'
     | '/cfb/td-scorers'
@@ -687,6 +709,7 @@ export interface FileRouteTypes {
     | '/tennis/$tour'
     | '/api/public/hooks/run-pipeline'
     | '/api/public/hooks/track-predictions'
+    | '/api/public/hooks/track-props'
   id:
     | '__root__'
     | '/'
@@ -706,6 +729,7 @@ export interface FileRouteTypes {
     | '/tennis'
     | '/cfb/best-odds'
     | '/cfb/parlays'
+    | '/cfb/props'
     | '/cfb/recommended'
     | '/cfb/simulate'
     | '/cfb/td-scorers'
@@ -751,6 +775,7 @@ export interface FileRouteTypes {
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
     | '/api/public/hooks/track-predictions'
+    | '/api/public/hooks/track-props'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -771,6 +796,7 @@ export interface RootRouteChildren {
   TennisRoute: typeof TennisRouteWithChildren
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
   ApiPublicHooksTrackPredictionsRoute: typeof ApiPublicHooksTrackPredictionsRoute
+  ApiPublicHooksTrackPropsRoute: typeof ApiPublicHooksTrackPropsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -899,6 +925,13 @@ declare module '@tanstack/react-router' {
       path: '/parlays'
       fullPath: '/cfb/parlays'
       preLoaderRoute: typeof CfbParlaysRouteImport
+      parentRoute: typeof CfbRoute
+    }
+    '/cfb/props': {
+      id: '/cfb/props'
+      path: '/props'
+      fullPath: '/cfb/props'
+      preLoaderRoute: typeof CfbPropsRouteImport
       parentRoute: typeof CfbRoute
     }
     '/cfb/recommended': {
@@ -1209,12 +1242,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTrackPredictionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/track-props': {
+      id: '/api/public/hooks/track-props'
+      path: '/api/public/hooks/track-props'
+      fullPath: '/api/public/hooks/track-props'
+      preLoaderRoute: typeof ApiPublicHooksTrackPropsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface CfbRouteChildren {
   CfbBestOddsRoute: typeof CfbBestOddsRoute
   CfbParlaysRoute: typeof CfbParlaysRoute
+  CfbPropsRoute: typeof CfbPropsRoute
   CfbRecommendedRoute: typeof CfbRecommendedRoute
   CfbSimulateRoute: typeof CfbSimulateRoute
   CfbTdScorersRoute: typeof CfbTdScorersRoute
@@ -1225,6 +1266,7 @@ interface CfbRouteChildren {
 const CfbRouteChildren: CfbRouteChildren = {
   CfbBestOddsRoute: CfbBestOddsRoute,
   CfbParlaysRoute: CfbParlaysRoute,
+  CfbPropsRoute: CfbPropsRoute,
   CfbRecommendedRoute: CfbRecommendedRoute,
   CfbSimulateRoute: CfbSimulateRoute,
   CfbTdScorersRoute: CfbTdScorersRoute,
@@ -1406,6 +1448,7 @@ const rootRouteChildren: RootRouteChildren = {
   TennisRoute: TennisRouteWithChildren,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
   ApiPublicHooksTrackPredictionsRoute: ApiPublicHooksTrackPredictionsRoute,
+  ApiPublicHooksTrackPropsRoute: ApiPublicHooksTrackPropsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

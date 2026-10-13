@@ -87,12 +87,17 @@ export function AccuracyTrend({
   claim,
   meaningfulN,
   /** Named by the caller, because only the caller knows which source this is. */
-  seriesName = "live hit rate",
+  seriesName = "right so far",
+  /** A yardstick with no skill in it, e.g. a coin flip's 50%. */
+  baseline,
+  claimLabel = "it said",
 }: {
   running: { i: number; date: string; accuracy: number }[];
   claim: number | null;
   meaningfulN: number;
   seriesName?: string;
+  baseline?: { y: number; label: string };
+  claimLabel?: string;
 }) {
   const data = running.map((r) => ({
     ...r,
@@ -110,7 +115,7 @@ export function AccuracyTrend({
           fontSize={11}
           minTickGap={28}
           label={{
-            value: "settled calls",
+            value: "results so far",
             position: "insideBottom",
             offset: -4,
             fill: AXIS,
@@ -126,7 +131,7 @@ export function AccuracyTrend({
         />
         <Tooltip
           contentStyle={TOOLTIP}
-          labelFormatter={(i) => `after ${i} settled`}
+          labelFormatter={(i) => `after ${i} results`}
           formatter={(v, n, p) => [
             `${v}%`,
             `${n} · ${(p?.payload as { date?: string })?.date ?? ""}`,
@@ -142,10 +147,23 @@ export function AccuracyTrend({
             // exactly on the reference it is converging toward, which is where
             // this label would otherwise be printed.
             label={{
-              value: `backtest ${(claim * 100).toFixed(1)}%`,
+              value: `${claimLabel} ${(claim * 100).toFixed(0)}%`,
               position: "insideTopRight",
               dy: -8,
               fill: "var(--color-primary)",
+              fontSize: 10,
+            }}
+          />
+        )}
+        {baseline && (
+          <ReferenceLine
+            y={baseline.y * 100}
+            stroke={AXIS}
+            strokeDasharray="2 4"
+            label={{
+              value: baseline.label,
+              position: "insideBottomRight",
+              fill: AXIS,
               fontSize: 10,
             }}
           />
@@ -157,7 +175,7 @@ export function AccuracyTrend({
             stroke={AXIS}
             strokeDasharray="2 4"
             label={{
-              value: `only ${running.length} settled`,
+              value: `only ${running.length} so far`,
               position: "insideBottomRight",
               fill: AXIS,
               fontSize: 10,
@@ -179,248 +197,98 @@ export function AccuracyTrend({
 }
 
 /**
- * Calibration: predictions bucketed by confidence, against how often they hit.
+ * Right and wrong, week by week (or day by day while the record is young).
  *
- * Two bars per bucket — what the model said, and what actually happened — so
- * the comparison is a direct height difference rather than a distance from a
- * diagonal. Bars beat a scatter here because the question is asked one bucket
- * at a time ("when it says 70%, does 70% land?"), and a bucket is a category,
- * not a point in space.
- *
- * The sample size is printed under each bucket rather than encoded in the
- * geometry. A bucket of four calls and a bucket of four hundred draw identical
- * bars, and the only honest fix is to say so in words.
+ * This replaces a bar-and-line chart on two y-scales — calls per day on the
+ * left, that day's hit rate on the right — which asked the reader to compare
+ * heights that shared no units. Here there is one scale, a count: each bar is
+ * the calls settled that week, split into the ones that were right and the
+ * ones that were wrong. How full it is and how good it was read off the same
+ * bar, and the exact rate is in the tooltip.
  */
-export function CalibrationChart({
-  calibration,
-}: {
-  calibration: { band: string; n: number; predicted: number; actual: number }[];
-}) {
-  const data = calibration.map((c) => ({
-    band: c.band,
-    said: Number((c.predicted * 100).toFixed(1)),
-    happened: Number((c.actual * 100).toFixed(1)),
-    n: c.n,
-    label: `${c.band}\nn=${c.n}`,
-  }));
-
-  return (
-    <ResponsiveContainer width="100%" height={320}>
-      <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-        <XAxis dataKey="band" stroke={AXIS} fontSize={11} tickLine={false} />
-        <YAxis
-          domain={[0, 100]}
-          stroke={AXIS}
-          fontSize={11}
-          width={42}
-          tickFormatter={(v: number) => `${v}%`}
-        />
-        <Tooltip
-          contentStyle={TOOLTIP}
-          formatter={(v, n, p) => (n === "calls in bucket" ? [v, n] : [`${v}%`, n])}
-          labelFormatter={(band, payload) =>
-            `${band} · ${(payload?.[0]?.payload as { n?: number })?.n ?? 0} calls`
-          }
-        />
-        <Legend wrapperStyle={LEGEND} {...LEGEND_TOP} />
-        <ReferenceLine y={50} stroke={AXIS} strokeDasharray="4 4" />
-        <Bar
-          dataKey="said"
-          name="the model said"
-          fill="var(--color-chart-1)"
-          isAnimationActive={false}
-        />
-        <Bar
-          dataKey="happened"
-          name="how often it hit"
-          fill="var(--color-chart-2)"
-          isAnimationActive={false}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
-  );
-}
-
-/**
- * How much the ledger settles per day, and how it did.
- *
- * The bars are the point: they show how fast this page is actually filling up.
- * Daily accuracy rides on top as a line, deliberately thin, because a single
- * day is almost never a meaningful sample and should not read like one.
- */
-export function VolumeChart({
+export function ResultsOverTime({
   daily,
-  /**
-   * Bucket width. A live ledger settles a handful of calls a day and every one
-   * of them matters, so it is drawn per day. A year-long replay has a hundred-
-   * odd matchdays, and at that density the accuracy line becomes a solid
-   * sawtooth between 0% and 100% that hides the bars underneath it — so the
-   * replay groups by month, where each point is a real sample.
-   */
-  by = "day",
-  barName = "calls settled",
-  lineName = by === "month" ? "that month's hit rate" : "that day's hit rate",
+  rightLabel = "right",
+  wrongLabel = "wrong",
 }: {
-  daily: { date: string; n: number; correct: number; accuracy: number }[];
-  by?: "day" | "month";
-  barName?: string;
-  lineName?: string;
+  daily: { date: string; n: number; correct: number }[];
+  rightLabel?: string;
+  wrongLabel?: string;
 }) {
-  const grouped =
-    by === "day"
-      ? daily
-      : [
-          ...daily
-            .reduce((acc, d) => {
-              const k = d.date.slice(0, 7);
-              const row = acc.get(k) ?? { date: k, n: 0, correct: 0, accuracy: 0 };
-              row.n += d.n;
-              row.correct += d.correct;
-              acc.set(k, row);
-              return acc;
-            }, new Map<string, { date: string; n: number; correct: number; accuracy: number }>())
-            .values(),
-        ]
-          .sort((a, b) => a.date.localeCompare(b.date))
-          .map((r) => ({ ...r, accuracy: r.n ? r.correct / r.n : 0 }));
-
-  const data = grouped.map((d) => ({
-    date: by === "month" ? d.date : d.date.slice(5),
-    n: d.n,
-    pct: Number((d.accuracy * 100).toFixed(1)),
+  const sorted = [...daily].sort((a, b) => a.date.localeCompare(b.date));
+  const span =
+    sorted.length > 1
+      ? (Date.parse(sorted[sorted.length - 1].date) - Date.parse(sorted[0].date)) / 864e5
+      : 0;
+  const weekly = span > 28;
+  const groups = new Map<string, { key: string; n: number; correct: number }>();
+  for (const d of sorted) {
+    const key = weekly ? mondayOf(d.date) : d.date;
+    const g = groups.get(key) ?? { key, n: 0, correct: 0 };
+    g.n += d.n;
+    g.correct += d.correct;
+    groups.set(key, g);
+  }
+  const data = [...groups.values()].map((g) => ({
+    label: shortDate(g.key),
+    right: g.correct,
+    wrong: g.n - g.correct,
+    rate: g.n ? Math.round((g.correct / g.n) * 100) : 0,
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-        <XAxis dataKey="date" stroke={AXIS} fontSize={11} minTickGap={20} />
-        <YAxis yAxisId="left" stroke={AXIS} fontSize={11} width={34} allowDecimals={false} />
-        <YAxis
-          yAxisId="right"
-          orientation="right"
-          domain={[0, 100]}
-          stroke={AXIS}
-          fontSize={11}
-          width={42}
-          tickFormatter={(v: number) => `${v}%`}
-        />
-        <Tooltip contentStyle={TOOLTIP} />
-        <Legend wrapperStyle={LEGEND} {...LEGEND_TOP} />
-        <ReferenceLine yAxisId="right" y={50} stroke={AXIS} strokeDasharray="4 4" />
-        <Bar
-          yAxisId="left"
-          dataKey="n"
-          name={barName}
-          fill="var(--color-chart-1)"
-          isAnimationActive={false}
-        />
-        <Line
-          yAxisId="right"
-          type="monotone"
-          dataKey="pct"
-          name={lineName}
-          stroke="var(--color-chart-2)"
-          strokeWidth={1.5}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+          <XAxis dataKey="label" stroke={AXIS} fontSize={11} minTickGap={16} tickLine={false} />
+          <YAxis stroke={AXIS} fontSize={11} width={34} allowDecimals={false} />
+          <Tooltip
+            contentStyle={TOOLTIP}
+            cursor={{ fill: "var(--color-secondary)", opacity: 0.4 }}
+            labelFormatter={(l, p) => {
+              const row = p?.[0]?.payload as { rate?: number } | undefined;
+              return `${weekly ? "Week of " : ""}${l} · ${row?.rate ?? 0}% ${rightLabel}`;
+            }}
+          />
+          <Legend wrapperStyle={LEGEND} {...LEGEND_TOP} />
+          <Bar
+            dataKey="right"
+            stackId="r"
+            maxBarSize={48}
+            name={`✓ ${rightLabel}`}
+            fill="var(--color-chart-2)"
+            isAnimationActive={false}
+          />
+          <Bar
+            dataKey="wrong"
+            stackId="r"
+            maxBarSize={48}
+            name={`✗ ${wrongLabel}`}
+            fill="var(--color-muted-foreground)"
+            fillOpacity={0.45}
+            radius={[4, 4, 0, 0]}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
-/**
- * Accuracy by confidence bucket, with the sample size drawn rather than hidden.
- *
- * The companion to CalibrationChart, and deliberately not a replacement for it.
- * Calibration answers "when it says 70%, does 70% land?" and to do that it has
- * to put the claim and the outcome on the same axis, which leaves no room for
- * the count. This one answers the blunter question — "how often is it right
- * when it is confident, and how many calls is that based on?" — by making the
- * count the bars and the hit rate a line above them.
- *
- * The dotted line is what the model claimed in each bucket, so a bucket where
- * the line sits well below its dot is one to distrust, and the bar underneath
- * says whether that gap is a finding or four coin flips.
- */
-export function BucketAccuracy({
-  calibration,
-}: {
-  calibration: { band: string; n: number; predicted: number; actual: number }[];
-}) {
-  const data = calibration.map((c) => ({
-    band: c.band,
-    n: c.n,
-    pct: Number((c.actual * 100).toFixed(1)),
-    said: Number((c.predicted * 100).toFixed(1)),
-  }));
+function mondayOf(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
 
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 16, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-        <XAxis
-          dataKey="band"
-          stroke={AXIS}
-          fontSize={11}
-          tickLine={false}
-          label={{
-            value: "how confident the model was",
-            position: "insideBottom",
-            offset: -4,
-            fill: AXIS,
-            fontSize: 10,
-          }}
-        />
-        <YAxis yAxisId="left" stroke={AXIS} fontSize={11} width={44} allowDecimals={false} />
-        <YAxis
-          yAxisId="right"
-          orientation="right"
-          domain={[0, 100]}
-          stroke={AXIS}
-          fontSize={11}
-          width={42}
-          tickFormatter={(v: number) => `${v}%`}
-        />
-        <Tooltip
-          contentStyle={TOOLTIP}
-          formatter={(v, n) => (n === "calls in bucket" ? [v, n] : [`${v}%`, n])}
-        />
-        <Legend wrapperStyle={LEGEND} {...LEGEND_TOP} />
-        <ReferenceLine yAxisId="right" y={50} stroke={AXIS} strokeDasharray="4 4" />
-        <Bar
-          yAxisId="left"
-          dataKey="n"
-          name="calls in bucket"
-          fill="var(--color-chart-1)"
-          isAnimationActive={false}
-        />
-        <Line
-          yAxisId="right"
-          type="monotone"
-          dataKey="said"
-          name="what it claimed"
-          stroke={AXIS}
-          strokeWidth={1.5}
-          strokeDasharray="4 3"
-          dot={false}
-          isAnimationActive={false}
-        />
-        <Line
-          yAxisId="right"
-          type="monotone"
-          dataKey="pct"
-          name="how often it was right"
-          stroke="var(--color-chart-2)"
-          strokeWidth={2.5}
-          dot={{ r: 3 }}
-          isAnimationActive={false}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
-  );
+function shortDate(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 /** Shown in place of a chart when the ledger has nothing to draw yet. */

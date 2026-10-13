@@ -334,7 +334,7 @@ export function TdTrackRecord({ sport }: { sport: Board }) {
             footer="Two dots on one line per group: the hollow one is what the board claimed, the filled one is what happened. Close together means the percentage on the card can be taken at face value."
           >
             {(data?.calibration.length ?? 0) > 0 ? (
-              <CalibrationTable rows={data!.calibration} unit={copy.unit} />
+              <CalibrationTable rows={data!.calibration} unit={copy.unit} verb={copy.verb} />
             ) : (
               <EmptyChart>
                 This needs settled picks spread across a few probability groups. Nothing to show

@@ -407,6 +407,28 @@ const PIT_HIT: Record<string, (l: PitLog) => number> = {
 };
 const pitHit = (l: PitLog, market: string) => (l.gs ? (PIT_HIT[market]?.(l) ?? 0) : 0);
 
+/**
+ * Settle one board pick from a finished game's line, by the same rule the
+ * market's model was fitted to. Null when the pick cannot be scored: a hitter
+ * with no plate appearance or a pitcher who did not start never entered the
+ * population the model predicts, and a sportsbook voids those bets.
+ */
+export function mlbPropOutcome(
+  market: string,
+  bat: Omit<BatLog, "date" | "ab" | "bb" | "k"> | null,
+  pit: Pick<PitLog, "k" | "outs" | "gs"> | null,
+): boolean | null {
+  if (market in BAT_HIT) {
+    if (!bat || bat.pa <= 0) return null;
+    return BAT_HIT[market]({ ...bat, date: "", ab: 0, bb: 0, k: 0 }) === 1;
+  }
+  if (market in PIT_HIT) {
+    if (!pit || !pit.gs) return null;
+    return PIT_HIT[market]({ ...pit, date: "", bf: 0, h: 0, bb: 0, hr: 0 }) === 1;
+  }
+  return null;
+}
+
 function countHits<T extends { date: string }>(
   logs: T[],
   before: string,

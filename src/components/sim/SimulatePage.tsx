@@ -448,32 +448,15 @@ function MatchupWorkspace({
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground sm:px-8">
           <span>{ctx.venue || "Home team's building"}</span>
           {ctx.line?.spread != null && (
-            <span>{spreadText(matchup.home.abbr, ctx.line.spread)}</span>
+            <span>Betting line {spreadText(matchup.home.abbr, ctx.line.spread)}</span>
           )}
-          {ctx.line?.total != null && <span>O/U {ctx.line.total}</span>}
-          {ctx.park != null && ctx.park !== 100 && <span>Park factor {ctx.park}</span>}
-          <label className="flex items-center gap-1.5 normal-case tracking-normal">
-            <input
-              type="checkbox"
-              checked={neutral}
-              onChange={(e) => setOverrides({ ...overrides, neutral: e.target.checked })}
-              className="accent-[var(--color-primary)]"
-            />
-            <span className="uppercase tracking-widest">Neutral site</span>
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={playoff}
-              onChange={(e) => setOverrides({ ...overrides, playoff: e.target.checked })}
-              className="accent-[var(--color-primary)]"
-            />
-            <span>Playoff rules</span>
-          </label>
-        </div>
-        <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-8">
-          Numbers from {ctx.basis}. Rates are regressed toward the league average by how much each
-          player has actually played; players on the injury report as out start on the bench.
+          {ctx.line?.total != null && <span>Total {ctx.line.total}</span>}
+          {ctx.park != null && ctx.park !== 100 && (
+            <span title={`Park factor ${ctx.park}`}>
+              Ballpark {ctx.park > 100 ? "adds" : "takes away"} about {Math.abs(ctx.park - 100)}% of
+              runs
+            </span>
+          )}
         </div>
       </div>
 
@@ -531,9 +514,9 @@ function MatchupWorkspace({
           aria-expanded={showRoster}
         >
           <span>
-            <span className="font-display text-2xl">Lineups & injuries</span>
+            <span className="font-display text-2xl">Lineups & settings</span>
             <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              sit anyone, start anyone
+              injuries, who plays, venue
               {overrides.benched.length + overrides.activated.length > 0
                 ? ` · ${overrides.benched.length + overrides.activated.length} changed`
                 : ""}
@@ -543,6 +526,30 @@ function MatchupWorkspace({
         </button>
         {showRoster && (
           <div className="border-t border-border">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border px-5 py-3 text-xs text-muted-foreground sm:px-8">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={neutral}
+                  onChange={(e) => setOverrides({ ...overrides, neutral: e.target.checked })}
+                  className="accent-[var(--color-primary)]"
+                />
+                <span className="text-foreground">Neutral site</span> — no home advantage
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={playoff}
+                  onChange={(e) => setOverrides({ ...overrides, playoff: e.target.checked })}
+                  className="accent-[var(--color-primary)]"
+                />
+                <span className="text-foreground">Playoff rules</span>
+              </label>
+              <span className="basis-full">
+                Player numbers come from {ctx.basis}, pulled toward the league average for anyone
+                who has barely played. Players listed as out start on the bench.
+              </span>
+            </div>
             <RosterPanel matchup={matchup} overrides={overrides} onChange={setOverrides} />
             {(overrides.benched.length > 0 ||
               overrides.activated.length > 0 ||
@@ -649,7 +656,10 @@ function RunControls({
     if (Number.isFinite(v) && v >= 1) setN(Math.min(MAX_BATCH, v));
   };
   return (
-    <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        Games
+      </span>
       <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Number of games">
         {BATCH_SIZES.map((v) => (
           <button

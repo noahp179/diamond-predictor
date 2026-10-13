@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { TdParlayView } from "@/components/TdParlayView";
-
+/** TD parlays are now a board on the NFL Props page; the address is kept for bookmarks. */
 export const Route = createFileRoute("/nfl/parlays")({
-  head: () => ({ meta: [{ title: "NFL TD Parlays — Diamond Edge" }] }),
-  component: () => <TdParlayView sport="nfl" />,
+  beforeLoad: () => {
+    throw redirect({ to: "/nfl/props", search: { board: "parlays" }, replace: true });
+  },
 });

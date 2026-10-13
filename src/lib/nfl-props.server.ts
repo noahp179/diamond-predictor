@@ -262,6 +262,19 @@ const HIT: Record<string, (p: BoxPlayer) => boolean> = {
   passtd2: (p) => p.ptd >= 2,
 };
 
+/**
+ * Settle one board pick from a finished game's box score, by the market's own
+ * rule. Null when the player has no line in the box score: he did not play,
+ * which a sportsbook voids. (A player who took the field and recorded nothing
+ * also has no line, so a handful of genuine misses read as voids — a small,
+ * known flattering bias, written down rather than hidden.)
+ */
+export function nflPropOutcome(market: string, p: BoxPlayer | undefined): boolean | null {
+  const hit = HIT[market];
+  if (!hit || !p) return null;
+  return hit(p);
+}
+
 // ---------------------------------------------------------------- gathering
 
 type TeamHistory = {

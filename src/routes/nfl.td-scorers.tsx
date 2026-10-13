@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { TdScorersView } from "@/components/TdScorersView";
-
+/** TD scorers are now a board on the NFL Props page; the address is kept for bookmarks. */
 export const Route = createFileRoute("/nfl/td-scorers")({
-  head: () => ({ meta: [{ title: "NFL TD Scorers — Diamond Edge" }] }),
-  component: () => <TdScorersView />,
+  beforeLoad: () => {
+    throw redirect({ to: "/nfl/props", search: { board: "td-scorers" }, replace: true });
+  },
 });

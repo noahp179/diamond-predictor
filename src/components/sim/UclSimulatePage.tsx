@@ -4,8 +4,15 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { SoccerShell } from "@/components/SoccerShell";
 import { Note, Stat, StatBar } from "@/components/SportShell";
-import { BinTable, Histogram, type Bin } from "@/components/sim/SimCharts";
-import { fairOdds, moeP, NEUTRAL_SERIES, pct } from "@/components/sim/format";
+import { BinTable, Histogram, WinBar, type Bin } from "@/components/sim/SimCharts";
+import {
+  AWAY_COLOR,
+  fairOdds,
+  HOME_COLOR,
+  moeP,
+  NEUTRAL_SERIES,
+  pct,
+} from "@/components/sim/format";
 import { Rng } from "@/lib/sim/core";
 import {
   mergeBatch,
@@ -211,13 +218,16 @@ export function UclSimulatePage({
       onDateChange={(d) => pick({ date: d })}
       statBar={
         <StatBar>
-          <Stat label="Fixtures" value={`${fixtures.length}`} />
-          <Stat label="Sim RPS (backtest)" value={simRps()} />
+          <Stat label="Matches this day" value={`${fixtures.length}`} />
+          <Stat label="Right result, past matches" value={simAcc()} />
           <Stat
-            label="Model RPS (backtest)"
-            value={UCL_MODEL.backtest.pooled.goals.rps.toFixed(4)}
+            label="Always picking the home side"
+            value={pct(UCL_MODEL.backtest.pooled.base_rates?.acc ?? NaN, 0)}
           />
-          <Stat label="Matches tested" value={UCL_MODEL.backtest.pooled.goals.n.toLocaleString()} />
+          <Stat
+            label="Past matches tested"
+            value={UCL_MODEL.backtest.pooled.goals.n.toLocaleString()}
+          />
         </StatBar>
       }
       footerNote="Engine · src/lib/sim/soccer.ts · constants research/ucl/sim_ucl.py · ratings ESPN soccer API"
@@ -329,23 +339,16 @@ export function UclSimulatePage({
           <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border px-5 py-4">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                {pairing.neutral ? "Neutral venue" : "Home v away"} · ratings{" "}
+                {pairing.neutral ? "Neutral venue" : `At ${pairing.homeName}`} · strength rating{" "}
                 {Math.round(pairing.homeRating)} v {Math.round(pairing.awayRating)}
               </div>
               <div className="mt-1 font-display text-3xl">
                 {pairing.homeName} <span className="text-muted-foreground">v</span>{" "}
                 {pairing.awayName}
               </div>
-              <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-                Model goal rates {rates.home.toFixed(2)} – {rates.away.toFixed(2)} · closed form{" "}
-                {pct(closed.home, 0)} / {pct(closed.draw, 0)} / {pct(closed.away, 0)}
-                {pairing.market && (
-                  <>
-                    {" "}
-                    · market {pct(pairing.market.home, 0)} / {pct(pairing.market.draw, 0)} /{" "}
-                    {pct(pairing.market.away, 0)}
-                  </>
-                )}
+              <div className="mt-1 text-xs text-muted-foreground">
+                Expected goals going in: {pairing.homeName} {rates.home.toFixed(1)},{" "}
+                {pairing.awayName} {rates.away.toFixed(1)}.
               </div>
               {(homeSquad.data && !homeSquad.data.rosterLive) ||
               (awaySquad.data && !awaySquad.data.rosterLive) ? (
@@ -397,7 +400,8 @@ export function UclSimulatePage({
           )}
           {!batch && !watched && (
             <div className="px-5 py-8 font-mono text-xs text-muted-foreground">
-              Choose how many matches to play and kick off. 100,000 take a second or two.
+              Choose how many times to play the match and press Kick off. More plays give steadier
+              numbers; 100,000 take a second or two.
             </div>
           )}
         </section>
@@ -406,9 +410,11 @@ export function UclSimulatePage({
   );
 }
 
-function simRps(): string {
-  const bt = SOCCER_SIM.backtest as { simulator?: { rps: number } } | undefined;
-  return bt?.simulator ? bt.simulator.rps.toFixed(4) : "—";
+/** How often the simulator's likeliest result (home, draw or away) was what
+ *  happened, over every Champions League match it was tested on. */
+function simAcc(): string {
+  const bt = SOCCER_SIM.backtest as { simulator?: { acc: number } } | undefined;
+  return bt?.simulator ? pct(bt.simulator.acc, 0) : "—";
 }
 
 function FixtureChip({ f, active, onClick }: { f: Fixture; active: boolean; onClick: () => void }) {
@@ -487,6 +493,7 @@ function Results({
   market: Fixture["market"] | null;
   knockout: boolean;
 }) {
+  const [tab, setTab] = useState<"scores" | "scorers">("scores");
   const N = b.n;
   const p = { home: b.home / N, draw: b.draw / N, away: b.away / N };
   const scores: { s: string; p: number }[] = [];
@@ -499,148 +506,211 @@ function Results({
     line,
     p: b.totals.reduce((s, c, x) => s + (x > line ? c : 0), 0) / N,
   }));
+  const over25 = overs.find((o) => o.line === 2.5)?.p ?? 0;
   const maxCell = Math.max(...b.scores.flat()) / N;
+  const [h, a] = sides;
+  const top = scores[0];
+  const headline =
+    p.draw > p.home && p.draw > p.away
+      ? `A draw is the likeliest result: ${Math.round(p.draw * 100)} times in 100`
+      : p.home >= p.away
+        ? `${h.name} win ${Math.round(p.home * 100)} times out of 100`
+        : `${a.name} win ${Math.round(p.away * 100)} times out of 100`;
+  const sure = Math.max(1, Math.round(moeP(Math.max(p.home, p.away, p.draw), N) * 100));
+  const three = (x: { home: number; draw: number; away: number }) =>
+    `${h.abbr} ${pct(x.home, 0)} · draw ${pct(x.draw, 0)} · ${a.abbr} ${pct(x.away, 0)}`;
 
   return (
-    <div className="divide-y divide-border">
-      <div className="grid gap-px bg-border sm:grid-cols-3">
-        <Outcome
-          label={`${sides[0].name} win`}
-          p={p.home}
-          n={N}
-          closed={closed.home}
-          market={market?.home}
-        />
-        <Outcome label="Draw" p={p.draw} n={N} closed={closed.draw} market={market?.draw} />
-        <Outcome
-          label={`${sides[1].name} win`}
-          p={p.away}
-          n={N}
-          closed={closed.away}
-          market={market?.away}
+    <div>
+      <div className="px-5 pt-6">
+        <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          We played this match {N.toLocaleString()} times
+        </p>
+        <h3 className="mt-2 font-display text-3xl sm:text-4xl">{headline}</h3>
+      </div>
+      <div className="px-5 pb-2 pt-5">
+        <WinBar
+          away={p.home}
+          home={p.away}
+          tie={p.draw}
+          awayLabel={h.name}
+          homeLabel={a.name}
+          awayColor={HOME_COLOR}
+          homeColor={AWAY_COLOR}
+          tieLabel="Draw"
         />
       </div>
-
-      <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
-        <div>
-          <H>Average score</H>
-          <div className="font-display text-4xl">
-            {(b.homeGoals / N).toFixed(2)} – {(b.awayGoals / N).toFixed(2)}
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[11px]">
-            {overs.map((o) => (
-              <Row key={o.line} k={`Over ${o.line}`} v={pct(o.p)} />
-            ))}
-            <Row k="Both teams score" v={pct(b.bttsYes / N)} />
-            <Row k={`${sides[0].abbr} clean sheet`} v={pct(b.homeCleanSheet / N)} />
-            <Row k={`${sides[1].abbr} clean sheet`} v={pct(b.awayCleanSheet / N)} />
-            {knockout && (
-              <>
-                <Row k={`${sides[0].abbr} go through`} v={pct(b.advanceHome / N)} />
-                <Row k={`${sides[1].abbr} go through`} v={pct(1 - b.advanceHome / N)} />
-                <Row k="Extra time" v={pct(b.extraTime / N)} />
-                <Row k="Penalties" v={pct(b.shootouts / N)} />
-              </>
-            )}
-          </div>
-        </div>
-        <div>
-          <H>Total goals</H>
-          <Histogram
-            bins={bins}
-            height={170}
-            xFmt={(x) => (x === 10 ? "10+" : String(x))}
-            describe={(bin) => [pct(bin.p), `${bin.x === 10 ? "10+" : bin.x} goals`]}
-            ariaLabel="Distribution of total goals"
+      <div className="grid gap-px border-y border-border bg-border sm:grid-cols-3">
+        <Fact
+          label="Most likely exact score"
+          value={top ? top.s.replace("-", " – ") : "—"}
+          note={top ? `${pct(top.p, 0)} of matches — even the likeliest score is rare` : ""}
+        />
+        <Fact
+          label="Average score"
+          value={`${(b.homeGoals / N).toFixed(1)} – ${(b.awayGoals / N).toFixed(1)}`}
+          note={`goals per match across all ${N.toLocaleString()}`}
+        />
+        <Fact
+          label="Three goals or more"
+          value={pct(over25, 0)}
+          note={`both teams score in ${pct(b.bttsYes / N, 0)}`}
+        />
+      </div>
+      {knockout && (
+        <div className="grid gap-px border-b border-border bg-border sm:grid-cols-3">
+          <Fact
+            label={`${h.abbr} go through`}
+            value={pct(b.advanceHome / N, 0)}
+            note={`${a.abbr} ${pct(1 - b.advanceHome / N, 0)}`}
           />
-          <BinTable bins={bins} xLabel="Goals" xFmt={(x) => (x === 10 ? "10+" : String(x))} />
+          <Fact label="Extra time" value={pct(b.extraTime / N, 0)} note="level after 90 minutes" />
+          <Fact label="Penalties" value={pct(b.shootouts / N, 0)} note="still level after 120" />
         </div>
+      )}
+      <div className="space-y-1 border-b border-border px-5 py-3 text-xs text-muted-foreground">
+        <p>
+          <span className="text-foreground">Compare:</span> the match model without the
+          minute-by-minute play says {three(closed)}
+          {market ? (
+            <>
+              ; the bookmakers say {three(market)}. Where the simulation and the bookmakers differ,
+              start by asking what the market knows (injuries, rotation) that the model does not.
+            </>
+          ) : (
+            "."
+          )}
+        </p>
+        <p>
+          How sure: run it again and each percentage could move about {sure} up or down
+          {N < 10000 ? " — play 10,000 to narrow that." : "."}
+        </p>
       </div>
 
-      <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
-        <div>
-          <H>Likeliest scores (90 minutes)</H>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[11px]">
-            {scores.slice(0, 12).map((s) => (
-              <Row key={s.s} k={s.s} v={`${pct(s.p)} · ${fairOdds(s.p)}`} />
-            ))}
-          </div>
-        </div>
-        <div>
-          <H>
-            Score grid — {sides[0].abbr} down, {sides[1].abbr} across
-          </H>
-          <table className="w-full border-collapse font-mono text-[10px] tabular-nums">
-            <thead>
-              <tr>
-                <th />
-                {[0, 1, 2, 3, 4, 5].map((j) => (
-                  <th key={j} className="px-1 py-0.5 text-muted-foreground">
-                    {j}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <tr key={i}>
-                  <th className="px-1 text-muted-foreground">{i}</th>
-                  {[0, 1, 2, 3, 4, 5].map((j) => {
-                    const v = b.scores[i][j] / N;
-                    return (
-                      <td
-                        key={j}
-                        className="border border-border/50 px-1 py-1 text-center"
-                        style={{
-                          background: `color-mix(in oklab, var(--color-primary) ${Math.round((v / maxCell) * 45)}%, transparent)`,
-                        }}
-                      >
-                        {(v * 100).toFixed(1)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
-        {sides.map((side) => (
-          <ScorerTable key={side.name} side={side} b={b} names={names} />
+      <div className="flex flex-wrap gap-2 px-5 pt-5" role="tablist" aria-label="More detail">
+        {(
+          [
+            ["scores", "Scores & goals"],
+            ["scorers", "Goalscorers"],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+              tab === k
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
         ))}
       </div>
+
+      {tab === "scores" && (
+        <div>
+          <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
+            <div>
+              <h4 className="font-display text-xl">How many goals in the match</h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Each bar is a total for both teams; the taller the bar, the more often it happened.
+              </p>
+              <div className="mt-3">
+                <Histogram
+                  bins={bins}
+                  height={170}
+                  xFmt={(x) => (x === 10 ? "10+" : String(x))}
+                  describe={(bin) => [
+                    `${pct(bin.p)} of matches`,
+                    `${bin.x === 10 ? "10+" : bin.x} goals`,
+                  ]}
+                  ariaLabel="How often each total number of goals happened"
+                />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[11px]">
+                {overs.map((o) => (
+                  <Row
+                    key={o.line}
+                    k={`${Math.ceil(o.line)}+ goal${o.line > 1 ? "s" : ""}`}
+                    v={pct(o.p)}
+                  />
+                ))}
+                <Row k="Both teams score" v={pct(b.bttsYes / N)} />
+                <Row k={`${h.abbr} keep a clean sheet`} v={pct(b.homeCleanSheet / N)} />
+                <Row k={`${a.abbr} keep a clean sheet`} v={pct(b.awayCleanSheet / N)} />
+              </div>
+              <BinTable bins={bins} xLabel="Goals" xFmt={(x) => (x === 10 ? "10+" : String(x))} />
+            </div>
+            <div>
+              <h4 className="font-display text-xl">Chance of each exact score</h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {h.name} goals down the side, {a.name} goals across the top. Darker = more likely;
+                each number is the % of matches that ended that way after 90 minutes.
+              </p>
+              <table className="mt-3 w-full border-collapse font-mono text-[11px] tabular-nums">
+                <thead>
+                  <tr>
+                    <th className="px-1 py-0.5 text-left text-[10px] font-normal text-muted-foreground">
+                      {h.abbr} ↓ {a.abbr} →
+                    </th>
+                    {[0, 1, 2, 3, 4, 5].map((j) => (
+                      <th key={j} className="px-1 py-0.5 text-muted-foreground">
+                        {j}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i}>
+                      <th className="px-1 text-muted-foreground">{i}</th>
+                      {[0, 1, 2, 3, 4, 5].map((j) => {
+                        const v = b.scores[i][j] / N;
+                        return (
+                          <td
+                            key={j}
+                            className="border border-border/50 px-1 py-1.5 text-center"
+                            title={`${h.abbr} ${i} – ${j} ${a.abbr}: ${pct(v)} of matches`}
+                            style={{
+                              background: `color-mix(in oklab, var(--color-primary) ${Math.round((v / maxCell) * 45)}%, transparent)`,
+                            }}
+                          >
+                            {(v * 100).toFixed(1)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "scorers" && (
+        <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
+          {sides.map((side) => (
+            <ScorerTable key={side.name} side={side} b={b} names={names} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function Outcome({
-  label,
-  p,
-  n,
-  closed,
-  market,
-}: {
-  label: string;
-  p: number;
-  n: number;
-  closed: number;
-  market?: number;
-}) {
+function Fact({ label, value, note }: { label: string; value: string; note: string }) {
   return (
     <div className="bg-card px-5 py-4">
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 font-display text-4xl">{pct(p)}</div>
-      <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-        ± {pct(moeP(p, n))} · fair {fairOdds(p)}
-      </div>
-      <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-        closed form {pct(closed)}
-        {market !== undefined && <> · market {pct(market)}</>}
-      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{note}</div>
     </div>
   );
 }
@@ -668,7 +738,7 @@ function ScorerTable({
     .slice(0, 10);
   return (
     <div>
-      <H>{side.name} — goalscorers</H>
+      <H>{side.name} — who scores</H>
       {rows.length === 0 ? (
         <div className="font-mono text-[11px] text-muted-foreground">Loading the squad…</div>
       ) : (
@@ -676,11 +746,21 @@ function ScorerTable({
           <thead>
             <tr className="text-left text-muted-foreground">
               <th className="py-1 font-normal">Player</th>
-              <th className="py-1 text-right font-normal">Share</th>
-              <th className="py-1 text-right font-normal">Anytime</th>
-              <th className="py-1 text-right font-normal">2+</th>
-              <th className="py-1 text-right font-normal">First</th>
-              <th className="py-1 text-right font-normal">Fair</th>
+              <th
+                className="py-1 text-right font-normal"
+                title="Share of his team's goals he has scored lately"
+              >
+                Team goals
+              </th>
+              <th className="py-1 text-right font-normal">Scores</th>
+              <th className="py-1 text-right font-normal">Scores 2+</th>
+              <th className="py-1 text-right font-normal">Scores first</th>
+              <th
+                className="py-1 text-right font-normal"
+                title="The odds at which a bet on him scoring would break even, if these numbers are right"
+              >
+                Fair odds
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -2,14 +2,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell, StatBar, Stat, Note } from "@/components/AppShell";
-import {
-  AccuracyTrend,
-  BucketAccuracy,
-  CalibrationChart,
-  ChartCard,
-  EmptyChart,
-  VolumeChart,
-} from "@/components/LedgerCharts";
+import { CalibrationTable } from "@/components/CalibrationTable";
+import { AccuracyTrend, ChartCard, EmptyChart, ResultsOverTime } from "@/components/LedgerCharts";
+import { RecordHeadline } from "@/components/RecordHeadline";
 import { TdTrackRecord } from "@/components/TdTrackRecord";
 import { getTrackLedger } from "@/lib/tracking.functions";
 import type { DivisionSlug, SportKey } from "@/lib/nav";
@@ -61,6 +56,16 @@ export function LedgerView({
   const enough = (s?.n ?? 0) >= (data?.meaningfulN ?? 100);
   // The gap that matters: is the model doing what it said it would?
   const drift = s?.accuracy != null && claim ? s.accuracy - claim.accuracy : null;
+  const unit = sport === "soccer" || sport === "tennis" ? "matches" : "games";
+  // What the model said, on average, about the side it picked — the number its
+  // hit rate should land on if its percentages mean what they say.
+  const cal = data?.calibration ?? [];
+  const calN = cal.reduce((a, c) => a + c.n, 0);
+  const expected = calN ? cal.reduce((a, c) => a + c.n * c.predicted, 0) / calN : null;
+  // A pick with no skill in it: a coin flip, or one of three for soccer's
+  // home/draw/away.
+  const chance =
+    sport === "soccer" ? { y: 1 / 3, label: "picking at random" } : { y: 0.5, label: "coin flip" };
 
   return (
     <AppShell
@@ -72,10 +77,14 @@ export function LedgerView({
       blurb="Every prediction is written down the morning of the event and scored afterwards. Nothing here can be re-run: a backtest can be repeated until it looks good, a row from yesterday cannot."
       statBar={
         <StatBar>
-          <Stat label="Calls settled" value={s ? s.n.toLocaleString() : "—"} />
-          <Stat label="Live accuracy" value={enough ? pct(s?.accuracy) : "—"} />
-          <Stat label="Backtest said" value={pct(claim?.accuracy)} />
-          <Stat label="Awaiting result" value={s ? s.pending.toLocaleString() : "—"} />
+          <Stat label={`${unit} finished`} value={s ? s.n.toLocaleString() : "—"} />
+          <Stat label="Picked the winner" value={s?.n ? pct(s.accuracy) : "—"} />
+          {claim ? (
+            <Stat label="Tested on past seasons" value={pct(claim.accuracy)} />
+          ) : (
+            <Stat label="It said it would be right" value={pct(expected)} />
+          )}
+          <Stat label="Waiting on results" value={s ? s.pending.toLocaleString() : "—"} />
         </StatBar>
       }
       footerNote="Live ledger · predictions recorded before the event, scored after"
@@ -150,80 +159,88 @@ export function LedgerView({
         </Note>
       )}
 
-      {!isLoading && (s?.n ?? 0) > 0 && !enough && (
-        <Note>
-          <strong className="text-foreground">Too early to read anything into this.</strong> {s!.n}{" "}
-          settled {s!.n === 1 ? "call" : "calls"} is well short of the {data!.meaningfulN} it takes
-          for a hit rate to separate a good model from a lucky fortnight. The number is shown
-          because hiding it would be worse, not because it means much yet.
-        </Note>
-      )}
-
-      {/* Claimed vs actual, side by side and never merged. Hidden where there
-          is no held-out claim to compare against — an empty "Backtest" column
-          would read as a model with nothing to say for itself rather than a
-          sport that never had one. */}
-      {claim && (
+      {/* The answer first, in words: how often it picked right, what it said
+          it would do, and the verdict. */}
+      {(s?.n ?? 0) > 0 && (
         <section className="mb-8 border border-border bg-card">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="font-display text-2xl">Claimed against actual</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Left: the held-out backtest, on seasons the model never trained on. Right: what the
-              live ledger has recorded. They answer different questions and are never averaged.
+          <div className="border-b border-border px-5 py-4 sm:px-6">
+            <h2 className="font-display text-2xl">How often it picked the winner</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Every pick below was written down before the {unit === "games" ? "game" : "match"} and
+              checked after it.
             </p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse font-mono text-[11px]">
-              <thead>
-                <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
-                  <th className="px-5 py-3 font-normal">Metric</th>
-                  <th className="px-3 py-3 text-right font-normal">Backtest</th>
-                  <th className="px-3 py-3 text-right font-normal">Live ledger</th>
-                  <th className="px-5 py-3 text-right font-normal">Sample</th>
-                </tr>
-              </thead>
-              <tbody>
-                <Row
-                  label="Accuracy"
-                  claimed={pct(claim?.accuracy)}
-                  live={enough ? pct(s?.accuracy) : "—"}
-                  sample={`${claim?.n?.toLocaleString() ?? "—"} / ${s?.n ?? 0}`}
-                />
-                <Row
-                  label="Brier"
-                  claimed={num(claim?.brier)}
-                  live={enough ? num(s?.brier) : "—"}
-                  sample=""
-                />
-                <Row
-                  label="Log loss"
-                  claimed={num(claim?.logLoss)}
-                  live={enough ? num(s?.logLoss) : "—"}
-                  sample=""
-                />
-                {claim?.rps != null && (
-                  <Row
-                    label="RPS"
-                    claimed={num(claim.rps)}
-                    live={enough ? num(s?.rps) : "—"}
-                    sample=""
-                  />
-                )}
-              </tbody>
-            </table>
-          </div>
-          {enough && drift != null && (
-            <div className="border-t border-border px-5 py-4 font-mono text-[11px] text-muted-foreground">
-              Live accuracy is running{" "}
-              <span className={drift >= 0 ? "text-emerald-600" : "text-clay"}>
-                {drift >= 0 ? "+" : ""}
-                {(drift * 100).toFixed(1)} points
-              </span>{" "}
-              against the backtest.{" "}
-              {Math.abs(drift) < 0.03
-                ? "That is within the range a few hundred matches can produce by chance."
-                : "That is a wide enough gap to be worth watching, though not yet to act on."}
-            </div>
+          <RecordHeadline
+            hits={s!.correct}
+            n={s!.n}
+            unit={unit}
+            verb="picked right"
+            expected={expected}
+            compare={[
+              ...(claim ? [["Tested on past seasons", claim.accuracy] as [string, number]] : []),
+              [chance.label[0].toUpperCase() + chance.label.slice(1), chance.y],
+            ]}
+            footnote={s?.firstDate && s?.lastDate ? `${s.firstDate} to ${s.lastDate}` : undefined}
+          />
+          {claim && (
+            <details className="group border-t border-border">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground sm:px-6">
+                The scoring rules statisticians use
+                <span className="group-open:rotate-180">▼</span>
+              </summary>
+              <div className="overflow-x-auto border-t border-border">
+                <table className="w-full min-w-[560px] border-collapse font-mono text-[11px]">
+                  <thead>
+                    <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
+                      <th className="px-5 py-3 font-normal">Measure</th>
+                      <th className="px-3 py-3 text-right font-normal">Past seasons</th>
+                      <th className="px-3 py-3 text-right font-normal">Live</th>
+                      <th className="px-5 py-3 font-normal">What it means</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <Row
+                      label="Picked the winner"
+                      claimed={pct(claim.accuracy)}
+                      live={enough ? pct(s?.accuracy) : "—"}
+                      note="higher is better"
+                    />
+                    <Row
+                      label="Brier score"
+                      claimed={num(claim.brier)}
+                      live={enough ? num(s?.brier) : "—"}
+                      note="lower is better · punishes confident misses"
+                    />
+                    <Row
+                      label="Log loss"
+                      claimed={num(claim.logLoss)}
+                      live={enough ? num(s?.logLoss) : "—"}
+                      note="lower is better · punishes very confident misses hardest"
+                    />
+                    {claim.rps != null && (
+                      <Row
+                        label="RPS"
+                        claimed={num(claim.rps)}
+                        live={enough ? num(s?.rps) : "—"}
+                        note="lower is better · credits a near-miss (a draw for a home pick)"
+                      />
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {enough && drift != null && (
+                <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-6">
+                  Live it is picking the winner{" "}
+                  <span className={drift >= 0 ? "text-emerald-600" : "text-red-500"}>
+                    {Math.abs(drift * 100).toFixed(1)} points {drift >= 0 ? "more" : "less"}
+                  </span>{" "}
+                  often than in testing.{" "}
+                  {Math.abs(drift) < 0.03
+                    ? "That is within what a few hundred results can do by chance."
+                    : "That is a wide enough gap to watch, though not yet to act on."}
+                </p>
+              )}
+            </details>
           )}
         </section>
       )}
@@ -246,15 +263,16 @@ export function LedgerView({
       {(s?.n ?? 0) > 0 && (
         <>
           <ChartCard
-            title="Has it done what it said it would?"
-            subtitle="The live hit rate as calls settle, against the backtest it was sold on. Early points swing hard because the denominator is tiny; the line is meant to steady toward the dashes, or visibly not."
-            footer="Cumulative, not per-day — one matchday is far too small to read. Every point is every call settled up to that moment."
+            title="Is it settling where it should?"
+            subtitle={`The line is how often it has picked right so far, after each result. It jumps around early, when one ${unit === "games" ? "game" : "match"} moves it a lot, and should flatten out near the dashed line it was tested at.`}
           >
             {(data?.running.length ?? 0) > 0 ? (
               <AccuracyTrend
                 running={data!.running}
                 claim={claim?.accuracy ?? null}
+                claimLabel="tested at"
                 meaningfulN={data!.meaningfulN}
+                baseline={chance}
               />
             ) : (
               <EmptyChart>
@@ -265,31 +283,26 @@ export function LedgerView({
           </ChartCard>
 
           <ChartCard
-            title="Is 70% actually 70%?"
-            subtitle="Every settled call bucketed by how confident the model was, next to how often that bucket actually landed. Matching heights mean the number on the card can be taken at face value."
-            footer="A shorter blue bar than orange means the model was under-confident in that bucket; taller means it was over-confident, which is the expensive direction. Buckets with only a handful of calls will disagree wildly no matter how good the model is — the count is in the tooltip."
+            title="When it is sure, is it right?"
+            subtitle={`Every pick grouped by how sure the model was, next to how often that group actually won. If the two dots sit together, a 70% on the slate really means about 7 in 10.`}
           >
-            {(data?.calibration.length ?? 0) > 0 ? (
-              <CalibrationChart calibration={data!.calibration} />
+            {cal.length > 0 ? (
+              <CalibrationTable rows={cal} unit={unit} verb="won" />
             ) : (
               <EmptyChart>
-                Calibration needs settled calls spread across confidence bands. Nothing to plot yet.
+                This needs settled picks spread across a few confidence groups. Nothing to show yet.
               </EmptyChart>
             )}
           </ChartCard>
 
           <ChartCard
-            title="How fast is this filling up?"
-            subtitle="Calls settled per day, with that day's hit rate riding on top. The bars are the honest context for every other number on this page."
-            footer="A single day is almost never a meaningful sample, which is why the daily rate is drawn thin and the volume is drawn solid."
+            title="Right and wrong over time"
+            subtitle={`Each bar is the ${unit} that finished that day (or week, once there is more than a month of them): the coloured part were picked right, the grey part wrong.`}
           >
             {(data?.daily.length ?? 0) > 0 ? (
-              <VolumeChart daily={data!.daily} />
+              <ResultsOverTime daily={data!.daily} />
             ) : (
-              <EmptyChart>
-                The ledger records predictions once a day and scores them once the results are in.
-                Nothing has settled yet.
-              </EmptyChart>
+              <EmptyChart>Nothing has settled yet.</EmptyChart>
             )}
           </ChartCard>
         </>
@@ -299,7 +312,7 @@ export function LedgerView({
       {(data?.recent.length ?? 0) > 0 && (
         <section className="border border-border bg-card">
           <div className="border-b border-border px-5 py-4">
-            <h2 className="font-display text-2xl">The last {data!.recent.length} calls</h2>
+            <h2 className="font-display text-2xl">The latest {data!.recent.length} picks</h2>
             <p className="mt-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
               {s?.firstDate} → {s?.lastDate} · model {data!.modelVersion}
             </p>
@@ -309,9 +322,9 @@ export function LedgerView({
               <thead>
                 <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
                   <th className="px-5 py-3 font-normal">Date</th>
-                  <th className="px-3 py-3 font-normal">Event</th>
-                  <th className="px-3 py-3 text-right font-normal">Called</th>
-                  <th className="px-3 py-3 text-right font-normal">Said</th>
+                  <th className="px-3 py-3 font-normal">{unit === "games" ? "Game" : "Match"}</th>
+                  <th className="px-3 py-3 text-right font-normal">Picked</th>
+                  <th className="px-3 py-3 text-right font-normal">Its chance</th>
                   <th className="px-5 py-3 text-right font-normal">Result</th>
                 </tr>
               </thead>
@@ -334,7 +347,7 @@ export function LedgerView({
                       </td>
                       <td className="px-5 py-2.5 text-right">
                         <span className={r.correct ? "text-emerald-600" : "text-red-500"}>
-                          {r.correct ? "✓" : "✗"}
+                          {r.correct ? "✓ Right" : "✗ Wrong"}
                         </span>
                         {r.final_score && (
                           <span className="ml-2 text-muted-foreground">{r.final_score}</span>
@@ -363,19 +376,19 @@ function Row({
   label,
   claimed,
   live,
-  sample,
+  note,
 }: {
   label: string;
   claimed: string;
   live: string;
-  sample: string;
+  note: string;
 }) {
   return (
     <tr className="border-b border-border/60">
       <td className="px-5 py-3 font-display text-base text-foreground">{label}</td>
       <td className="px-3 py-3 text-right text-muted-foreground">{claimed}</td>
       <td className="px-3 py-3 text-right text-foreground">{live}</td>
-      <td className="px-5 py-3 text-right text-muted-foreground">{sample}</td>
+      <td className="px-5 py-3 normal-case text-muted-foreground">{note}</td>
     </tr>
   );
 }
