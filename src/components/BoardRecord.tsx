@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 
+import { RecordHeadline } from "@/components/RecordHeadline";
 import { getBoardRecord, type BoardRecordData } from "@/lib/tracking.functions";
 
 /**
@@ -19,42 +20,6 @@ import { getBoardRecord, type BoardRecordData } from "@/lib/tracking.functions";
 
 const pct = (x: number | null | undefined, d = 0) =>
   x == null || !Number.isFinite(x) ? "—" : `${(x * 100).toFixed(d)}%`;
-
-/** Below this many settled results a hit rate is mostly luck. */
-const ENOUGH = 50;
-
-function verdict(n: number, hitRate: number, expected: number | null) {
-  if (n < ENOUGH || expected == null)
-    return {
-      icon: "…",
-      label: "Too early to tell",
-      tone: "text-muted-foreground border-border",
-      why: `Fewer than ${ENOUGH} results — a streak of luck either way would look the same as a good or bad model.`,
-    };
-  // Two standard errors of a hit rate at the stated probability.
-  const band = 2 * Math.sqrt((expected * (1 - expected)) / n);
-  const gap = hitRate - expected;
-  if (Math.abs(gap) <= band)
-    return {
-      icon: "✓",
-      label: "On track",
-      tone: "text-emerald-500 border-emerald-500/50",
-      why: "Hitting about as often as the board said — the percentages can be taken at face value.",
-    };
-  return gap > 0
-    ? {
-        icon: "▲",
-        label: "Better than we said",
-        tone: "text-emerald-500 border-emerald-500/50",
-        why: "Hitting more often than the board said, by more than luck usually explains.",
-      }
-    : {
-        icon: "▼",
-        label: "Worse than we said",
-        tone: "text-red-500 border-red-500/50",
-        why: "Hitting less often than the board said — treat its percentages as too high until this closes.",
-      };
-}
 
 export function BoardRecord({ sport, board }: { sport: string; board: string }) {
   const run = useServerFn(getBoardRecord);
@@ -106,35 +71,22 @@ function Body({ d }: { d: BoardRecordData }) {
       </div>
     );
 
-  const hitRate = d.hits / d.n;
-  const v = verdict(d.n, hitRate, d.expected);
   return (
     <div>
-      <div className="grid gap-6 px-5 py-6 sm:px-6 md:grid-cols-[auto_1fr] md:items-center">
-        <div>
-          <div className="font-display text-6xl leading-none">{pct(hitRate)}</div>
-          <div className="mt-2 text-sm text-foreground">
-            {d.hits.toLocaleString()} of {d.n.toLocaleString()} {d.unit} hit
-          </div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            The board said {pct(d.expected)} would
-          </div>
-        </div>
-        <div>
-          <span
-            className={`inline-flex items-center gap-2 border px-3 py-1 font-mono text-[11px] uppercase tracking-widest ${v.tone}`}
-          >
-            <span aria-hidden>{v.icon}</span>
-            {v.label}
-          </span>
-          <p className="mt-2 max-w-xl text-sm text-muted-foreground">{v.why}</p>
-          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+      <RecordHeadline
+        hits={d.hits}
+        n={d.n}
+        unit={d.unit}
+        verb="hit"
+        expected={d.expected}
+        footnote={
+          <>
             {d.firstDate && d.lastDate ? `${d.firstDate} to ${d.lastDate}` : ""}
             {d.pending ? ` · ${d.pending} waiting on results` : ""}
             {d.voided ? ` · ${d.voided} void (player did not play)` : ""}
-          </p>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {d.byType.length > 0 && (
         <div className="border-t border-border px-5 py-5 sm:px-6">

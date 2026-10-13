@@ -45,12 +45,16 @@ function margin(p: number, n: number): number {
   return 2 * Math.sqrt(Math.max(p * (1 - p), 0.01) / n);
 }
 
-function verdict(r: CalibrationRow): { text: string; tone: "flat" | "over" | "under" } {
+function verdict(
+  r: CalibrationRow,
+  verb: string,
+): { text: string; tone: "flat" | "over" | "under" } {
   const gap = r.actual - r.predicted;
   const m = margin(r.predicted, r.n);
   if (Math.abs(gap) <= m) return { text: "about right", tone: "flat" };
-  if (gap > 0) return { text: `scored ${pct(Math.abs(gap))} more often than it claimed`, tone: "under" };
-  return { text: `scored ${pct(Math.abs(gap))} less often than it claimed`, tone: "over" };
+  if (gap > 0)
+    return { text: `${verb} ${pct(Math.abs(gap))} more often than it claimed`, tone: "under" };
+  return { text: `${verb} ${pct(Math.abs(gap))} less often than it claimed`, tone: "over" };
 }
 
 function Track({ predicted, actual }: { predicted: number; actual: number }) {
@@ -83,11 +87,14 @@ function Track({ predicted, actual }: { predicted: number; actual: number }) {
 
 export function CalibrationTable({
   rows,
-  /** What one row is: "picks" here, "calls" on the game ledger. */
+  /** What one row is: "picks" here, "games" on the game ledger. */
   unit = "picks",
+  /** What a pick does when it comes in, past tense: "scored", "were right". */
+  verb = "scored",
 }: {
   rows: CalibrationRow[];
   unit?: string;
+  verb?: string;
 }) {
   if (rows.length === 0) return null;
   const total = rows.reduce((s, r) => s + r.n, 0);
@@ -113,13 +120,13 @@ export function CalibrationTable({
               <th className="py-2 pr-3 font-normal">When it said</th>
               <th className="py-2 pr-3 text-right font-normal tabular-nums">{unit}</th>
               <th className="w-[38%] py-2 pr-3 font-normal">0% → 100%</th>
-              <th className="py-2 pr-3 text-right font-normal tabular-nums">They scored</th>
+              <th className="py-2 pr-3 text-right font-normal tabular-nums">Actually {verb}</th>
               <th className="py-2 font-normal">So?</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const v = verdict(r);
+              const v = verdict(r, verb);
               return (
                 <tr key={r.band} className="border-b border-border/60 last:border-b-0">
                   <td className="py-3 pr-3 text-foreground tabular-nums">{r.band}</td>
@@ -145,14 +152,17 @@ export function CalibrationTable({
       </div>
 
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        Read a row as a sentence: <em>of the {rows[0].n} picks the board called{" "}
-        {rows[0].band}, {pct(rows[0].actual)} scored.</em> The two dots are the claim and the
-        result — the closer they sit, the more the number on the card can be taken at face value.{" "}
+        Read a row as a sentence:{" "}
+        <em>
+          of the {rows[0].n} {unit} it called {rows[0].band}, {pct(rows[0].actual)} {verb}.
+        </em>{" "}
+        The two dots are the claim and the result — the closer they sit, the more the number on the
+        card can be taken at face value.{" "}
         {solid.length === 0 ? (
           <>
             Across all {total} settled {unit}, no bucket is off by more than chance can explain at
-            this sample size, so every row reads “about right”. That is the expected state early
-            on, not a finding.
+            this sample size, so every row reads “about right”. That is the expected state early on,
+            not a finding.
           </>
         ) : (
           <>

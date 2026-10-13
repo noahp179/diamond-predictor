@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { CalibrationTable } from "@/components/CalibrationTable";
 import { SoccerShell } from "@/components/SoccerShell";
 import { UclRecord } from "@/components/UclRecord";
 import { Stat, StatBar } from "@/components/SportShell";
@@ -73,14 +74,37 @@ export function UclModelPage() {
       blurb="How the Champions League numbers are made and how they scored on nine seasons the model was never fitted on: 1,253 matches, 2017-18 to 2025-26, each priced with only what was known the morning it was played. Including what it does not beat, and the one change made after the first backtest."
       statBar={
         <StatBar>
-          <Stat label="Held-out RPS" value={f4(shipped.rps)} />
-          <Stat label="Called right" value={pct(shipped.acc)} />
-          <Stat label="Base rates RPS" value={f4(base.rps)} />
-          <Stat label="Test matches" value={shipped.n.toLocaleString()} />
+          <Stat label="Picked the right result" value={pct(shipped.acc)} />
+          <Stat label="Always picking the home side" value={pct(base.acc)} />
+          <Stat label="Past matches tested" value={shipped.n.toLocaleString()} />
+          <Stat label="Error score (lower is better)" value={f4(shipped.rps)} />
         </StatBar>
       }
       footerNote="Research · research/ucl · fetch_ucl.py → tune_ucl.py → backtest_ucl.py → ship_ucl.py → sim_ucl.py"
     >
+      <Section title="The short version">
+        <p>
+          Tested on {shipped.n.toLocaleString()} Champions League matches it had never seen, the
+          model&apos;s most likely result — home win, draw or away win — was what happened{" "}
+          <strong className="text-foreground">{pct(shipped.acc, 0)}</strong> of the time. Football
+          has three outcomes and draws are hard to call, so the yardsticks are lower than in other
+          sports:
+        </p>
+        <Bars
+          rows={[
+            ["This model", shipped.acc, true],
+            ["Same model, domestic leagues only", bt.pooled.domestic_only.acc, false],
+            ["Always picking the home side", base.acc, false],
+            ["Picking at random", 1 / 3, false],
+          ]}
+        />
+        <p>
+          Picking the winner is the blunt test. The sharper one is whether its percentages are
+          honest — when it says 60%, does that side win about 60% of the time? That is the
+          &ldquo;when it is sure&rdquo; table further down.
+        </p>
+      </Section>
+
       <Section title="What ships">
         <p>
           <strong className="text-foreground">One Elo for every club in Europe.</strong> Champions
@@ -217,29 +241,17 @@ export function UclModelPage() {
         </p>
       </Section>
 
-      <Section title="Calibration — when the favourite is priced at X, does it win X of the time?">
-        <table className="w-full font-mono text-[12px] tabular-nums">
-          <thead>
-            <tr className="text-left text-muted-foreground">
-              <th className="py-1.5 font-normal">Favourite priced at</th>
-              <th className="py-1.5 text-right font-normal">Matches</th>
-              <th className="py-1.5 text-right font-normal">Predicted</th>
-              <th className="py-1.5 text-right font-normal">Happened</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bt.calibration.map((c) => (
-              <tr key={c.lo} className="border-t border-border/50">
-                <td className="py-1.5">
-                  {pct(c.lo, 0)} – {pct(c.hi, 0)}
-                </td>
-                <td className="py-1.5 text-right">{c.n}</td>
-                <td className="py-1.5 text-right">{pct(c.predicted)}</td>
-                <td className="py-1.5 text-right text-foreground">{pct(c.actual)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <Section title="When it is sure, is it right?">
+        <CalibrationTable
+          rows={bt.calibration.map((c) => ({
+            band: `${pct(c.lo, 0)}–${pct(c.hi, 0)}`,
+            n: c.n,
+            predicted: c.predicted,
+            actual: c.actual,
+          }))}
+          unit="matches"
+          verb="won"
+        />
         <p>
           Close through the middle; favourites priced 65-85% won somewhat more often than priced.
           The model is, if anything, a little timid about big favourites.
@@ -387,5 +399,29 @@ function KV({ rows }: { rows: [string, string][] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/** A plain comparison: one bar per yardstick, the model's own highlighted. */
+function Bars({ rows }: { rows: [string, number, boolean][] }) {
+  return (
+    <ul className="space-y-2">
+      {rows.map(([label, x, own]) => (
+        <li key={label} className="grid grid-cols-[11rem_1fr_3rem] items-center gap-3">
+          <span className={`text-xs ${own ? "text-foreground" : "text-muted-foreground"}`}>
+            {label}
+          </span>
+          <span className="h-2.5 rounded-full bg-secondary">
+            <span
+              className={`block h-full rounded-full ${own ? "bg-primary" : "bg-muted-foreground/50"}`}
+              style={{ width: `${Math.max(0, Math.min(1, x)) * 100}%` }}
+            />
+          </span>
+          <span className="text-right font-mono text-[11px] tabular-nums text-foreground">
+            {pct(x, 0)}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 
 import { CfbTdScorersView } from "@/components/CfbTdScorersView";
 import { TdParlayView } from "@/components/TdParlayView";
-import { boardOf, PropsBoardsProvider } from "@/components/PropsBoards";
+import { PropsBoardsProvider } from "@/components/PropsBoards";
+import { boardOf } from "@/lib/props-boards";
 
 /**
  * College Football Props — every prop board for the sport on one page (see PropsBoards.tsx).

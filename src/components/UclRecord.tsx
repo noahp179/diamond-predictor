@@ -58,9 +58,14 @@ export function UclRecord() {
               <tr className="text-left text-muted-foreground">
                 <th className="px-5 py-2 font-normal">Season</th>
                 <th className="py-2 text-right font-normal">Matches</th>
-                <th className="py-2 text-right font-normal">Called right</th>
-                <th className="py-2 text-right font-normal">RPS</th>
-                <th className="px-5 py-2 text-right font-normal">Brier</th>
+                <th className="py-2 text-right font-normal">Picked right</th>
+                <th className="py-2 text-right font-normal">Home side won</th>
+                <th className="py-2 text-right font-normal" title="Ranked probability score">
+                  RPS ↓
+                </th>
+                <th className="px-5 py-2 text-right font-normal" title="Brier score">
+                  Brier ↓
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -75,6 +80,9 @@ export function UclRecord() {
                     <td className="py-1.5 text-right text-foreground">
                       {pct(mean((r) => (r.ok ? 1 : 0)))}
                     </td>
+                    <td className="py-1.5 text-right">
+                      {pct(mean((r) => (r.result === "a" ? 1 : 0)))}
+                    </td>
                     <td className="py-1.5 text-right">{mean((r) => r.rps ?? 0).toFixed(4)}</td>
                     <td className="px-5 py-1.5 text-right">{mean((r) => r.brier).toFixed(4)}</td>
                   </tr>
@@ -83,8 +91,12 @@ export function UclRecord() {
             </tbody>
           </table>
 
+          <p className="border-t border-border px-5 py-2 text-xs text-muted-foreground">
+            &ldquo;Home side won&rdquo; is what you would get by always picking the home team — the
+            yardstick to beat. ↓ = lower is better.
+          </p>
           <div className="border-t border-border px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            Latest matches
+            Latest matches · home / draw / away chances
           </div>
           <ol>
             {recent.map((r) => (

@@ -5,7 +5,8 @@ import { MlbBaseParlayView } from "@/components/MlbBaseParlayView";
 import { MlbPropsView } from "@/components/MlbPropsView";
 import { MlbStacksView } from "@/components/MlbStacksView";
 import { MlbTwoBasesView } from "@/components/MlbTwoBasesView";
-import { boardOf, PropsBoardsProvider } from "@/components/PropsBoards";
+import { PropsBoardsProvider } from "@/components/PropsBoards";
+import { boardOf } from "@/lib/props-boards";
 
 /**
  * MLB Props — every prop board for the sport on one page (see PropsBoards.tsx).

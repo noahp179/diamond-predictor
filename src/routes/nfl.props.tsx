@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { NflPropsView } from "@/components/NflPropsView";
 import { TdParlayView } from "@/components/TdParlayView";
 import { TdScorersView } from "@/components/TdScorersView";
-import { boardOf, PropsBoardsProvider } from "@/components/PropsBoards";
+import { PropsBoardsProvider } from "@/components/PropsBoards";
+import { boardOf } from "@/lib/props-boards";
 
 /**
  * NFL Props — every prop board for the sport on one page (see PropsBoards.tsx).

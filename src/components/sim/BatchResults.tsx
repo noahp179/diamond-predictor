@@ -121,7 +121,7 @@ export function BatchResults({
                 ? "A tie"
                 : `${winnerOf(medianMargin)} by ${Math.abs(medianMargin)}`
             }
-            note={`line all ${n.toLocaleString()} games up from the biggest ${away.abbr} win to the biggest ${home.abbr} win: this is the one in the middle`}
+            note={`the middle game, if you sorted all ${n.toLocaleString()} by margin`}
           />
           <Fact
             label={`Total ${totalLabel}`}
