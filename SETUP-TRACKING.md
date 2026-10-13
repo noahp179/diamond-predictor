@@ -103,6 +103,34 @@ live ESPN.
 
 ---
 
+## Every prop board is now tracked (2026-10-13)
+
+The touchdown boards and baseball's 2+ bases board had forward records; the
+other prop boards were shown every day and never written down. They are now,
+by `src/lib/prop-ledger.server.ts`:
+
+| board | table | model version |
+|---|---|---|
+| MLB player props (hits, total bases, HR, RBI, runs, steals, strikeouts) | `player_predictions` | `mlb-props-logistic-v1` |
+| NFL player props (receptions, receiving/rushing/scrimmage/passing yards, 2+ passing TDs) | `player_predictions` | `nfl-props-logistic-v1` |
+| Soccer player props, each league (shots, on target, goals, assists, cards, fouls) | `player_predictions` | `soccer-props-<league>-v1` |
+| MLB team stacks and team totals | `stack_predictions` (new) | `mlb-stacks-v1` |
+
+What is recorded is the card a reader sees by default — each game's top five
+picks, one per player — written before the game and scored from the box score
+by the rule the market's model was fitted to. A player who did not play is a
+void, not a miss. The benchmark is each pick's own published probability.
+
+They run on their own daily cron, `/api/public/hooks/track-props` (08:40 UTC),
+because building these boards is heavy and the event cron is already near its
+time limit. Apply `supabase/migrations/20261013130000_stack_predictions.sql`
+once for the stacks table (the player boards need nothing new).
+`npx tsx scripts/test-prop-ledger.ts` checks the settlement against real games.
+
+The MLB boards cover the regular season only, so baseball's rows start in March.
+
+---
+
 ## What runs, and when
 
 `vercel.json` schedules two jobs. Vercel Cron invokes them with **GET**, sending

@@ -110,7 +110,7 @@ export function canTrackTd(): boolean {
 // ------------------------------------------------------------------ write
 
 export type TdPickRow = {
-  sport: PlayerSport;
+  sport: LedgerSport;
   market: string;
   model_version: string;
   event_id: string;
@@ -343,6 +343,8 @@ export async function settleTdPicks(throughDate: string, lookbackDays = 21) {
 
 export type TdLedgerRow = {
   date: string;
+  /** Which bet — one board can carry many (shots, hits, receiving yards…). */
+  market: string;
   player: string;
   team: string;
   position: string | null;
@@ -356,13 +358,30 @@ export type TdLedgerRow = {
 
 export type TdLedgerGroup = { label: string; n: number; hits: number; hitRate: number | null };
 
+/** One market's record: how often its picks hit against how often the board
+ *  said they would. The plainest honest question a reader can ask of it. */
+export type TdMarketRecord = {
+  market: string;
+  n: number;
+  hits: number;
+  hitRate: number | null;
+  /** Mean stated probability of the settled picks — "what we expected". */
+  expected: number | null;
+};
+
 /** Sports that write player-level picks to `player_predictions`. MLB's market
- *  is 2+ total bases rather than touchdowns; the table and the read path do not
- *  care, which is what its `market` column is for. */
+ *  is 2+ total bases rather than touchdowns; soccer's are shots, goals and
+ *  cards; the table and the read path do not care, which is what its `market`
+ *  column is for. */
+
 export type PlayerSport = TdSport | "mlb";
 
+/** Every sport with a player board in `player_predictions`. Soccer's prop
+ *  boards are read here; it has no slips, so it is not a PlayerSport. */
+export type LedgerSport = PlayerSport | "soccer";
+
 export type TdLedgerView = {
-  sport: PlayerSport;
+  sport: LedgerSport;
   modelVersion: string;
   /**
    * Three states, because two of them look identical on an empty page and only
@@ -376,6 +395,9 @@ export type TdLedgerView = {
    */
   status: "ok" | "not-provisioned" | "unreadable";
   writable: boolean;
+  /** What a held-out backtest said the card would do. Null for boards that
+   *  have no such measurement (the player-prop boards): their benchmark is the
+   *  probability each pick was published at — see `byMarket.expected`. */
   claim: {
     leadHit: number;
     anyHit: number;
@@ -386,7 +408,7 @@ export type TdLedgerView = {
      *  baseball it already says no, which the page is better off saying than
      *  waiting a season to discover. */
     byRank?: Record<string, number>;
-  };
+  } | null;
   summary: {
     n: number;
     hits: number;
@@ -424,6 +446,8 @@ export type TdLedgerView = {
   running: { i: number; date: string; accuracy: number }[];
   /** One row per day that settled anything, oldest first. */
   daily: { date: string; n: number; correct: number; accuracy: number }[];
+  /** Hit rate and expected rate per market, most-picked first. */
+  byMarket: TdMarketRecord[];
   recent: TdLedgerRow[];
 };
 
@@ -465,10 +489,18 @@ export async function readTdLedger(sport: TdSport): Promise<TdLedgerView> {
  * differently.
  */
 export async function readPlayerLedger(opts: {
-  sport: PlayerSport;
-  market: string;
+  sport: LedgerSport;
+  /** One market, or null for every market the board writes. */
+  market: string | null;
   modelVersion: string;
-  claim: TdLedgerView["claim"];
+  /**
+   * Read only this model version's rows. The touchdown boards deliberately do
+   * not — their record runs across model upgrades — but a board that shares a
+   * market name with another (the props board also offers 2+ total bases) must,
+   * or the two records would blend.
+   */
+  exactModel?: boolean;
+  claim?: TdLedgerView["claim"];
   countLabel: string;
   /** Pick ranks the board actually shows, in card order. */
   rankOrder?: string[];
@@ -482,7 +514,8 @@ export async function readPlayerLedger(opts: {
    */
   maxRank?: number;
 }): Promise<TdLedgerView> {
-  const { sport, market, modelVersion, claim, countLabel } = opts;
+  const { sport, market, modelVersion, countLabel } = opts;
+  const claim = opts.claim ?? null;
   const maxRank = opts.maxRank ?? Infinity;
   const rankOrder = opts.rankOrder ?? ["Pick 1", "Pick 2", "Pick 3"];
   const empty: TdLedgerView = {
@@ -511,18 +544,19 @@ export async function readPlayerLedger(opts: {
     calibration: [],
     running: [],
     daily: [],
+    byMarket: [],
     recent: [],
   };
 
   try {
-    const { data, error } = await reader()
+    let q = reader()
       .from("player_predictions")
       .select("*")
       .eq("sport", sport)
-      .eq("market", market)
-      .eq("provenance", "forward")
-      .order("event_date", { ascending: false })
-      .limit(2000);
+      .eq("provenance", "forward");
+    if (market) q = q.eq("market", market);
+    if (opts.exactModel) q = q.eq("model_version", modelVersion);
+    const { data, error } = await q.order("event_date", { ascending: false }).limit(2000);
     if (error) {
       // PGRST205 is PostgREST for "no such table". Telling it apart from every
       // other read failure is the whole point of the status field: this one is
@@ -542,6 +576,7 @@ export async function readPlayerLedger(opts: {
     const all = (data ?? []) as {
       event_id: string;
       event_date: string;
+      market: string;
       player: string;
       team: string;
       position: string | null;
@@ -589,6 +624,15 @@ export async function readPlayerLedger(opts: {
       byDay.set(r.event_date, cur);
     }
 
+    const markets = new Map<string, { n: number; hits: number; p: number }>();
+    for (const r of done) {
+      const cur = markets.get(r.market) ?? { n: 0, hits: 0, p: 0 };
+      cur.n += 1;
+      cur.p += Number(r.prob);
+      if (r.scored) cur.hits += 1;
+      markets.set(r.market, cur);
+    }
+
     return {
       ...empty,
       summary: {
@@ -629,8 +673,18 @@ export async function readPlayerLedger(opts: {
         done.filter((r) => r.tier).map((r) => ({ key: r.tier as string, scored: r.scored })),
         ["Strong", "Solid", "Lean"],
       ),
+      byMarket: [...markets.entries()]
+        .map(([m, v]) => ({
+          market: m,
+          n: v.n,
+          hits: v.hits,
+          hitRate: v.n ? v.hits / v.n : null,
+          expected: v.n ? v.p / v.n : null,
+        }))
+        .sort((a, b) => b.n - a.n),
       recent: rows.slice(0, 60).map((r) => ({
         date: r.event_date,
+        market: r.market,
         player: r.player,
         team: r.team,
         position: r.position,

@@ -228,6 +228,42 @@ function parseSummary(
   return rows;
 }
 
+/**
+ * One finished match's player lines, for settling the board's picks. Null
+ * while the match is not over.
+ */
+export async function soccerMatchLines(
+  slug: LeagueSlug,
+  matchId: string,
+): Promise<PlayerMatch[] | null> {
+  const league = leagueOf(slug);
+  const d = await fetchJson<
+    Summary & {
+      header?: {
+        competitions?: {
+          date?: string;
+          status?: { type?: { completed?: boolean } };
+          competitors?: { homeAway?: string; id?: string; team?: { id?: string } }[];
+        }[];
+      };
+    }
+  >(`${API}/${league.espn}/summary?event=${matchId}`);
+  const comp = d?.header?.competitions?.[0];
+  if (!d || !comp?.status?.type?.completed) return null;
+  const idOf = (side: string) => {
+    const c = comp.competitors?.find((x) => x.homeAway === side);
+    return c?.team?.id ?? c?.id ?? "";
+  };
+  return parseSummary(matchId, (comp.date ?? "").slice(0, 10), idOf("home"), idOf("away"), d);
+}
+
+/** Settle one pick by the market's own rule; null if the player did not play. */
+export function soccerPropOutcome(market: string, row: PlayerMatch | undefined): boolean | null {
+  const m = MARKETS[market];
+  if (!m || !row || row.mins <= 0) return null;
+  return m.hit(row) === 1;
+}
+
 type SeasonForm = { at: number; season: number; rows: PlayerMatch[]; seen: Set<string> };
 
 const formCache = new Map<string, SeasonForm>();

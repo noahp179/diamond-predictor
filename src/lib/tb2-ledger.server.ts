@@ -338,6 +338,9 @@ export async function readTb2Ledger(): Promise<TdLedgerView> {
     sport: "mlb",
     market: TB2_MARKET,
     modelVersion: TB2_MODEL_VERSION,
+    // The props board also offers a 2+ total bases rung under its own model
+    // version; this record is the 2+ bases board's alone.
+    exactModel: true,
     claim: TB2_CLAIM,
     countLabel: "total bases",
     maxRank: SHOWN_PER_GAME,

@@ -71,6 +71,7 @@ import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model
 import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
 import { Route as ApiPublicHooksTrackPredictionsRouteImport } from './routes/api/public/hooks/track-predictions'
+import { Route as ApiPublicHooksTrackPropsRouteImport } from './routes/api/public/hooks/track-props'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -384,6 +385,12 @@ const ApiPublicHooksTrackPredictionsRoute =
     path: '/api/public/hooks/track-predictions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksTrackPropsRoute =
+  ApiPublicHooksTrackPropsRouteImport.update({
+    id: '/api/public/hooks/track-props',
+    path: '/api/public/hooks/track-props',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -448,6 +455,7 @@ export interface FileRoutesByFullPath {
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
+  '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -502,6 +510,7 @@ export interface FileRoutesByTo {
   '/tennis/$tour': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
+  '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -567,6 +576,7 @@ export interface FileRoutesById {
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
+  '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -633,6 +643,7 @@ export interface FileRouteTypes {
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
     | '/api/public/hooks/track-predictions'
+    | '/api/public/hooks/track-props'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -687,6 +698,7 @@ export interface FileRouteTypes {
     | '/tennis/$tour'
     | '/api/public/hooks/run-pipeline'
     | '/api/public/hooks/track-predictions'
+    | '/api/public/hooks/track-props'
   id:
     | '__root__'
     | '/'
@@ -751,6 +763,7 @@ export interface FileRouteTypes {
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
     | '/api/public/hooks/track-predictions'
+    | '/api/public/hooks/track-props'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -771,6 +784,7 @@ export interface RootRouteChildren {
   TennisRoute: typeof TennisRouteWithChildren
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
   ApiPublicHooksTrackPredictionsRoute: typeof ApiPublicHooksTrackPredictionsRoute
+  ApiPublicHooksTrackPropsRoute: typeof ApiPublicHooksTrackPropsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1209,6 +1223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTrackPredictionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/track-props': {
+      id: '/api/public/hooks/track-props'
+      path: '/api/public/hooks/track-props'
+      fullPath: '/api/public/hooks/track-props'
+      preLoaderRoute: typeof ApiPublicHooksTrackPropsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1406,6 +1427,7 @@ const rootRouteChildren: RootRouteChildren = {
   TennisRoute: TennisRouteWithChildren,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
   ApiPublicHooksTrackPredictionsRoute: ApiPublicHooksTrackPredictionsRoute,
+  ApiPublicHooksTrackPropsRoute: ApiPublicHooksTrackPropsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

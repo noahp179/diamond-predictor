@@ -59,8 +59,9 @@ export function TdRecord({ sport }: { sport: "cfb" | "nfl" }) {
           {s.pending > 0
             ? `${s.pending} pick${s.pending === 1 ? "" : "s"} recorded and waiting on results.`
             : "Picks are written the morning of each slate and scored once the games finish."}{" "}
-          The backtest claimed {pct(data.claim.anyHit)} of picks score — this section will say
-          whether that holds up, however it turns out.
+          {data.claim
+            ? `The backtest claimed ${pct(data.claim.anyHit)} of picks score — this section will say whether that holds up, however it turns out.`
+            : "This section will say how often they hit, however it turns out."}
         </div>
       ) : (
         <>
@@ -73,7 +74,7 @@ export function TdRecord({ sport }: { sport: "cfb" | "nfl" }) {
             <Cell
               label="Scored"
               value={pct(s.hitRate)}
-              sub={`${s.hits} of ${s.n} · backtest said ${pct(data.claim.anyHit)}`}
+              sub={`${s.hits} of ${s.n}${data.claim ? ` · backtest said ${pct(data.claim.anyHit)}` : ""}`}
               accent
             />
             <Cell
@@ -100,7 +101,7 @@ export function TdRecord({ sport }: { sport: "cfb" | "nfl" }) {
               {data.byRank.length > 0 && (
                 <Breakdown
                   title="By pick"
-                  caption={`The lead pick is the one the card leads with. Backtest: ${pct(data.claim.leadHit)}.`}
+                  caption={`The lead pick is the one the card leads with.${data.claim ? ` Backtest: ${pct(data.claim.leadHit)}.` : ""}`}
                   rows={data.byRank}
                 />
               )}
