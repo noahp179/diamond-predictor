@@ -280,9 +280,16 @@ export async function settleTdPicks(throughDate: string, lookbackDays = 21) {
   since.setUTCDate(since.getUTCDate() - lookbackDays);
   const from = since.toISOString().slice(0, 10);
 
+  // Only touchdown picks. player_predictions also holds the other prop
+  // boards' rows (NFL catches and yards, MLB and soccer props), each settled
+  // by its own rule in prop-ledger.server.ts; without this filter the
+  // touchdown settler, which runs first, would mark an NFL "3+ catches" row as
+  // hit or missed by whether the player scored a touchdown.
   const { data, error } = await db
     .from("player_predictions")
     .select("id, sport, event_id, event_date, player_id, prob")
+    .eq("market", TD_MARKET)
+    .in("sport", ["nfl", "cfb"])
     .is("settled_at", null)
     .gte("event_date", from)
     .lte("event_date", throughDate);
