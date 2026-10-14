@@ -35,8 +35,8 @@ per-match top-1 pick's hit rate vs its mean prediction, and the per-matchday
 (2,000 resamples of matchdays) for the Brier and log-loss differences between
 the best method and each other.
 
-Writes results/backtest.json, results/tables.md, results/test_predictions.csv.gz
-and data/engine_sample.json (for engine_check.ts).
+Writes results/backtest.json, results/tables.md and results/test_predictions.csv.gz
+(first-goal results are added by first_goal.py).
 
 Usage: python3 evaluate.py
 """
@@ -151,7 +151,7 @@ def gbm(max_iter):
 
 def fit_gbm(train, valid, cols):
     """Pick the number of trees on `valid` (log loss), then refit on train+valid."""
-    est = gbm(800).fit(train[cols].values, train.y.values)
+    est = gbm(400).fit(train[cols].values, train.y.values)
     best_ll, best_it = 9, 50
     for it, p in enumerate(est.staged_predict_proba(valid[cols].values), 1):
         if it % 10 == 0:
@@ -285,6 +285,17 @@ def main():
     for S in (2025, 2026):
         D = dom[dom.season == S]
         results["test"][str(S)] = evaluate(D, main_methods, f"Domestic {S}-{(S + 1) % 100:02d}: main methods")
+        # the brief's three methods only (our GBM left out), so model vs sim vs hybrid has its own CIs
+        core = ["model", "sim", "hybrid"]
+        r = results["test"][str(S)]
+        cbest = min(core, key=lambda m: r["pooled"][m]["logloss"])
+        r["bootstrap_core"] = dict(pooled=bootstrap(D, core, cbest),
+                                   per_league={lg: bootstrap(D[D.league == lg], core,
+                                                             min(core, key=lambda m: r["per_league"][lg][m]["logloss"]))
+                                               for lg in r["per_league"]})
+        tables.append(f"#### {S}-{(S + 1) % 100:02d}: model vs sim vs hybrid only (each league's best of the three "
+                      "as the reference)\n\n" + boot_table(dict(bootstrap=r["bootstrap_core"]), core) + "\n")
+        print(tables[-1])
         results["appendix"][f"variants_{S}"] = evaluate(D, main_methods + extra,
                                                         f"Domestic {S}-{(S + 1) % 100:02d}: all variants")
         U = ucl[ucl.season == S]
@@ -344,19 +355,6 @@ def main():
                ucl[ucl.season >= 2025].assign(model=np.nan, hybrid=np.nan, gbm=np.nan)[keep]]).to_csv(
         os.path.join(RES, "test_predictions.csv.gz"), index=False, compression="gzip")
 
-    # ---------------- sample for the engine check
-    smp = []
-    T = pd.concat([dom[dom.season == 2025], ucl[ucl.season == 2025]])
-    for mid in T.matchId.drop_duplicates().sample(40, random_state=1):
-        g = T[T.matchId == mid]
-        sides = []
-        for tid, gg in g.groupby("team_id"):
-            sides.append(dict(team=tid, is_home=int(gg.is_home.iloc[0]), lam=float(gg.lam_team.iloc[0]),
-                              players=[dict(id=r.player_id, name=r.name, s_site=float(r.s_site),
-                                            sim_site=float(r.sim_site)) for r in gg.itertuples()]))
-        if len(sides) == 2:
-            smp.append(dict(matchId=mid, league=g.league.iloc[0], rho=float(g.rho.iloc[0]), sides=sides))
-    json.dump(smp, open(os.path.join(DATA, "engine_sample.json"), "w"))
 
 
 def table(res, methods):
