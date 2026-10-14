@@ -32,6 +32,8 @@ PATH = {"nba": "basketball/nba", "nhl": "hockey/nhl"}
 # Regular season through the end of the playoffs. Preseason (season type 1)
 # is dropped when the games are read, so a generous window is harmless.
 WINDOW = {
+    ("nba", 2023): ("2023-10-24", "2024-06-20"),
+    ("nhl", 2023): ("2023-10-10", "2024-06-25"),
     ("nba", 2024): ("2024-10-22", "2025-06-25"),
     ("nba", 2025): ("2025-10-21", "2026-06-25"),
     ("nba", 2026): ("2026-10-20", None),
@@ -84,7 +86,8 @@ def nba_line(labels: list[str], stats: list[str]) -> dict:
         "min": num(s.get("MIN")),
         "pts": num(s.get("PTS")),
         "fgm": fgm, "fga": fga, "tpm": tpm, "tpa": tpa, "ftm": ftm, "fta": fta,
-        "reb": num(s.get("REB")), "ast": num(s.get("AST")), "tov": num(s.get("TO")),
+        "reb": num(s.get("REB")), "oreb": num(s.get("OREB")), "dreb": num(s.get("DREB")),
+        "ast": num(s.get("AST")), "tov": num(s.get("TO")),
         "stl": num(s.get("STL")), "blk": num(s.get("BLK")), "pf": num(s.get("PF")),
     }
 
@@ -100,7 +103,49 @@ def nhl_line(labels: list[str], stats: list[str]) -> dict:
         "toi": secs(s.get("TOI")), "pptoi": secs(s.get("PPTOI")),
         "g": num(s.get("G")), "a": num(s.get("A")), "sog": num(s.get("SOG")),
         "shots": num(s.get("S")), "pim": num(s.get("PIM")),
+        "fw": num(s.get("FW")), "fl": num(s.get("FL")),
     }
+
+
+def team_stats(d: dict) -> dict:
+    """Each team's box-score totals, keyed by team id: {name: value}. "a-b"
+    pairs (made-attempted) are split into name_made / name_att."""
+    out = {}
+    for t in d.get("boxscore", {}).get("teams", []):
+        row = {}
+        for st in t.get("statistics", []):
+            name, val = st.get("name"), st.get("displayValue")
+            if not name:
+                continue
+            if "-" in name and val and "-" in val:
+                a, b = name.split("-", 1)
+                m, n = made_att(val)
+                row[a], row[b] = m, n
+            else:
+                row[name] = num(val)
+        out[t["team"]["id"]] = row
+    return out
+
+
+def nhl_pp_points(d: dict) -> dict:
+    """Power-play goals and assists per player, from the goal plays (the box
+    score does not split them out). Shootout goals are not goals."""
+    out: dict = {}
+    for p in d.get("plays", []):
+        if not p.get("scoringPlay"):
+            continue
+        if (p.get("period") or {}).get("number", 0) >= 5 and "shootout" in (p.get("text") or "").lower():
+            continue
+        pp = "power" in ((p.get("strength") or {}).get("text") or "").lower()
+        for part in p.get("participants", []):
+            aid = (part.get("athlete") or {}).get("id")
+            role = part.get("type")
+            if not aid or role not in ("scorer", "assister"):
+                continue
+            r = out.setdefault(aid, {"ppg": 0, "ppa": 0})
+            if pp:
+                r["ppg" if role == "scorer" else "ppa"] += 1
+    return out
 
 
 def compact(sport: str, eid: str, d: dict) -> dict | None:
@@ -128,7 +173,9 @@ def compact(sport: str, eid: str, d: dict) -> dict | None:
         "home_ml": (pc or {}).get("homeTeamOdds", {}).get("moneyLine"),
         "away_ml": (pc or {}).get("awayTeamOdds", {}).get("moneyLine"),
         "players": [],
+        "teams": team_stats(d),
     }
+    pp = nhl_pp_points(d) if sport == "nhl" else {}
     for t in d.get("boxscore", {}).get("players", []):
         tid = t["team"]["id"]
         for g in t.get("statistics", []):
@@ -151,6 +198,8 @@ def compact(sport: str, eid: str, d: dict) -> dict | None:
                     row["reason"] = a["reason"]
                 if stats:
                     row.update(nba_line(labels, stats) if sport == "nba" else nhl_line(labels, stats))
+                if sport == "nhl" and row["pid"] in pp:
+                    row.update(pp[row["pid"]])
                 game["players"].append(row)
     return game
 
