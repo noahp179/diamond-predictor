@@ -146,29 +146,30 @@ def blend(cur, prev, frac):
 
 
 def canonical_abbr(games, team, pg):
-    """ESPN renamed Jacksonville State JVST -> JXST for 2026 after the export.
-    The pipeline keys teams by abbreviation, so the rename silently cut its 2026
-    games off from 2025 (no carry-in, and its Week-0 game unpriceable). Every
-    team id is mapped back to the abbreviation it first used, which is what the
-    export-time data had. Only team 55 changes in 2021-2026."""
-    first = (team.sort_values(["date", "game_id"]).drop_duplicates("team_id")
-             .set_index("team_id").team)
-    by_id = {str(k): v for k, v in first.items()}
+    """ESPN renamed Jacksonville State JVST -> JXST for its 2026 games, after
+    the export. The pipeline keys teams by abbreviation, so the rename silently
+    cuts the team's 2026 games off from its 2025 history (no carry-in, and its
+    Week-0 game becomes unpriceable). A 2026 abbreviation that differs from the
+    same team id's 2025 one is mapped back to the 2025 one. Earlier renames
+    (BSU->BOIS, NCST->NCSU, WISC->WIS, HBU->HCU, TAMC->ETAM, DXST->UTU) were in
+    the export-time data too and are left exactly as the original saw them."""
+    last25 = (team[team.season == 2025].sort_values(["date", "game_id"])
+              .drop_duplicates("team_id", keep="last").set_index("team_id").team)
+    by_id = {str(k): v for k, v in last25.items()}
     changed = {}
     def fix(df, abbr_col, id_col):
-        new = [by_id.get(str(i), a) for a, i in zip(df[abbr_col], df[id_col])]
-        for a, b in zip(df[abbr_col], new):
+        m = df.season == 2026
+        new = [by_id.get(str(i), a) for a, i in zip(df.loc[m, abbr_col], df.loc[m, id_col])]
+        for a, b in zip(df.loc[m, abbr_col], new):
             if a != b:
                 changed[a] = b
-        df[abbr_col] = new
+        df.loc[m, abbr_col] = new
     fix(team, "team", "team_id")
-    opp_id = team.groupby("game_id").team_id.agg(list)
-    team["opp"] = [by_id.get(str([x for x in opp_id[g] if x != t][0]), o)
-                   if len(opp_id[g]) == 2 else o
-                   for g, t, o in zip(team.game_id, team.team_id, team.opp)]
     fix(pg, "team", "team_id")
     fix(games, "home", "home_id")
     fix(games, "away", "away_id")
+    for a, b in changed.items():
+        team.loc[(team.season == 2026) & (team.opp == a), "opp"] = b
     return changed
 
 
