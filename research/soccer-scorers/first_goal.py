@@ -228,7 +228,7 @@ def main():
             sides["home" if home else "away"] = dict(
                 team=tid, rate=float(gg.lam_team.iloc[0]),
                 site=site, on=[dict(id=r.player_id, share=float(v * scale)) for r, v in zip(gg.itertuples(), on)],
-                on_scaled=scale < 1.0)
+                on_scaled=bool(scale < 1.0))
         if len(sides) == 2:
             fx.append(dict(matchId=str(mid), league=g.league.iloc[0], **sides))
     json.dump(fx, open(os.path.join(DATA, "engine_fixtures.json"), "w"))

@@ -86,7 +86,8 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
   const def = simBoard(league, board);
   const [date, setDate] = useState(todayET());
   const [marketKey, setMarketKey] = useState(
-    def?.markets[Math.min(2, (def?.markets.length ?? 1) - 1)]?.key ?? "",
+    // Basketball opens on 20+ points; every other board on its first line.
+    def?.markets[league === "nba" ? Math.min(2, def.markets.length - 1) : 0]?.key ?? "",
   );
   const [showAll, setShowAll] = useState(false);
   const load = useServerFn(getSimPropsBoard);
