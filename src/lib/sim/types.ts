@@ -385,6 +385,13 @@ export interface GameResult {
   /** Team-level extras (hits & errors in MLB, shots in NHL, yards in NFL). */
   team: { home: Record<string, number>; away: Record<string, number> };
   events?: PlayEvent[];
+  /**
+   * The player credited with the game's first goal (NHL) or first touchdown
+   * (NFL, college): his side and box-score row. null when nobody was — no
+   * score at all, or a first touchdown on a kick or punt return, which the
+   * engine credits to no one. Absent for leagues that do not track it.
+   */
+  first?: { side: Side; idx: number } | null;
   /** Final status line: "Final", "Final/OT", "Final/11". */
   status: string;
 }

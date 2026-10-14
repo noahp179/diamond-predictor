@@ -43,6 +43,7 @@ import { Route as MlbTrackRecordRouteImport } from './routes/mlb.track-record'
 import { Route as MlbTwoBasesRouteImport } from './routes/mlb.two-bases'
 import { Route as NbaIndexRouteImport } from './routes/nba.index'
 import { Route as NbaBestOddsRouteImport } from './routes/nba.best-odds'
+import { Route as NbaPropsRouteImport } from './routes/nba.props'
 import { Route as NbaRecommendedRouteImport } from './routes/nba.recommended'
 import { Route as NbaSimulateRouteImport } from './routes/nba.simulate'
 import { Route as NbaTrackRecordRouteImport } from './routes/nba.track-record'
@@ -55,6 +56,7 @@ import { Route as NflSimulateRouteImport } from './routes/nfl.simulate'
 import { Route as NflTdScorersRouteImport } from './routes/nfl.td-scorers'
 import { Route as NflTrackRecordRouteImport } from './routes/nfl.track-record'
 import { Route as NhlIndexRouteImport } from './routes/nhl.index'
+import { Route as NhlPropsRouteImport } from './routes/nhl.props'
 import { Route as NhlSimulateRouteImport } from './routes/nhl.simulate'
 import { Route as SimIndexRouteImport } from './routes/sim.index'
 import { Route as SimLeagueRouteImport } from './routes/sim.$league'
@@ -71,6 +73,7 @@ import { Route as TennisTourIndexRouteImport } from './routes/tennis.$tour.index
 import { Route as TennisTourModelRouteImport } from './routes/tennis.$tour.model'
 import { Route as TennisTourTrackRecordRouteImport } from './routes/tennis.$tour.track-record'
 import { Route as ApiPublicHooksRunPipelineRouteImport } from './routes/api/public/hooks/run-pipeline'
+import { Route as ApiPublicHooksSimPropsRouteImport } from './routes/api/public/hooks/sim-props'
 import { Route as ApiPublicHooksTrackPredictionsRouteImport } from './routes/api/public/hooks/track-predictions'
 import { Route as ApiPublicHooksTrackPropsRouteImport } from './routes/api/public/hooks/track-props'
 
@@ -244,6 +247,11 @@ const NbaBestOddsRoute = NbaBestOddsRouteImport.update({
   path: '/best-odds',
   getParentRoute: () => NbaRoute,
 } as any)
+const NbaPropsRoute = NbaPropsRouteImport.update({
+  id: '/props',
+  path: '/props',
+  getParentRoute: () => NbaRoute,
+} as any)
 const NbaRecommendedRoute = NbaRecommendedRouteImport.update({
   id: '/recommended',
   path: '/recommended',
@@ -302,6 +310,11 @@ const NflTrackRecordRoute = NflTrackRecordRouteImport.update({
 const NhlIndexRoute = NhlIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => NhlRoute,
+} as any)
+const NhlPropsRoute = NhlPropsRouteImport.update({
+  id: '/props',
+  path: '/props',
   getParentRoute: () => NhlRoute,
 } as any)
 const NhlSimulateRoute = NhlSimulateRouteImport.update({
@@ -385,6 +398,11 @@ const ApiPublicHooksRunPipelineRoute =
     path: '/api/public/hooks/run-pipeline',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksSimPropsRoute = ApiPublicHooksSimPropsRouteImport.update({
+  id: '/api/public/hooks/sim-props',
+  path: '/api/public/hooks/sim-props',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksTrackPredictionsRoute =
   ApiPublicHooksTrackPredictionsRouteImport.update({
     id: '/api/public/hooks/track-predictions',
@@ -430,6 +448,7 @@ export interface FileRoutesByFullPath {
   '/mlb/track-record': typeof MlbTrackRecordRoute
   '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
+  '/nba/props': typeof NbaPropsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/simulate': typeof NbaSimulateRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
@@ -440,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/nfl/simulate': typeof NflSimulateRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/nhl/props': typeof NhlPropsRoute
   '/nhl/simulate': typeof NhlSimulateRoute
   '/sim/$league': typeof SimLeagueRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
@@ -461,6 +481,7 @@ export interface FileRoutesByFullPath {
   '/soccer/$league/': typeof SoccerLeagueIndexRoute
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
+  '/api/public/hooks/sim-props': typeof ApiPublicHooksSimPropsRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
   '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
@@ -488,6 +509,7 @@ export interface FileRoutesByTo {
   '/mlb/track-record': typeof MlbTrackRecordRoute
   '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
+  '/nba/props': typeof NbaPropsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/simulate': typeof NbaSimulateRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
@@ -498,6 +520,7 @@ export interface FileRoutesByTo {
   '/nfl/simulate': typeof NflSimulateRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/nhl/props': typeof NhlPropsRoute
   '/nhl/simulate': typeof NhlSimulateRoute
   '/sim/$league': typeof SimLeagueRoute
   '/cfb': typeof CfbIndexRoute
@@ -517,6 +540,7 @@ export interface FileRoutesByTo {
   '/soccer/$league': typeof SoccerLeagueIndexRoute
   '/tennis/$tour': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
+  '/api/public/hooks/sim-props': typeof ApiPublicHooksSimPropsRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
   '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
@@ -553,6 +577,7 @@ export interface FileRoutesById {
   '/mlb/track-record': typeof MlbTrackRecordRoute
   '/mlb/two-bases': typeof MlbTwoBasesRoute
   '/nba/best-odds': typeof NbaBestOddsRoute
+  '/nba/props': typeof NbaPropsRoute
   '/nba/recommended': typeof NbaRecommendedRoute
   '/nba/simulate': typeof NbaSimulateRoute
   '/nba/track-record': typeof NbaTrackRecordRoute
@@ -563,6 +588,7 @@ export interface FileRoutesById {
   '/nfl/simulate': typeof NflSimulateRoute
   '/nfl/td-scorers': typeof NflTdScorersRoute
   '/nfl/track-record': typeof NflTrackRecordRoute
+  '/nhl/props': typeof NhlPropsRoute
   '/nhl/simulate': typeof NhlSimulateRoute
   '/sim/$league': typeof SimLeagueRoute
   '/soccer/$league': typeof SoccerLeagueRouteWithChildren
@@ -584,6 +610,7 @@ export interface FileRoutesById {
   '/soccer/$league/': typeof SoccerLeagueIndexRoute
   '/tennis/$tour/': typeof TennisTourIndexRoute
   '/api/public/hooks/run-pipeline': typeof ApiPublicHooksRunPipelineRoute
+  '/api/public/hooks/sim-props': typeof ApiPublicHooksSimPropsRoute
   '/api/public/hooks/track-predictions': typeof ApiPublicHooksTrackPredictionsRoute
   '/api/public/hooks/track-props': typeof ApiPublicHooksTrackPropsRoute
 }
@@ -621,6 +648,7 @@ export interface FileRouteTypes {
     | '/mlb/track-record'
     | '/mlb/two-bases'
     | '/nba/best-odds'
+    | '/nba/props'
     | '/nba/recommended'
     | '/nba/simulate'
     | '/nba/track-record'
@@ -631,6 +659,7 @@ export interface FileRouteTypes {
     | '/nfl/simulate'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/nhl/props'
     | '/nhl/simulate'
     | '/sim/$league'
     | '/soccer/$league'
@@ -652,6 +681,7 @@ export interface FileRouteTypes {
     | '/soccer/$league/'
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
+    | '/api/public/hooks/sim-props'
     | '/api/public/hooks/track-predictions'
     | '/api/public/hooks/track-props'
   fileRoutesByTo: FileRoutesByTo
@@ -679,6 +709,7 @@ export interface FileRouteTypes {
     | '/mlb/track-record'
     | '/mlb/two-bases'
     | '/nba/best-odds'
+    | '/nba/props'
     | '/nba/recommended'
     | '/nba/simulate'
     | '/nba/track-record'
@@ -689,6 +720,7 @@ export interface FileRouteTypes {
     | '/nfl/simulate'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/nhl/props'
     | '/nhl/simulate'
     | '/sim/$league'
     | '/cfb'
@@ -708,6 +740,7 @@ export interface FileRouteTypes {
     | '/soccer/$league'
     | '/tennis/$tour'
     | '/api/public/hooks/run-pipeline'
+    | '/api/public/hooks/sim-props'
     | '/api/public/hooks/track-predictions'
     | '/api/public/hooks/track-props'
   id:
@@ -743,6 +776,7 @@ export interface FileRouteTypes {
     | '/mlb/track-record'
     | '/mlb/two-bases'
     | '/nba/best-odds'
+    | '/nba/props'
     | '/nba/recommended'
     | '/nba/simulate'
     | '/nba/track-record'
@@ -753,6 +787,7 @@ export interface FileRouteTypes {
     | '/nfl/simulate'
     | '/nfl/td-scorers'
     | '/nfl/track-record'
+    | '/nhl/props'
     | '/nhl/simulate'
     | '/sim/$league'
     | '/soccer/$league'
@@ -774,6 +809,7 @@ export interface FileRouteTypes {
     | '/soccer/$league/'
     | '/tennis/$tour/'
     | '/api/public/hooks/run-pipeline'
+    | '/api/public/hooks/sim-props'
     | '/api/public/hooks/track-predictions'
     | '/api/public/hooks/track-props'
   fileRoutesById: FileRoutesById
@@ -795,6 +831,7 @@ export interface RootRouteChildren {
   TeamsRoute: typeof TeamsRoute
   TennisRoute: typeof TennisRouteWithChildren
   ApiPublicHooksRunPipelineRoute: typeof ApiPublicHooksRunPipelineRoute
+  ApiPublicHooksSimPropsRoute: typeof ApiPublicHooksSimPropsRoute
   ApiPublicHooksTrackPredictionsRoute: typeof ApiPublicHooksTrackPredictionsRoute
   ApiPublicHooksTrackPropsRoute: typeof ApiPublicHooksTrackPropsRoute
 }
@@ -1039,6 +1076,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NbaBestOddsRouteImport
       parentRoute: typeof NbaRoute
     }
+    '/nba/props': {
+      id: '/nba/props'
+      path: '/props'
+      fullPath: '/nba/props'
+      preLoaderRoute: typeof NbaPropsRouteImport
+      parentRoute: typeof NbaRoute
+    }
     '/nba/recommended': {
       id: '/nba/recommended'
       path: '/recommended'
@@ -1121,6 +1165,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/nhl/'
       preLoaderRoute: typeof NhlIndexRouteImport
+      parentRoute: typeof NhlRoute
+    }
+    '/nhl/props': {
+      id: '/nhl/props'
+      path: '/props'
+      fullPath: '/nhl/props'
+      preLoaderRoute: typeof NhlPropsRouteImport
       parentRoute: typeof NhlRoute
     }
     '/nhl/simulate': {
@@ -1235,6 +1286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksRunPipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/sim-props': {
+      id: '/api/public/hooks/sim-props'
+      path: '/api/public/hooks/sim-props'
+      fullPath: '/api/public/hooks/sim-props'
+      preLoaderRoute: typeof ApiPublicHooksSimPropsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/track-predictions': {
       id: '/api/public/hooks/track-predictions'
       path: '/api/public/hooks/track-predictions'
@@ -1304,6 +1362,7 @@ const MlbRouteWithChildren = MlbRoute._addFileChildren(MlbRouteChildren)
 
 interface NbaRouteChildren {
   NbaBestOddsRoute: typeof NbaBestOddsRoute
+  NbaPropsRoute: typeof NbaPropsRoute
   NbaRecommendedRoute: typeof NbaRecommendedRoute
   NbaSimulateRoute: typeof NbaSimulateRoute
   NbaTrackRecordRoute: typeof NbaTrackRecordRoute
@@ -1312,6 +1371,7 @@ interface NbaRouteChildren {
 
 const NbaRouteChildren: NbaRouteChildren = {
   NbaBestOddsRoute: NbaBestOddsRoute,
+  NbaPropsRoute: NbaPropsRoute,
   NbaRecommendedRoute: NbaRecommendedRoute,
   NbaSimulateRoute: NbaSimulateRoute,
   NbaTrackRecordRoute: NbaTrackRecordRoute,
@@ -1345,11 +1405,13 @@ const NflRouteChildren: NflRouteChildren = {
 const NflRouteWithChildren = NflRoute._addFileChildren(NflRouteChildren)
 
 interface NhlRouteChildren {
+  NhlPropsRoute: typeof NhlPropsRoute
   NhlSimulateRoute: typeof NhlSimulateRoute
   NhlIndexRoute: typeof NhlIndexRoute
 }
 
 const NhlRouteChildren: NhlRouteChildren = {
+  NhlPropsRoute: NhlPropsRoute,
   NhlSimulateRoute: NhlSimulateRoute,
   NhlIndexRoute: NhlIndexRoute,
 }
@@ -1447,6 +1509,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamsRoute: TeamsRoute,
   TennisRoute: TennisRouteWithChildren,
   ApiPublicHooksRunPipelineRoute: ApiPublicHooksRunPipelineRoute,
+  ApiPublicHooksSimPropsRoute: ApiPublicHooksSimPropsRoute,
   ApiPublicHooksTrackPredictionsRoute: ApiPublicHooksTrackPredictionsRoute,
   ApiPublicHooksTrackPropsRoute: ApiPublicHooksTrackPropsRoute,
 }

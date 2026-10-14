@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { NflPropsView } from "@/components/NflPropsView";
+import { SimPropsBoardView } from "@/components/SimPropsBoardView";
 import { TdParlayView } from "@/components/TdParlayView";
-import { TdScorersView } from "@/components/TdScorersView";
 import { PropsBoardsProvider } from "@/components/PropsBoards";
 import { boardOf } from "@/lib/props-boards";
 
@@ -31,7 +31,11 @@ export const Route = createFileRoute("/nfl/props")({
 function Page() {
   const board = boardOf("nfl", Route.useSearch().board);
   let page: ReactNode = <NflPropsView />;
-  if (board === "td-scorers") page = <TdScorersView />;
+  // Anytime and first touchdown come from the game simulator: on the 2025
+  // season and 2026 to date it beat the previous touchdown model (see
+  // research/player-props/results/nfl_td_backtest.json).
+  if (board === "td-scorers") page = <SimPropsBoardView league="nfl" board="td-scorers" />;
+  else if (board === "first-td") page = <SimPropsBoardView league="nfl" board="first-td" />;
   else if (board === "parlays") page = <TdParlayView sport="nfl" />;
   return (
     <PropsBoardsProvider sport="nfl" board={board}>

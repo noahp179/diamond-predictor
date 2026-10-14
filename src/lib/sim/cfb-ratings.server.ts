@@ -33,7 +33,14 @@ const LAMBDA = 3;
 /** Share of last season's rating a team carries into this one. */
 const CARRY = 0.6;
 
-type Final = { date: string; home: string; away: string; hs: number; as: number; neutral: boolean };
+export type Final = {
+  date: string;
+  home: string;
+  away: string;
+  hs: number;
+  as: number;
+  neutral: boolean;
+};
 
 type Board = {
   events?: {
@@ -188,22 +195,36 @@ export function cfbRatings(date: string): Promise<CfbRatings> {
       teamStats("cfb", season - 1, false).catch(() => new Map()),
     ]);
     const fbs = new Set<string>([...tsCur.keys(), ...tsOld.keys()]);
-    const last = fit(prevGames, fbs, new Map());
-    const prior = new Map<string, number>();
-    for (const [id, v] of last.r)
-      prior.set(id, fbs.has(id) ? CARRY * v : FCS_PRIOR + CARRY * (v - FCS_PRIOR));
-    const games = curGames.filter((g) => g.date < date);
-    const now = games.length ? fit(games, fbs, prior) : { r: prior, hfa: last.hfa };
-    const level = (gs: Final[]) => {
-      const both = gs.filter((g) => fbs.has(g.home) && fbs.has(g.away));
-      return both.length ? both.reduce((a, g) => a + g.hs + g.as, 0) / (2 * both.length) : 0;
-    };
-    const fbsGames = games.filter((g) => fbs.has(g.home) && fbs.has(g.away)).length;
-    return {
-      of: (id: string) => now.r.get(id) ?? (fbs.has(id) ? 0 : FCS_PRIOR),
-      hfa: now.hfa,
-      games: games.length,
-      ppg: fbsGames >= 100 ? level(games) : level(prevGames) || level(games),
-    };
+    return ratingsFrom(prevGames, curGames, fbs, date);
   });
+}
+
+/**
+ * The fit itself, from finished games: last season's ratings carried in at
+ * CARRY, this season's games before `date` on top. Pure, so the props
+ * backtest can rate teams as of any morning from box scores it already has.
+ */
+export function ratingsFrom(
+  prevGames: Final[],
+  curGames: Final[],
+  fbs: Set<string>,
+  date: string,
+): CfbRatings {
+  const last = fit(prevGames, fbs, new Map());
+  const prior = new Map<string, number>();
+  for (const [id, v] of last.r)
+    prior.set(id, fbs.has(id) ? CARRY * v : FCS_PRIOR + CARRY * (v - FCS_PRIOR));
+  const games = curGames.filter((g) => g.date < date);
+  const now = games.length ? fit(games, fbs, prior) : { r: prior, hfa: last.hfa };
+  const level = (gs: Final[]) => {
+    const both = gs.filter((g) => fbs.has(g.home) && fbs.has(g.away));
+    return both.length ? both.reduce((a, g) => a + g.hs + g.as, 0) / (2 * both.length) : 0;
+  };
+  const fbsGames = games.filter((g) => fbs.has(g.home) && fbs.has(g.away)).length;
+  return {
+    of: (id: string) => now.r.get(id) ?? (fbs.has(id) ? 0 : FCS_PRIOR),
+    hfa: now.hfa,
+    games: games.length,
+    ppg: fbsGames >= 100 ? level(games) : level(prevGames) || level(games),
+  };
 }

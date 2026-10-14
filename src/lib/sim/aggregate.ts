@@ -41,6 +41,9 @@ export interface PlayerSummary extends BoxPlayer {
   side: Side;
   /** Share of games in which he recorded any playing time. */
   played: number;
+  /** Share of games in which he scored the first goal / touchdown (NHL,
+   *  football); 0 where the engine does not track it. */
+  first: number;
   props: PropSummary[];
   /** His box-score row averaged over every game (zeros when he sat). */
   avgBox: number[];
@@ -121,6 +124,8 @@ export interface AccState {
   teamSum: { home: Record<string, number>; away: Record<string, number> };
   /** Per roster entry: games played, a histogram per prop, box-row sums. */
   played: number[];
+  /** Games in which each roster player scored first. */
+  first: number[];
   hists: Hist[][];
   box: number[][];
 }
@@ -172,6 +177,7 @@ export class Accumulator {
       exact: {},
       teamSum: { home: {}, away: {} },
       played: this.roster.map(() => 0),
+      first: this.roster.map(() => 0),
       hists: this.roster.map((r) => r.props.map(() => ({}))),
       box: this.roster.map(() => []),
     };
@@ -197,8 +203,10 @@ export class Accumulator {
       for (const [k, v] of Object.entries(r.team[side]))
         st.teamSum[side][k] = (st.teamSum[side][k] ?? 0) + v;
 
+    const f = r.first;
     for (let i = 0; i < this.roster.length; i++) {
       const { side, p, props } = this.roster[i];
+      if (f && f.side === side && f.idx === p.idx) st.first[i]++;
       const row = r.box[side][p.idx];
       if (!row || !appeared(this.m.league, p.group, row)) continue;
       st.played[i]++;
@@ -230,6 +238,7 @@ export class Accumulator {
         st.teamSum[side][k] = (st.teamSum[side][k] ?? 0) + v;
     for (let i = 0; i < st.played.length; i++) {
       st.played[i] += o.played[i] ?? 0;
+      st.first[i] += o.first?.[i] ?? 0;
       o.hists[i]?.forEach((h, k) => addHist(st.hists[i][k], h));
       o.box[i]?.forEach((v, c) => (st.box[i][c] = (st.box[i][c] ?? 0) + v));
     }
@@ -293,7 +302,14 @@ export class Accumulator {
           })
           .filter((s, k) => s.mean >= (r.props[k].minMean ?? 0));
         const avgBox = Array.from(st.box[i], (v) => (v ?? 0) / n);
-        return { ...r.p, side: r.side, played: games / n, props, avgBox };
+        return {
+          ...r.p,
+          side: r.side,
+          played: games / n,
+          first: st.first[i] / n,
+          props,
+          avgBox,
+        };
       })
       // Players with no projected stat (a punter, a little-used defender)
       // still belong in the average box score.

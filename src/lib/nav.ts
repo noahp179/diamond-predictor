@@ -177,9 +177,9 @@ const VIEWS: Record<SportKey, ViewKey[]> = {
   // NFL, college and NBA have no Recommended tab: it ranked the slate by model
   // confidence, which is Best Odds' default view. MLB's builds parlay slips.
   cfb: ["slate", "simulate", "bestOdds", "props", "trackRecord"],
-  nba: ["slate", "simulate", "bestOdds", "trackRecord"],
-  // No picks model for hockey yet: the simulator is the section.
-  nhl: ["simulate"],
+  nba: ["slate", "simulate", "bestOdds", "props", "trackRecord"],
+  // Hockey's picks are the simulator's: its prop boards sit beside it.
+  nhl: ["simulate", "props"],
   soccer: ["slate", "props", "model", "trackRecord"],
   tennis: ["slate", "model", "trackRecord"],
 };
@@ -222,6 +222,8 @@ const VIEW_LABEL: Partial<Record<SportKey, Partial<Record<ViewKey, string>>>> = 
   mlb: { props: "Props" },
   nfl: { props: "Props" },
   cfb: { props: "Props" },
+  nba: { props: "Props" },
+  nhl: { props: "Props" },
 };
 
 /**

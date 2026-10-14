@@ -74,7 +74,7 @@ import { poolTeams, tendencies } from "./tendencies.server";
 /** Games into a season by which last season stops mattering much. */
 const HALF: Record<SimLeague, number> = { nba: 30, nhl: 30, nfl: 6, cfb: 6, mlb: 50 };
 
-type Season = {
+export type Season = {
   league: SimLeague;
   current: number;
   prior: number;
@@ -122,26 +122,48 @@ function loadSeason(league: SimLeague, date: string): Promise<Season> {
       priorOnly ? skip(none()) : teamStats(league, current, true).catch(none),
       teamStats(league, prior, false).catch(none),
     ]);
-    const gps = [...stCur.values()].map((r) => r.gp);
-    const gpNow = gps.length ? gps.reduce((a, b) => a + b, 0) / gps.length : 0;
-    const noCur = league === "cfb" ? gpNow < 0.5 : cur.size === 0;
-    const w = noCur ? 1 : Math.max(0.2, Math.min(1, 1 - gpNow / HALF[league]));
-    const now = seasonLabel(league, current);
-    const games = `${Math.round(gpNow)} game${Math.round(gpNow) === 1 ? "" : "s"}`;
-    const then = seasonLabel(league, prior);
-    const basis =
-      gpNow < 0.5 || noCur
-        ? `${then} season stats — ${now} has not produced numbers yet`
-        : w <= 0.2
-          ? `${now} stats (${games} a team), with ${then} carried at 20% weight`
-          : `${now} stats (${games} a team) blended with ${then} at ${Math.round(w * 100)}% weight`;
-    const tend = tendencies(league, poolTeams(league, tsCur, tsOld, w));
-    const fbs = new Set([...tsCur.keys(), ...tsOld.keys()]);
-    return { league, current, prior, w, gpNow, cur, old, stCur, stOld, tend, basis, fbs };
+    return makeSeason({ league, current, cur, old, stCur, stOld, tsCur, tsOld });
   })();
   seasonCache.set(key, { at: Date.now(), v });
   v.catch(() => seasonCache.delete(key));
   return v;
+}
+
+/**
+ * A season's numbers, weighted: this season's counts plus last season's at
+ * weight `w`, which fades as this season's games accumulate. Pure — the live
+ * site calls it with ESPN's season feeds, and the props backtest
+ * (scripts/props-backtest.ts) with the same totals rebuilt from box scores as
+ * they stood the morning of each game.
+ */
+export function makeSeason(x: {
+  league: SimLeague;
+  current: number;
+  cur: Map<string, StatLine>;
+  old: Map<string, StatLine>;
+  stCur: Map<string, StandingRow>;
+  stOld: Map<string, StandingRow>;
+  tsCur: Map<string, TeamTotals>;
+  tsOld: Map<string, TeamTotals>;
+}): Season {
+  const { league, current, cur, old, stCur, stOld, tsCur, tsOld } = x;
+  const prior = current - 1;
+  const gps = [...stCur.values()].map((r) => r.gp);
+  const gpNow = gps.length ? gps.reduce((a, b) => a + b, 0) / gps.length : 0;
+  const noCur = league === "cfb" ? gpNow < 0.5 : cur.size === 0;
+  const w = noCur ? 1 : Math.max(0.2, Math.min(1, 1 - gpNow / HALF[league]));
+  const now = seasonLabel(league, current);
+  const games = `${Math.round(gpNow)} game${Math.round(gpNow) === 1 ? "" : "s"}`;
+  const then = seasonLabel(league, prior);
+  const basis =
+    gpNow < 0.5 || noCur
+      ? `${then} season stats — ${now} has not produced numbers yet`
+      : w <= 0.2
+        ? `${now} stats (${games} a team), with ${then} carried at 20% weight`
+        : `${now} stats (${games} a team) blended with ${then} at ${Math.round(w * 100)}% weight`;
+  const tend = tendencies(league, poolTeams(league, tsCur, tsOld, w));
+  const fbs = new Set([...tsCur.keys(), ...tsOld.keys()]);
+  return { league, current, prior, w, gpNow, cur, old, stCur, stOld, tend, basis, fbs };
 }
 
 /**
@@ -1015,52 +1037,21 @@ async function collegeSeason(se: Season, homeId: string, awayId: string): Promis
   return { ...se, cur, old };
 }
 
-export type MatchupRequest = {
-  league: SimLeague;
-  homeId: string;
-  awayId: string;
-  date: string;
-  gameId?: string | null;
-};
-
 /**
- * Build everything one game needs. When a game id is given the scoreboard
- * supplies the venue, the posted line, the postseason flag and the probable
- * starters; for a made-up matchup those are left for the user to set.
+ * A basketball or hockey matchup from a season's numbers, two teams' metadata
+ * and rosters, and the game's context. Pure: everything it reads is passed in,
+ * so the props backtest can hand it a season rebuilt as of any morning.
  */
-export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
-  const { league, homeId, awayId, date } = req;
-  const se = await loadSeason(league, date);
-  const [homeMeta, awayMeta, homeRoster, awayRoster, board] = await Promise.all([
-    teamMeta(league, homeId),
-    teamMeta(league, awayId),
-    fetchRoster(league, homeId),
-    fetchRoster(league, awayId),
-    req.gameId ? scoreboard(league, date).catch(() => []) : Promise.resolve([] as ScoreboardGame[]),
-  ]);
-  const game = req.gameId ? board.find((x) => x.id === req.gameId) : undefined;
-  // NBA: who played last night? A back-to-back costs ~2 points (2025-26).
-  let b2b: MatchupContext["b2b"];
-  if (league === "nba") {
-    const prev = new Date(`${date}T12:00:00Z`);
-    prev.setUTCDate(prev.getUTCDate() - 1);
-    const y = await scoreboard(league, prev.toISOString().slice(0, 10)).catch(() => []);
-    const played = new Set(y.flatMap((g) => [g.homeId, g.awayId]));
-    b2b = { home: played.has(homeId), away: played.has(awayId) };
-  }
-  const ctx: MatchupContext = {
-    gameId: game?.id ?? null,
-    date,
-    venue: game?.venue ?? `${homeMeta.location}`,
-    neutral: game?.neutral ?? false,
-    playoff: game?.playoff ?? false,
-    line: game?.line ?? null,
-    basis: se.basis,
-    ...(league === "nfl" ? { indoor: game?.indoor ?? NFL_DOMES.has(homeMeta.abbr) } : {}),
-    ...(league === "cfb" ? { indoor: game?.indoor ?? false } : {}),
-    ...(b2b ? { b2b } : {}),
-  };
-
+export function assembleMatchup(
+  league: "nba" | "nhl",
+  se: Season,
+  homeMeta: TeamMeta,
+  awayMeta: TeamMeta,
+  homeRoster: RosterEntry[],
+  awayRoster: RosterEntry[],
+  ctx: MatchupContext,
+  probable?: { home?: string; away?: string },
+): SimMatchup {
   if (league === "nba") {
     const env = nbaEnv(se);
     const mk = (meta: TeamMeta, ros: RosterEntry[]): NbaTeam => ({
@@ -1112,12 +1103,73 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     };
     return {
       league,
-      home: mk(homeMeta, homeRoster, game?.probable.home),
-      away: mk(awayMeta, awayRoster, game?.probable.away),
+      home: mk(homeMeta, homeRoster, probable?.home),
+      away: mk(awayMeta, awayRoster, probable?.away),
       env: lg.env,
       ctx,
     };
   }
+
+  throw new Error(`assembleMatchup: ${league as string}`);
+}
+
+export type MatchupRequest = {
+  league: SimLeague;
+  homeId: string;
+  awayId: string;
+  date: string;
+  gameId?: string | null;
+};
+
+/**
+ * Build everything one game needs. When a game id is given the scoreboard
+ * supplies the venue, the posted line, the postseason flag and the probable
+ * starters; for a made-up matchup those are left for the user to set.
+ */
+export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
+  const { league, homeId, awayId, date } = req;
+  const se = await loadSeason(league, date);
+  const [homeMeta, awayMeta, homeRoster, awayRoster, board] = await Promise.all([
+    teamMeta(league, homeId),
+    teamMeta(league, awayId),
+    fetchRoster(league, homeId),
+    fetchRoster(league, awayId),
+    req.gameId ? scoreboard(league, date).catch(() => []) : Promise.resolve([] as ScoreboardGame[]),
+  ]);
+  const game = req.gameId ? board.find((x) => x.id === req.gameId) : undefined;
+  // NBA: who played last night? A back-to-back costs ~2 points (2025-26).
+  let b2b: MatchupContext["b2b"];
+  if (league === "nba") {
+    const prev = new Date(`${date}T12:00:00Z`);
+    prev.setUTCDate(prev.getUTCDate() - 1);
+    const y = await scoreboard(league, prev.toISOString().slice(0, 10)).catch(() => []);
+    const played = new Set(y.flatMap((g) => [g.homeId, g.awayId]));
+    b2b = { home: played.has(homeId), away: played.has(awayId) };
+  }
+  const ctx: MatchupContext = {
+    gameId: game?.id ?? null,
+    date,
+    venue: game?.venue ?? `${homeMeta.location}`,
+    neutral: game?.neutral ?? false,
+    playoff: game?.playoff ?? false,
+    line: game?.line ?? null,
+    basis: se.basis,
+    ...(league === "nfl" ? { indoor: game?.indoor ?? NFL_DOMES.has(homeMeta.abbr) } : {}),
+    ...(league === "cfb" ? { indoor: game?.indoor ?? false } : {}),
+    ...(b2b ? { b2b } : {}),
+  };
+
+  if (league === "nba" || league === "nhl")
+    return assembleMatchup(
+      league,
+      se,
+      homeMeta,
+      awayMeta,
+      homeRoster,
+      awayRoster,
+      ctx,
+      game?.probable,
+    );
 
   if (league === "mlb") {
     const lg = mlbEnv(se);
@@ -1155,6 +1207,39 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     league === "cfb"
       ? await Promise.all([collegeSeason(se, homeId, awayId), cfbRatings(date).catch(() => null)])
       : [se, null];
+  return assembleFootball(
+    league,
+    se,
+    fse,
+    homeMeta,
+    awayMeta,
+    homeRoster,
+    awayRoster,
+    ctx,
+    ratings,
+  );
+}
+
+/**
+ * A football matchup (NFL or college) from a season's numbers. Pure, like
+ * assembleMatchup: `se` supplies team records, `fse` the player lines (for
+ * college, the two teams' own lines folded in), `ratings` college's
+ * schedule-adjusted strength. `coachingTable: false` leaves out the coaching
+ * tendencies file, which is built from play-by-play through its `asOf` date
+ * and so would leak into a backtest of earlier games.
+ */
+export function assembleFootball(
+  league: "nfl" | "cfb",
+  se: Season,
+  fse: Season,
+  homeMeta: TeamMeta,
+  awayMeta: TeamMeta,
+  homeRoster: RosterEntry[],
+  awayRoster: RosterEntry[],
+  ctx: MatchupContext,
+  ratings: { ppg?: number; of: (id: string) => number } | null,
+  coachingTable = true,
+): SimMatchup {
   const lg = nflEnv(fse);
   const college = league === "cfb";
   if (college && ratings?.ppg) lg.env = { ...lg.env, ppg: ratings.ppg };
@@ -1186,9 +1271,10 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     // already throws more when behind — so where the play-by-play has it, the
     // team plays at the league's rate plus its pass rate over expected in
     // neutral game states.
-    const c = college
-      ? undefined
-      : (coaching.teams as Record<string, NflCoaching | undefined>)[meta.abbr];
+    const c =
+      college || !coachingTable
+        ? undefined
+        : (coaching.teams as Record<string, NflCoaching | undefined>)[meta.abbr];
     let goAggr = 0;
     if (c) {
       const L = coaching.league;

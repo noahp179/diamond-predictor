@@ -353,9 +353,13 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     return (p.a60 + 0.03) * (p.kind === "D" ? D_ASSIST : 1);
   };
   let goalSide = 0;
+  // The game's first goal, for the first-goalscorer market. Shootout goals
+  // are not goals and never reach here.
+  let first: GameResult["first"] = null;
 
   const goal = (s: number, shooter: number, pp: boolean, sh: boolean, en: boolean) => {
     goalSide = s;
+    if (!first) first = { side: s === 0 ? "home" : "away", idx: shooter };
     score[s]++;
     periodScore[s]++;
     box.add(s, shooter, NHL.G, 1);
@@ -693,6 +697,7 @@ export function playNhl(prep: NhlPrep, seed: number, record: boolean): GameResul
     ot: extra,
     so: shootout,
     tie: false,
+    first,
     team: {
       home: { SOG: shots[0], PPG: ppGoals[0], PPO: ppOpp[0], ENG: enGoals[0] },
       away: { SOG: shots[1], PPG: ppGoals[1], PPO: ppOpp[1], ENG: enGoals[1] },

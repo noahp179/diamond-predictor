@@ -257,7 +257,13 @@ export const getBoardRecord = createServerFn({ method: "GET" })
     const labels = await marketLabels(sport);
     let view: import("./td-ledger.server").TdLedgerView | null = null;
     let note: string | null = null;
-    if (board === "td-scorers" && (sport === "nfl" || sport === "cfb")) {
+    const { simBoard } = await import("./sim-props-shared");
+    if ((sport === "nba" || sport === "nhl" || sport === "nfl") && simBoard(sport, board)) {
+      // The simulation boards: one model version per market (sim-props.server).
+      const { readSimBoard } = await import("./sim-props.server");
+      view = await readSimBoard(sport, board);
+      note = "Picks are recorded from the first morning the simulations run.";
+    } else if (board === "td-scorers" && (sport === "nfl" || sport === "cfb")) {
       const { readTdLedger } = await import("./td-ledger.server");
       view = await readTdLedger(sport);
     } else if (board === "two-bases" && sport === "mlb") {
@@ -313,9 +319,11 @@ export const getBoardRecord = createServerFn({ method: "GET" })
 
 /** Bet names as the boards print them, keyed by the ledger's market codes. */
 async function marketLabels(sport: string): Promise<Record<string, string>> {
+  const { SIM_MARKET_LABELS } = await import("./sim-props-shared");
   const base: Record<string, string> = {
     anytime_td: "Anytime touchdown",
     tb2: "2+ total bases",
+    ...SIM_MARKET_LABELS,
   };
   if (sport === "mlb") {
     const m = (await import("./mlb-props-model.json")).default as {
