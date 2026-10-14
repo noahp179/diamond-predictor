@@ -46,8 +46,8 @@ def main() -> None:
     sport = sys.argv[1]
     s1 = load(f"sim_{sport}_2025.*.jsonl")
     s1 = s1 or load(f"sim1k/sim_{sport}_2025.*.jsonl")
-    s10 = load(f"sim_10k_{sport}_2025.*.jsonl")
-    s100 = load(f"sim_100k_{sport}_2025.*.jsonl")
+    s10 = load(f"sim_10k_{sport}_2025*.jsonl")
+    s100 = load(f"sim_100k_{sport}_2025*.jsonl")
     games = sorted(set(s100) & set(s10) & set(s1))
     outcomes = {}
     for g in asof.load(sport, [2025]):

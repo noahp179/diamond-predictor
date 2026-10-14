@@ -250,11 +250,15 @@ export async function settleParlays(throughDate: string, lookbackDays = 28) {
     const legs = slip.legs ?? [];
     if (legs.length === 0) continue;
 
-    // One read per slip, keyed on the same ids the legs were written with.
+    // One read per slip, keyed on the same ids the legs were written with —
+    // and the same model: a player can have several rows for one game (his
+    // catches line, his first-touchdown chance), and only the slip's own
+    // market says whether its leg came in.
     const { data: picks, error: pe } = await db
       .from("player_predictions")
       .select("player_id, event_id, scored, settled_at")
       .eq("sport", slip.sport)
+      .eq("model_version", slip.model_version)
       .in("event_id", [...new Set(legs.map((l) => l.event_id))])
       .in("player_id", [...new Set(legs.map((l) => l.player_id))]);
     if (pe || !picks) continue;
