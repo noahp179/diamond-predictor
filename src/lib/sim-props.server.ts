@@ -52,8 +52,10 @@ const CHUNK = 2_000;
  *  more for hockey). */
 export const PER_SLOT: Record<SimPropsLeague, number> = { nba: 3, nhl: 3, nfl: 3, cfb: 8 };
 /** Scheduled slots per league (vercel.json has one cron per slot). College
- *  Saturdays run ~60 games across 8 slots, so a busy one gets fewer than
- *  100,000 plays a game — the time budget decides, and the row records it. */
+ *  has no cron: its boards use the touchdown model, which beat the simulator
+ *  in the backtest. Run by hand, a busy Saturday's ~60 games across 8 slots
+ *  get fewer than 100,000 plays each; the time budget decides, and the row
+ *  records it. */
 export const SLOTS: Record<SimPropsLeague, number> = { nba: 5, nhl: 6, nfl: 6, cfb: 8 };
 
 export type SimGameRow = {

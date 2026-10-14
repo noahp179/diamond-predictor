@@ -79,38 +79,6 @@
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=5",
       "schedule": "57 16 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=0",
-      "schedule": "4 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=1",
-      "schedule": "11 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=2",
-      "schedule": "18 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=3",
-      "schedule": "25 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=4",
-      "schedule": "32 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=5",
-      "schedule": "39 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=6",
-      "schedule": "46 17 * * *"
-    },
-    {
-      "path": "/api/public/hooks/sim-props?league=cfb&slot=7",
-      "schedule": "53 17 * * *"
     }
   ]
 }
