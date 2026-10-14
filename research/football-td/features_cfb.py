@@ -55,7 +55,7 @@ assert FEATURES == SHIPPED["features"]
 
 # Data cutoff of the export (research/cfb data as of commit 379dd9c,
 # 2026-09-17): set by matching the quoted 1,130 games / 21,503 rows.
-FBS_CUTOFF = os.environ.get("CFB_FBS_CUTOFF", "2026-09-13")
+FBS_CUTOFF = os.environ.get("CFB_FBS_CUTOFF", "2026-09-12")
 
 # ------------------------------------------------- elo (from elo_backtest.py)
 SEASONS = [2021, 2022, 2023, 2024, 2025, 2026]
@@ -145,10 +145,39 @@ def blend(cur, prev, frac):
     return {k: cur[k] + prev.get(k, 0) * frac for k in cur}
 
 
-def build(lg=None, fbs_cutoff=FBS_CUTOFF):
+def canonical_abbr(games, team, pg):
+    """ESPN renamed Jacksonville State JVST -> JXST for 2026 after the export.
+    The pipeline keys teams by abbreviation, so the rename silently cut its 2026
+    games off from 2025 (no carry-in, and its Week-0 game unpriceable). Every
+    team id is mapped back to the abbreviation it first used, which is what the
+    export-time data had. Only team 55 changes in 2021-2026."""
+    first = (team.sort_values(["date", "game_id"]).drop_duplicates("team_id")
+             .set_index("team_id").team)
+    by_id = {str(k): v for k, v in first.items()}
+    changed = {}
+    def fix(df, abbr_col, id_col):
+        new = [by_id.get(str(i), a) for a, i in zip(df[abbr_col], df[id_col])]
+        for a, b in zip(df[abbr_col], new):
+            if a != b:
+                changed[a] = b
+        df[abbr_col] = new
+    fix(team, "team", "team_id")
+    opp_id = team.groupby("game_id").team_id.agg(list)
+    team["opp"] = [by_id.get(str([x for x in opp_id[g] if x != t][0]), o)
+                   if len(opp_id[g]) == 2 else o
+                   for g, t, o in zip(team.game_id, team.team_id, team.opp)]
+    fix(pg, "team", "team_id")
+    fix(games, "home", "home_id")
+    fix(games, "away", "away_id")
+    return changed
+
+
+def build(lg=None, fbs_cutoff=FBS_CUTOFF, canon=True):
     games = pd.read_csv(os.path.join(DATA, "games.csv"))
     team = pd.read_csv(os.path.join(DATA, "team_games.csv"))
     pg = pd.read_csv(os.path.join(DATA, "player_games.csv"))
+    if canon:
+        print(f"abbreviations mapped back to first use: {canonical_abbr(games, team, pg)}")
     lg_data = league_rates(pg[pg.date <= fbs_cutoff]) if fbs_cutoff else league_rates(pg)
     if lg is None:
         lg = lg_data
@@ -369,7 +398,8 @@ def build(lg=None, fbs_cutoff=FBS_CUTOFF):
 if __name__ == "__main__":
     c = SHIPPED["constants"]
     shipped_lg = {"LG_RUSH": c["LG_RUSH"], "LG_REC": c["LG_REC"], "LG_ANY": c["LG_ANY"]}
-    df, ex, lg, lg_data, fbs = build(lg=shipped_lg)
+    df, ex, lg, lg_data, fbs = build(lg=shipped_lg,
+                                     canon=os.environ.get("CFB_CANON_ABBR", "1") == "1")
     out = pd.concat([df, ex], ignore_index=True, sort=False)
     out.to_csv(os.path.join(DATA, "cfb_features_all.csv"), index=False)
     json.dump({"used": lg, "recomputed_at_cutoff": lg_data, "fbs_cutoff": FBS_CUTOFF,

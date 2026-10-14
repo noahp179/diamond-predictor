@@ -38,7 +38,7 @@ M = json.load(open(SHIPPED_FP))
 FEATURES = M["features"]
 TEST = [2025, 2026]
 # Data cutoff of the export's dataset; matches the quoted 1,130 games.
-EXPORT_CUTOFF = os.environ.get("CFB_EXPORT_CUTOFF", "2026-09-13")
+EXPORT_CUTOFF = os.environ.get("CFB_EXPORT_CUTOFF", "2026-09-12")
 SECOND_MIN = M["second_pick_min"]
 
 

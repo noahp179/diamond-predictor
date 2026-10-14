@@ -74,6 +74,7 @@ TARGETS = {
         ("2+ points", "pts", 2, "pts", 1),
         ("1+ goal", "g", 1, "g", 0),
         ("1+ assist", "a", 1, "a", 0),
+        ("First goal", "first", 1, "first", None),
     ],
 }
 TEST, TRAIN = 2025, 2024
@@ -124,6 +125,12 @@ FEATURES = {
 def rows_for(sport: str) -> list[dict]:
     seasons = [s for s in (2023, 2024, 2025) if os.path.exists(os.path.join(DATA, f"{sport}_{s}.jsonl"))]
     sims = {s: load_sim(sport, s) for s in (TRAIN, TEST)}
+    firsts = {}
+    for s in (TRAIN, TEST):
+        path = os.path.join(DATA, f"{sport}_first_{s}.json")
+        if os.path.exists(path):
+            with open(path) as f:
+                firsts.update(json.load(f))
     rows = []
     for g, snap in asof.walk(sport, seasons):
         if g["season"] not in (TRAIN, TEST):
@@ -148,6 +155,8 @@ def rows_for(sport: str) -> list[dict]:
                 "y_pts": y.get("pts", 0.0),
                 "y_g": y.get("g", 0.0),
                 "y_a": y.get("a", 0.0),
+                "y_first": 1.0 if firsts.get(g["id"]) == pid else 0.0,
+                "has_first": g["id"] in firsts,
             }
             f["start_rate"] = f["starts"] / f["gp"] if f.get("gp") else None
             f["is_d"] = 1.0 if (p.get("grp") == "defenses") else 0.0
@@ -159,6 +168,8 @@ def rows_for(sport: str) -> list[dict]:
                 sp = sim["players"].get(pid)
                 r["sim_has"] = True
                 r["sim_played"] = sp.get("played", 0.0) if sp else 0.0
+                r["sim_first"] = sp.get("first", 0.0) if sp else 0.0
+                r["sim_first_mean"] = r["sim_first"]
                 for key in ("pts", "g", "a"):
                     v = sp.get(key) if sp else None
                     r[f"sim_{key}_mean"] = v["mean"] if v else 0.0
@@ -176,7 +187,7 @@ def clip(p):
     return np.clip(np.asarray(p, dtype=float), 1e-6, 1 - 1e-6)
 
 
-def metrics(y, p, dates) -> dict:
+def metrics(y, p, dates, gids=None) -> dict:
     y = np.asarray(y, dtype=float)
     p = clip(p)
     base = y.mean()
@@ -206,7 +217,20 @@ def metrics(y, p, dates) -> dict:
         hits += y[top].sum()
         said += p[top].sum()
         n_top += len(top)
+    g_hit = g_said = g_n = 0
+    if gids is not None:
+        by_game = defaultdict(list)
+        for i, g in enumerate(gids):
+            by_game[g].append(i)
+        for idx in by_game.values():
+            top = max(idx, key=lambda i: p[i])
+            g_hit += y[top]
+            g_said += p[top]
+            g_n += 1
     return {
+        "game_top1_hit": float(g_hit / g_n) if g_n else None,
+        "game_top1_said": float(g_said / g_n) if g_n else None,
+        "games": int(g_n),
         "n": int(len(y)),
         "base_rate": float(base),
         "brier": brier,
@@ -235,6 +259,19 @@ def avg_mean(r: dict, stat: str) -> float:
     if den <= 0:
         return 0.0
     return num / den
+
+
+def first_avg(r: dict, mu_player: float) -> float:
+    """P(he scores the game's first goal) = P(his team scores first) x his
+    share of his team's goals. Team rates from the two sides' recent scoring;
+    P(team first) = lt/(lt+lo) x (1 - exp(-(lt+lo)))."""
+    lg = r.get("lg_avg") or 3.0
+    lt = 0.5 * ((r.get("team_ew_pf") or lg) + (r.get("opp_ew_pa") or lg))
+    lo = lg
+    if lt <= 0 or mu_player <= 0:
+        return 0.0
+    team_first = lt / (lt + lo) * (1 - math.exp(-(lt + lo)))
+    return float(min(0.5, team_first * mu_player / lt))
 
 
 def nb_tail(mu: np.ndarray, k: int, phi: float) -> np.ndarray:
@@ -296,18 +333,26 @@ def main() -> None:
     for label, stat, thr, skey, sidx in TARGETS[sport]:
         ytr = np.array([1.0 if r[f"y_{stat}"] >= thr else 0.0 for r in tr])
         yte = np.array([1.0 if r[f"y_{stat}"] >= thr else 0.0 for r in te_sim])
+        if stat == "first" and not any(r["has_first"] for r in te_sim):
+            print(f"  {label}: no first-goal labels yet, skipped")
+            continue
         dates = [r["date"] for r in te_sim]
         P = {}
 
         # sim
-        P["sim"] = np.array([
-            (r[f"sim_{skey}_over"][sidx] if r.get(f"sim_{skey}_over") else 0.0) for r in te_sim
-        ])
+        def simp(r):
+            if skey == "first":
+                return r.get("sim_first", 0.0)
+            return r[f"sim_{skey}_over"][sidx] if r.get(f"sim_{skey}_over") else 0.0
+
+        P["sim"] = np.array([simp(r) for r in te_sim])
 
         # avg
-        mu_tr = np.array([avg_mean(r, stat) for r in tr])
-        mu_te = np.array([avg_mean(r, stat) for r in te_sim])
-        if sport == "nba":
+        mu_tr = np.array([avg_mean(r, "g" if stat == "first" else stat) for r in tr])
+        mu_te = np.array([avg_mean(r, "g" if stat == "first" else stat) for r in te_sim])
+        if stat == "first":
+            P["avg"] = np.array([first_avg(r, m) for r, m in zip(te_sim, mu_te)])
+        elif sport == "nba":
             phi = fit_phi(mu_tr[mu_tr > 0], np.array([r["y_pts"] for r in tr])[mu_tr > 0])
             P["avg"] = np.where(mu_te > 0, nb_tail(mu_te, thr, phi), 0.0)
         else:
@@ -322,9 +367,7 @@ def main() -> None:
         # often it came in, learned on the training season's simulations. It
         # never reorders players (monotone), only corrects the percentages.
         if have_sim_tr:
-            s_tr = np.array([
-                (r[f"sim_{skey}_over"][sidx] if r.get(f"sim_{skey}_over") else 0.0) for r in tr
-            ])
+            s_tr = np.array([simp(r) for r in tr])
             iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-4, y_max=1 - 1e-4)
             iso.fit(s_tr, ytr)
             P["sim_cal"] = iso.predict(P["sim"])
@@ -333,11 +376,7 @@ def main() -> None:
         if have_sim_tr:
             def simcols(rs):
                 return np.array([
-                    [
-                        (r[f"sim_{skey}_over"][sidx] if r.get(f"sim_{skey}_over") else 0.0),
-                        r.get(f"sim_{skey}_mean", 0.0),
-                        r.get("sim_played", 0.0),
-                    ]
+                    [simp(r), r.get(f"sim_{skey}_mean", 0.0), r.get("sim_played", 0.0)]
                     for r in rs
                 ])
             P["hybrid"], _, _ = fit_trees(np.hstack([Xtr, simcols(tr)]), ytr, np.hstack([Xte, simcols(te_sim)]))
@@ -346,7 +385,7 @@ def main() -> None:
 
         res = {"label": label, "stat": stat, "threshold": thr, "methods": {}}
         for m, p in P.items():
-            res["methods"][m] = metrics(yte, p, dates)
+            res["methods"][m] = metrics(yte, p, dates, [r["gid"] for r in te_sim])
         if sport == "nba":
             res["nb_phi"] = phi
         results["targets"].append(res)
@@ -358,6 +397,7 @@ def main() -> None:
             print(
                 f"    {m:>6}: brier {mt['brier']:.4f}  skill {mt['brier_skill']:+.3f}  ll {mt['log_loss']:.4f}"
                 f"  auc {mt['auc']:.3f}  ece {mt['ece']:.3f}  top{TOP}/day hit {mt['top_hit']:.3f} (said {mt['top_said']:.3f})"
+                f"  game top1 {mt['game_top1_hit']:.3f} (said {mt['game_top1_said']:.3f})"
             )
 
     os.makedirs(OUT, exist_ok=True)

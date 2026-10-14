@@ -26,6 +26,10 @@ Elo replay read them unchanged):
   data/cfb_player_box.csv          wide per-player offensive/return box line
   data/box/cfb/{event_id}.json     compact boxscore-lossless parse (common.py)
   data/raw/cfb/{event_id}.json.gz  raw ESPN summary, seasons 2024-2026
+
+Boxes ESPN has since emptied are restored from data/patches/cfb/ (see
+patch_cfb_boxes.py) before the tables are derived; the cached compact box and
+the raw summary stay exactly as ESPN served them.
 """
 import os, sys, json, time, csv
 from datetime import date, timedelta
@@ -34,6 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import common as C
+from patch_cfb_boxes import apply_patch  # restores boxes ESPN has emptied
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
 DATA = os.path.join(HERE, "data")
@@ -151,6 +156,7 @@ def main():
         print(f"[{season}] {len(games)} games, {len(done)} completed — box scores…", flush=True)
         with ThreadPoolExecutor(8) as ex:
             res = list(ex.map(fetch_box, done))
+        res = [(apply_patch(b), e) for b, e in res]
         errs = [e for _, e in res if e]
         for e in errs[:10]:
             print("  ! box", e, flush=True)

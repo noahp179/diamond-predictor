@@ -371,6 +371,7 @@ function main() {
           td: td ? td.over[0] : 1 - Math.exp(-mean),
           mean: Math.round(mean * 10000) / 10000,
           played: Math.round(p.played * 1000) / 1000,
+          first: Math.round(p.first * 100000) / 100000,
         };
       }
       out.write(

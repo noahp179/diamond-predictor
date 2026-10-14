@@ -1,0 +1,144 @@
+{
+ "quoted": {
+  "seasons": [
+   2025,
+   2026
+  ],
+  "top1": 0.5805309734513274,
+  "auc": 0.6980269829176127,
+  "logloss": 0.5068838046110314,
+  "ece": 0.009608459620788129,
+  "pick_hit_rate": 0.5444126074498568,
+  "picks_per_game": 1.5442477876106195,
+  "game_hit_rate": 0.6761061946902654
+ },
+ "quoted_board": {
+  "games": 1130,
+  "picks": 1745,
+  "picks_per_game": 1.5442477876106195,
+  "pick_hit_rate": 0.5444126074498568,
+  "lead_hit": 0.5805309734513274,
+  "second_hit": 0.47804878048780486,
+  "game_hit_rate": 0.6761061946902654
+ },
+ "export_cutoff": "2026-09-12",
+ "train_scaler_check": {
+  "train_rows": 71463,
+  "max_rel_mean_diff": 0.0006600250054845658,
+  "max_rel_std_diff": 2.5464449217249552e-05
+ },
+ "selftest_check": {
+  "p_from_selftest_x_max_abs_diff": 1.6515834810881813e-09,
+  "first5_test_rows_x_max_abs_diff": 0.0,
+  "first5_test_rows_p_max_abs_diff": 1.6515834810881813e-09
+ },
+ "heldout": {
+  "quoted_subset": {
+   "rows": 21480,
+   "games": 1130,
+   "slates": 88,
+   "base_rate": 0.2442271880819367,
+   "top1": 0.5805309734513274,
+   "top1_hits": 656,
+   "lead_stated": 0.5568931388340009,
+   "lead_actual": 0.5805309734513274,
+   "auc": 0.6979614603728891,
+   "logloss": 0.5072055710194092,
+   "brier": 0.1665689597935971,
+   "ece": 0.009570848451702632,
+   "pick_hit_rate": 0.5446735395189003,
+   "picks_per_game": 1.545132743362832,
+   "game_hit_rate": 0.6761061946902654
+  },
+  "all_to_date": {
+   "rows": 26764,
+   "games": 1392,
+   "slates": 102,
+   "base_rate": 0.2436855477507099,
+   "top1": 0.5811781609195402,
+   "top1_hits": 809,
+   "lead_stated": 0.5551716536249802,
+   "lead_actual": 0.5811781609195402,
+   "auc": 0.6966611771256845,
+   "logloss": 0.507397185527261,
+   "brier": 0.1666351947165391,
+   "ece": 0.008689669258187484,
+   "pick_hit_rate": 0.549249530956848,
+   "picks_per_game": 1.5316091954022988,
+   "game_hit_rate": 0.6817528735632183
+  },
+  "season_2025": {
+   "rows": 18536,
+   "games": 953,
+   "slates": 79,
+   "base_rate": 0.2437419076391886,
+   "top1": 0.5781741867785939,
+   "top1_hits": 551,
+   "lead_stated": 0.5632361279073375,
+   "lead_actual": 0.5781741867785939,
+   "auc": 0.6968247947952328,
+   "logloss": 0.5071131978702479,
+   "brier": 0.16650020875170168,
+   "ece": 0.009100902933107561,
+   "pick_hit_rate": 0.5457581830327322,
+   "picks_per_game": 1.5708289611752362,
+   "game_hit_rate": 0.6799580272822665
+  },
+  "season_2026": {
+   "rows": 8228,
+   "games": 439,
+   "slates": 23,
+   "base_rate": 0.24355858045697618,
+   "top1": 0.5876993166287016,
+   "top1_hits": 258,
+   "lead_stated": 0.5376649474949429,
+   "lead_actual": 0.5876993166287016,
+   "auc": 0.6965784449738055,
+   "logloss": 0.5080369515956119,
+   "brier": 0.16693929046814648,
+   "ece": 0.010806408899471218,
+   "pick_hit_rate": 0.5574803149606299,
+   "picks_per_game": 1.4464692482915718,
+   "game_hit_rate": 0.6856492027334852
+  },
+  "after_export_2026": {
+   "rows": 5284,
+   "games": 262,
+   "slates": 14,
+   "base_rate": 0.24148372445117336,
+   "top1": 0.583969465648855,
+   "top1_hits": 153,
+   "lead_stated": 0.5477469273417993,
+   "lead_actual": 0.583969465648855,
+   "auc": 0.6912598197022882,
+   "logloss": 0.5081761180837813,
+   "brier": 0.16690444644719651,
+   "ece": 0.005403634661920901,
+   "pick_hit_rate": 0.5699481865284974,
+   "picks_per_game": 1.4732824427480915,
+   "game_hit_rate": 0.7061068702290076
+  }
+ },
+ "ts_check": {
+  "rows": 45683,
+  "max_abs_diff": 1.6653345369377348e-16,
+  "module_selftest": {
+   "ok": true,
+   "worst": 1.6515834810881813e-09,
+   "n": 5
+  }
+ },
+ "deliverable": {
+  "rows": 50240,
+  "kinds": {
+   "candidate": 26764,
+   "no_touch": 18919,
+   "no_history": 4557
+  },
+  "candidate_rows": 26764,
+  "games": 1406,
+  "td_scorers_total": 7169,
+  "td_scorers_candidates": 6522,
+  "position_missing": 50240
+ }
+}

@@ -741,10 +741,14 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       });
   };
 
+  let firstTd: GameResult["first"] | undefined;
   const touchdown = (s: number, scorer: number, how: string) => {
     addScore(s, 6);
     void how;
-    void scorer;
+    // The game's first touchdown, for the first-scorer market. A return
+    // touchdown is credited to no one (scorer −1), so nobody wins it.
+    if (firstTd === undefined)
+      firstTd = scorer >= 0 ? { side: s === 0 ? "home" : "away", idx: scorer } : null;
     if (cfbOt) {
       // A defensive score ends it; so does the side with the ball second
       // going ahead. From the second period the try must be for two.
@@ -1498,6 +1502,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   return finish(score[0], score[1], periods, box, log, {
     ot: wentOt,
     tie,
+    first: firstTd ?? null,
     team: { home: team[0], away: team[1] },
     status: wentOt ? (tie ? "Final/OT (tie)" : `Final/${otTag}`) : "Final",
   });

@@ -50,6 +50,10 @@ const SHARD = Number(shardArg ?? 0);
 const SHARDS = Number(shardsArg ?? 1);
 const SIMS = Number(simsArg ?? 1000);
 const DATA = "research/player-props/data";
+// For the run-count study: simulate only every Nth game (all games are still
+// folded into the season), and tag the output file.
+const EVERY = Number(process.env.SAMPLE_EVERY ?? 1);
+const TAG = process.env.OUT_TAG ?? "";
 
 type P = Record<string, number | string | boolean | undefined> & {
   pid: string;
@@ -316,13 +320,13 @@ function main() {
   }
 
   const suffix = SHARDS > 1 ? `.${SHARD}` : "";
-  const out = createWriteStream(`${DATA}/sim_${sport}_${SEASON}${suffix}.jsonl`);
+  const out = createWriteStream(`${DATA}/sim${TAG}_${sport}_${SEASON}${suffix}.jsonl`);
   const t0 = Date.now();
   let done = 0;
 
   for (let gi = 0; gi < games.length; gi++) {
     const g = games[gi];
-    if (gi % SHARDS === SHARD) {
+    if (gi % EVERY === 0 && (gi / EVERY) % SHARDS === SHARD) {
       const se = makeSeason({
         league: sport,
         current: SEASON + 1,
@@ -374,7 +378,10 @@ function main() {
       const r = acc.summary(0);
       const players: Record<string, unknown> = {};
       for (const p of r.players) {
-        const row: Record<string, unknown> = { played: Math.round(p.played * 1000) / 1000 };
+        const row: Record<string, unknown> = {
+          played: Math.round(p.played * 1000) / 1000,
+          first: Math.round(p.first * 100000) / 100000,
+        };
         for (const s of p.props) {
           if (sport === "nba" ? s.key !== "pts" : !["pts", "g", "a", "sog"].includes(s.key))
             continue;
