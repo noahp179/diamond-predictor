@@ -374,9 +374,22 @@ export type CfbTdGame = {
   /** Model's expected margin for the home side, in points. */
   homeMargin: number;
   picks: CfbTdPick[];
+  /**
+   * The likeliest first-touchdown scorers: each candidate's anytime chance p
+   * turned into a touchdown rate -ln(1-p), and the game's first touchdown
+   * shared in proportion, less the ~3% that defences and kick returns score.
+   * On 2025-26 (1,393 held-out games) this beat the game simulator for the
+   * first touchdown — its top pick scored first 16.7% of the time, against
+   * 14.4% (research/player-props/results/cfb_td_backtest.json).
+   */
+  firstTd: { playerId: string; player: string; position: string; team: string; prob: number }[];
 };
 
 const TIERS = FOREST_TIERS;
+
+/** Share of college first touchdowns scored by an offensive ball carrier or
+ *  receiver (the rest: defence, kick and punt returns). */
+const FIRST_TD_OFFENCE = 0.97;
 
 function tierFor(p: number): { label: string; hit: number } {
   for (const t of TIERS) if (p >= t.min) return { label: t.label, hit: t.hit };
@@ -507,6 +520,17 @@ export async function cfbTdSlate(date: string): Promise<{
     }
     if (cand.length === 0) return null;
     cand.sort((a, b) => b.prob - a.prob);
+    const rate = cand.map((c) => -Math.log(Math.max(1e-6, 1 - c.prob)));
+    const total = rate.reduce((a, r) => a + r, 0);
+    const firstTd = cand
+      .map((c, i) => ({
+        playerId: c.playerId,
+        player: c.player,
+        position: c.position,
+        team: c.team,
+        prob: total > 0 ? (FIRST_TD_OFFENCE * rate[i]) / total : 0,
+      }))
+      .slice(0, 5);
 
     return {
       gameId: g.id,
@@ -518,6 +542,7 @@ export async function cfbTdSlate(date: string): Promise<{
       total: g.total,
       homeMargin,
       picks: choosePicks(cand),
+      firstTd,
     };
   });
 

@@ -380,7 +380,7 @@ export type PlayerSport = TdSport | "mlb";
 
 /** Every sport with a player board in `player_predictions`. Soccer's prop
  *  boards are read here; it has no slips, so it is not a PlayerSport. */
-export type LedgerSport = PlayerSport | "soccer";
+export type LedgerSport = PlayerSport | "soccer" | "nba" | "nhl";
 
 export type TdLedgerView = {
   sport: LedgerSport;
@@ -502,6 +502,11 @@ export async function readPlayerLedger(opts: {
    * or the two records would blend.
    */
   exactModel?: boolean;
+  /** Read every model version starting with this (a board whose markets each
+   *  carry their own version, like the simulation boards). */
+  modelPrefix?: string;
+  /** Only these markets. */
+  markets?: string[];
   claim?: TdLedgerView["claim"];
   countLabel: string;
   /** Pick ranks the board actually shows, in card order. */
@@ -557,7 +562,9 @@ export async function readPlayerLedger(opts: {
       .eq("sport", sport)
       .eq("provenance", "forward");
     if (market) q = q.eq("market", market);
+    if (opts.markets?.length) q = q.in("market", opts.markets);
     if (opts.exactModel) q = q.eq("model_version", modelVersion);
+    if (opts.modelPrefix) q = q.like("model_version", `${opts.modelPrefix}%`);
     const { data, error } = await q.order("event_date", { ascending: false }).limit(2000);
     if (error) {
       // PGRST205 is PostgREST for "no such table". Telling it apart from every

@@ -117,17 +117,9 @@ export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
       unit: "picks",
     },
   ],
-  cfb: [
-    {
-      key: "first-td",
-      label: "First TD",
-      hint: "who scores the first touchdown",
-      markets: [
-        { key: "first", label: "First TD", short: "First", phrase: "scores the first touchdown" },
-      ],
-      unit: "picks",
-    },
-  ],
+  // College stays on its touchdown model: on 2025-26 it beat the simulator
+  // for anytime and (split by share) for the first touchdown.
+  cfb: [],
 };
 
 export function simBoard(league: SimPropsLeague, board: string): BoardDef | undefined {
@@ -205,3 +197,40 @@ export function playersFrom(
     })
     .filter((p) => Object.keys(p.p).length > 0 || p.first > 0);
 }
+
+// ------------------------------------------------------------- the record
+
+/** The ledger's code for a market: "pts:2" in the NBA -> "pts20", the NHL's
+ *  "g:0" -> "g1", "first" -> "firstgoal" / "firsttd". */
+export function marketSlug(league: SimPropsLeague, key: string): string {
+  if (key === "first") return league === "nhl" ? "firstgoal" : "firsttd";
+  const [stat, i] = key.split(":");
+  const lines: Record<string, number[]> = {
+    pts: league === "nba" ? [10, 15, 20, 25, 30] : [1, 2, 3, 4],
+    g: [1, 2, 3],
+    a: [1, 2, 3],
+    td: [1, 2, 3],
+  };
+  return `${stat}${lines[stat]?.[Number(i)] ?? i}`;
+}
+
+/** Each market carries its own model version, so a player can be on several
+ *  lines of the same game (20+ and 25+ points) under the ledger's
+ *  one-row-per-version-player-game rule. */
+export function simModelVersion(league: SimPropsLeague, slug: string): string {
+  return `${league}-sim-${slug}-v1`;
+}
+
+export const SIM_MARKET_LABELS: Record<string, string> = {
+  pts10: "10+ points",
+  pts15: "15+ points",
+  pts20: "20+ points",
+  pts25: "25+ points",
+  pts30: "30+ points",
+  pts1: "1+ point",
+  pts2: "2+ points",
+  g1: "Anytime goal",
+  td1: "Anytime touchdown",
+  firstgoal: "First goal",
+  firsttd: "First touchdown",
+};

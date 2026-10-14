@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { CfbFirstTdView } from "@/components/CfbFirstTdView";
 import { CfbTdScorersView } from "@/components/CfbTdScorersView";
 import { TdParlayView } from "@/components/TdParlayView";
 import { PropsBoardsProvider } from "@/components/PropsBoards";
@@ -31,6 +32,7 @@ function Page() {
   const board = boardOf("cfb", Route.useSearch().board);
   let page: ReactNode = <CfbTdScorersView />;
   if (board === "parlays") page = <TdParlayView sport="cfb" />;
+  else if (board === "first-td") page = <CfbFirstTdView />;
   return (
     <PropsBoardsProvider sport="cfb" board={board}>
       {page}
