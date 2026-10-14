@@ -37,7 +37,9 @@ const shard = Number(arg("shard", "0"));
 const shards = Number(arg("shards", "1"));
 
 const here = dirname(fileURLToPath(import.meta.url));
-const fixtures = JSON.parse(readFileSync(join(here, "data", "engine_fixtures.json"), "utf8")) as Fixture[];
+const fixtures = JSON.parse(
+  readFileSync(join(here, "data", "engine_fixtures.json"), "utf8"),
+) as Fixture[];
 const engine = new SoccerEngine();
 const OG = SOCCER_SIM.ownGoalShare;
 
@@ -65,8 +67,16 @@ for (let i = shard; i < fixtures.length; i += shards) {
     first: Object.fromEntries(ids.map((id) => [id, (b.first[id] ?? 0) / b.n])),
   };
   k += 1;
-  if (k % 20 === 0) console.log(`${variant} n=${n} shard ${shard}: ${k} fixtures, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  if (k % 20 === 0)
+    console.log(
+      `${variant} n=${n} shard ${shard}: ${k} fixtures, ${((Date.now() - t0) / 1000).toFixed(0)}s`,
+    );
 }
 mkdirSync(join(here, "data", "engine_out"), { recursive: true });
-writeFileSync(join(here, "data", "engine_out", `${variant}_${n}_${shard}.json`), JSON.stringify(out));
-console.log(`${variant} n=${n} shard ${shard}: ${k} fixtures in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+writeFileSync(
+  join(here, "data", "engine_out", `${variant}_${n}_${shard}.json`),
+  JSON.stringify(out),
+);
+console.log(
+  `${variant} n=${n} shard ${shard}: ${k} fixtures in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+);

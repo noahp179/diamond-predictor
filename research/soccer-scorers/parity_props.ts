@@ -41,7 +41,9 @@ type Sample = {
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
-const samples = JSON.parse(readFileSync(join(here, "data", "parity_sample.json"), "utf8")) as Sample[];
+const samples = JSON.parse(
+  readFileSync(join(here, "data", "parity_sample.json"), "utf8"),
+) as Sample[];
 
 const norm = (r: PlayerMatch): PlayerMatch => ({
   ...r,

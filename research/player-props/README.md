@@ -69,6 +69,34 @@ The season average under-says by 15 to 20 points.
 - It is the best single method at 20+, 25+ and 30+.
 - The blend is about 1% better on the error score. Adding it would need every player's game log at prediction time.
 
+### NHL points, goals, first goal: 2025-26, 50,181 player-games, 1,394 games
+
+Each cell is Brier / the top 10 a day's hit rate. For first goal it is the top pick per game.
+
+| line | sim | **sim_cal (shipped)** | avg | fit | hybrid | blend |
+|---|---|---|---|---|---|---|
+| 1+ point | .2041 / 64.5% | .2041 / 64.2% | .2055 / 65.0% | .2047 / 64.3% | .2050 / 64.2% | **.2030** / 65.5% |
+| 2+ points | .0750 / 29.6% | .0751 / 29.7% | .0750 / 30.0% | .0751 / 30.0% | .0751 / 29.8% | **.0748** / 31.0% |
+| 1+ goal | .1201 / 35.7% | .1201 / 36.3% | .1215 / 33.5% | .1201 / 35.7% | .1200 / 34.9% | **.1197** / 36.3% |
+| 1+ assist | .1709 / 48.0% | .1709 / 48.3% | .1777 / 47.1% | .1707 / 48.4% | .1709 / 48.7% | **.1700** / 49.2% |
+| first goal | **.0267 / 7.6%** (shipped) | .0267 / 7.0% | .0268 / 5.9% | .0268 / 6.3% | .0268 / 5.5% | .0267 / 6.4% |
+
+What the board's numbers meant:
+
+| line | method | it said | it hit |
+|---|---|---|---|
+| 1+ point | sim_cal | 66.2% | 64.2% |
+| 1+ goal | sim_cal | 35.7% | 36.3% |
+| first goal | sim | 8.7% | 7.6% |
+
+The season average over-says goals by 6 points and assists by 9.
+
+**Shipped: sim_cal for points and goals, the raw simulator for first goal.**
+- Hockey is close to a coin toss for any single skater, so every method is within a hair of the others.
+- The blend is about 0.5% better, for the same reason as in basketball.
+- The simulator is the only method that knows the lines, who is on the power-play units, and which goalie starts. On the first goal its top pick per game hits 7.6%, against 6.4–7.0% for every other method.
+- On a typical night the first-goal favourite is 9–11%. Base rate: 2.8% for a skater.
+
 ### NFL anytime touchdown: 2025 season + 2026 to date, 364 games, 6,497 player-games
 
 | method | Brier | AUC | top pick per game scored (said) |
@@ -130,6 +158,22 @@ The boosted model is best in four of five leagues by a significant margin, but t
 The simulator's anytime chance for a player is `1 − Σ_g P(team scores g) · (1 − s·m)^g`, where:
 - s is his share of his team's goals: 180-day half-life, shrunk toward his position;
 - m is his expected share of minutes.
+
+### Soccer first goal (same matches)
+
+| method | Brier | AUC | top pick per match scored first (said) |
+|---|---|---|---|
+| model, split by share | .03617 | .759 | 14.0% (13.8%) |
+| sim (closed form) | .03604 | .761 | 14.0% (14.6%) |
+| **hybrid_first** | **.03592** | **.770** | **14.6% (14.4%)** |
+
+Champions League 2025-26 (189 matches): the simulator's closed form puts the actual first scorer on top 20.1% of the time.
+
+Two problems the soccer research found in the live site, both still to fix:
+- **The live model computes its features differently from how it was trained.** It uses this season only, and the player's last-seen slot (often "SUB"). Training used totals since 2021-22 and the lineup slot. Fixing that alone, with the same coefficients, takes 2025-26 log loss from .2679 to .2650 and AUC from .764 to .773.
+- **The Champions League simulator under-prices every starter by about 35%.** It spreads goal shares across the whole squad, so the 11 starters' shares sum to about 0.53. Starters actually score 82% of a team's goals.
+
+The details and every constant are in `research/soccer-scorers/README.md` and `results/backtest.json`.
 
 ## How many plays
 
