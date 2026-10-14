@@ -94,7 +94,7 @@ The season average over-says goals by 6 points and assists by 9.
 **Shipped: sim_cal for points and goals, the raw simulator for first goal.**
 - Hockey is close to a coin toss for any single skater, so every method is within a hair of the others.
 - The blend is about 0.5% better, for the same reason as in basketball.
-- The simulator is the only method that knows the lines, who is on the power-play units, and which goalie starts. On the first goal its top pick per game hits 7.6%, against 6.4–7.0% for every other method.
+- The simulator is the only method that knows the lines, who is on the power-play units, and which goalie starts. On the first goal its top pick per game hits 7.6%, against 5.5–7.0% for every other method.
 - On a typical night the first-goal favourite is 9–11%. Base rate: 2.8% for a skater.
 
 ### NFL anytime touchdown: 2025 season + 2026 to date, 364 games, 6,497 player-games
