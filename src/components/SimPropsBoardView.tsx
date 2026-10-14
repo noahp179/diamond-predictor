@@ -60,6 +60,18 @@ type BacktestMarket = {
 };
 const BT = backtest as unknown as Record<string, Record<string, BacktestMarket>>;
 
+/** 1,000 vs 10,000 vs 100,000 plays on a sample of last season's games
+ *  (research/player-props/runs_study.py), one entry per line. */
+type RunLine = {
+  mean_abs_diff_1k: number;
+  mean_abs_diff_10k: number;
+  brier_1k: number;
+  brier_100k: number;
+  top3_same_1k: number;
+};
+const RUNS = (backtest as unknown as { runs?: Record<string, { games: number; lines: RunLine[] }> })
+  .runs;
+
 const METHOD_LABEL: Record<string, string> = {
   sim_cal: "The simulator, calibrated (what this page shows)",
   sim: "The simulator, raw",
@@ -342,6 +354,10 @@ function HowItWorks({
   bt?: BacktestMarket;
 }) {
   const methods = bt ? Object.entries(bt.methods).sort((a, b) => a[1].brier - b[1].brier) : [];
+  const runStudy = RUNS?.[league];
+  const run = market.key.includes(":")
+    ? runStudy?.lines[Number(market.key.split(":")[1])]
+    : undefined;
   return (
     <section className="mt-10 border border-border bg-card">
       <div className="border-b border-border px-5 py-4 sm:px-6">
@@ -361,6 +377,17 @@ function HowItWorks({
           about a quarter of a point; the uncertainty that matters is the simulator's, not the
           counting.
         </p>
+        {run && runStudy && (
+          <p>
+            <strong className="text-foreground">Why 100,000.</strong> We replayed {runStudy.games}{" "}
+            of last season's games at 1,000, 10,000 and 100,000 plays. At 1,000 a player's number
+            sat {(run.mean_abs_diff_1k * 100).toFixed(1)} points from the 100,000-play number on
+            average, and {pct(1 - run.top3_same_1k)} of each game's top three changed; at 10,000 it
+            sat {(run.mean_abs_diff_10k * 100).toFixed(1)} points away. The extra plays sharpen the
+            numbers, not the order: the error score moved from {run.brier_1k.toFixed(4)} to{" "}
+            {run.brier_100k.toFixed(4)}.
+          </p>
+        )}
         {market.key !== "first" ? (
           <p>
             <strong className="text-foreground">3. Correct with last season.</strong> A simulator is

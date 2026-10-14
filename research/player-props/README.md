@@ -177,7 +177,29 @@ The details and every constant are in `research/soccer-scorers/README.md` and `r
 
 ## How many plays
 
-The boards play each game up to **100,000** times. Scheduled jobs (`/api/public/hooks/sim-props`) do it a few games at a time, inside Vercel's 300-second function limit. The backtest seasons were played 1,000 times a game; `runs_study.py` replays a sample at 1,000, 10,000 and 100,000 to show what the extra plays change (results in `results/*_runs_study.json`).
+The boards play each game up to **100,000** times. Scheduled jobs (`/api/public/hooks/sim-props`) do it a few games at a time, inside Vercel's 300-second function limit.
+
+The backtest seasons were played 1,000 times a game. `runs_study.py` replays 66 NBA games from 2025-26 (every 20th) at 1,000, 10,000 and 100,000 plays, with the same inputs each time:
+
+| line | 1k vs 100k: mean gap (95th pct) | 10k vs 100k: mean gap (95th pct) | Brier 1k / 10k / 100k | top 3 per game same as 100k: 1k / 10k |
+|---|---|---|---|---|
+| 10+ | 0.9 pts (2.5) | 0.3 pts (0.8) | .14223 / .14219 / .14213 | 97% / 99% |
+| 15+ | 0.9 (2.3) | 0.3 (0.7) | .11917 / .11894 / .11890 | 97% / 98% |
+| 20+ | 0.8 (2.3) | 0.2 (0.7) | .07291 / .07280 / .07276 | 99% / 99% |
+| 25+ | 0.7 (2.0) | 0.2 (0.6) | .04576 / .04575 / .04573 | 99% / 99% |
+| 30+ | 0.7 (2.1) | 0.2 (0.5) | .02346 / .02342 / .02339 | 97% / 100% |
+
+The gap is in percentage points.
+- At 1,000 plays a player's number is off by about 0.8 points, and up to 2.5.
+- At 100,000 it is settled to about 0.15 points: the standard error is `√(p(1−p)/N)`, at most 0.16 points.
+- Accuracy improves at every line, but only in the fourth decimal.
+- A few of each game's top three swap places.
+
+So the extra plays sharpen the numbers, not the order. The backtest's 1,000-play results are a fair, slightly pessimistic stand-in for the boards' 100,000.
+
+The soccer research checked the same thing on its engine (`research/soccer-scorers`):
+- At 1,000 plays, the first-goal favourite changed in 8–15% of matches.
+- At 100,000 plays it matched the closed form in 98.5–99%.
 
 ## Files
 
