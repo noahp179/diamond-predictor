@@ -29,7 +29,8 @@
  */
 import model from "./mlb-stacks-model.json";
 import { PARK_FACTORS } from "./park-factors";
-import { propsSlate, type PropPick } from "./mlb-props.server";
+import { BOARD_GAME_TYPES, propsSlate, type PropPick } from "./mlb-props.server";
+import { isPlayoffGame, playoffPrice } from "./mlb-postseason";
 
 const API = "https://statsapi.mlb.com/api/v1";
 const C = model.constants;
@@ -106,26 +107,46 @@ async function fetchTeamLines(
       : `stats=season`;
     const m = new Map<number, TeamLine>();
     const get = (id: number) => m.get(id) ?? (m.set(id, emptyLine()), m.get(id)!);
-    const [h, p] = await Promise.all([
-      getJson(`${API}/teams/stats?${range}&group=hitting&season=${season}&sportIds=1&gameType=R`),
-      getJson(`${API}/teams/stats?${range}&group=pitching&season=${season}&sportIds=1&gameType=R`),
-    ]);
-    for (const s of h?.stats?.[0]?.splits ?? []) {
-      const t = get(n(s?.team?.id));
-      t.g = n(s?.stat?.gamesPlayed);
-      t.runs = n(s?.stat?.runs);
-      t.pa = n(s?.stat?.plateAppearances);
-      t.ab = n(s?.stat?.atBats);
-      t.h = n(s?.stat?.hits);
-      t.tb = n(s?.stat?.totalBases);
-      t.hr = n(s?.stat?.homeRuns);
-      t.bb = n(s?.stat?.baseOnBalls);
-      t.k = n(s?.stat?.strikeOuts);
-    }
-    for (const s of p?.stats?.[0]?.splits ?? []) {
-      const t = get(n(s?.team?.id));
-      t.runsAllowed = n(s?.stat?.runs);
-      t.allowedG = n(s?.stat?.gamesPlayed);
+    // A recent-form window counts every game a team played, playoffs included
+    // (see FORM_GAME_TYPES in mlb-props.server). This endpoint answers one game
+    // type at a time — "P" is the whole postseason — so the window adds the
+    // two up. Season lines stay the regular season the model was fitted on.
+    const types = window ? ["R", "P"] : ["R"];
+    const pages = await Promise.all(
+      types.map((gt) =>
+        Promise.all([
+          getJson(
+            `${API}/teams/stats?${range}&group=hitting&season=${season}&sportIds=1&gameType=${gt}`,
+          ),
+          getJson(
+            `${API}/teams/stats?${range}&group=pitching&season=${season}&sportIds=1&gameType=${gt}`,
+          ),
+        ]).catch((err) => {
+          // The regular season is the board; a missing postseason page only
+          // means a window with no playoff games in it.
+          if (gt === "R") throw err;
+          return [null, null];
+        }),
+      ),
+    );
+    for (const [h, p] of pages) {
+      for (const s of h?.stats?.[0]?.splits ?? []) {
+        const t = get(n(s?.team?.id));
+        t.g += n(s?.stat?.gamesPlayed);
+        t.runs += n(s?.stat?.runs);
+        t.pa += n(s?.stat?.plateAppearances);
+        t.ab += n(s?.stat?.atBats);
+        t.h += n(s?.stat?.hits);
+        t.tb += n(s?.stat?.totalBases);
+        t.hr += n(s?.stat?.homeRuns);
+        t.bb += n(s?.stat?.baseOnBalls);
+        t.k += n(s?.stat?.strikeOuts);
+      }
+      for (const s of p?.stats?.[0]?.splits ?? []) {
+        const t = get(n(s?.team?.id));
+        t.runsAllowed += n(s?.stat?.runs);
+        t.allowedG += n(s?.stat?.gamesPlayed);
+      }
     }
     return m;
   });
@@ -197,12 +218,13 @@ async function fetchStarters(ids: number[], season: number): Promise<Map<number,
   });
 }
 
-/** Days of rest and games in the last week, from the previous eight days. */
+/** Days of rest and games in the last week, from the previous eight days —
+ *  playoff games included, since they are the ones a team is resting from. */
 async function fetchRecentSchedule(date: string): Promise<Map<number, number[]>> {
   return cached(`stacks:recent:${date}`, 60 * 60_000, async () => {
     const m = new Map<number, number[]>();
     const d = await getJson(
-      `${API}/schedule?sportId=1&gameType=R` +
+      `${API}/schedule?sportId=1&gameType=${BOARD_GAME_TYPES}` +
         `&startDate=${shiftDays(date, -8)}&endDate=${shiftDays(date, -1)}`,
     );
     for (const day of d?.dates ?? []) {
@@ -516,6 +538,8 @@ export type TeamStack = {
   gameId: number;
   date: string;
   startsAt: string;
+  /** A playoff game: the team totals carry the playoff correction. */
+  postseason: boolean;
   matchup: string;
   venue: string;
   park: number;
@@ -583,7 +607,7 @@ export async function stacksSlate(date: string): Promise<StacksSlate> {
   };
 
   const sched = await getJson(
-    `${API}/schedule?sportId=1&date=${date}&gameType=R&hydrate=probablePitcher,venue,team`,
+    `${API}/schedule?sportId=1&date=${date}&gameType=${BOARD_GAME_TYPES}&hydrate=probablePitcher,venue,team`,
   );
   const games = (sched?.dates ?? []).flatMap((d: any) => d?.games ?? []);
   if (games.length === 0) return { date, season, teams: [], backtest };
@@ -652,8 +676,13 @@ export async function stacksSlate(date: string): Promise<StacksSlate> {
         g7: days.filter((d) => d >= today - 7).length,
       });
 
+      // October runs are scarcer than the regular season the model learned, so
+      // a playoff game's team totals take the playoff correction — and the
+      // stack cards built on them below inherit it.
+      const playoff = isPlayoffGame(g?.gameType);
       const totals: TeamTotal[] = Object.entries(model.markets).map(([key, m]) => {
-        const prob = inferLogistic(m, x);
+        const raw = inferLogistic(m, x);
+        const prob = playoff ? playoffPrice(raw, "teamRuns") : raw;
         const t = tierFor(m.tiers, prob);
         return {
           market: key,
@@ -670,6 +699,7 @@ export async function stacksSlate(date: string): Promise<StacksSlate> {
         gameId: n(g.gamePk),
         date,
         startsAt: String(g.gameDate ?? ""),
+        postseason: playoff,
         matchup: `${g?.teams?.away?.team?.abbreviation ?? ""} @ ${g?.teams?.home?.team?.abbreviation ?? ""}`,
         venue,
         park,

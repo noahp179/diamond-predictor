@@ -214,7 +214,7 @@ export const getBoardRecord = createServerFn({ method: "GET" })
         })),
         note:
           sport === "mlb"
-            ? "Baseball's boards cover the regular season; slips resume in March."
+            ? "Slips are recorded the morning of every regular-season and playoff game day."
             : null,
       };
     }
@@ -249,7 +249,7 @@ export const getBoardRecord = createServerFn({ method: "GET" })
           prob: r.prob,
           result: !r.settled ? "pending" : r.won == null ? "void" : r.won ? "hit" : "miss",
         })),
-        note: "Recorded from the start of next season — the stacks board covers the regular season only.",
+        note: "Cards are recorded the morning of every regular-season and playoff game.",
       };
     }
 
@@ -269,12 +269,12 @@ export const getBoardRecord = createServerFn({ method: "GET" })
     } else if (board === "two-bases" && sport === "mlb") {
       const { readTb2Ledger } = await import("./tb2-ledger.server");
       view = await readTb2Ledger();
-      note = "Baseball's boards cover the regular season; picks resume in March.";
+      note = "Picks are recorded the morning of every regular-season and playoff game.";
     } else if (board === "players" && (sport === "mlb" || sport === "nfl")) {
       const { readPropBoard } = await import("./prop-ledger.server");
       view = await readPropBoard(sport);
       if (sport === "mlb")
-        note = "Recorded from the start of next season — the board covers the regular season only.";
+        note = "Picks are recorded the morning of every regular-season and playoff game.";
     } else if (sport === "soccer") {
       const { readPropBoard } = await import("./prop-ledger.server");
       const { isLeagueSlug } = await import("./soccer-leagues");

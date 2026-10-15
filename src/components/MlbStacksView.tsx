@@ -182,6 +182,14 @@ export function MlbStacksView() {
       )}
       {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
 
+      {!isLoading && !isError && allTeams.some((t) => t.postseason) && (
+        <Note>
+          Playoff games. October runs are scarcer than the regular season the team model learned —
+          on the 2024–26 playoffs it ran 4–6 points high on every over — so playoff team totals are
+          marked down to match, and the stacks built on them with them.
+        </Note>
+      )}
+
       {!isLoading && !isError && bt && allTeams.length > 0 && (
         <div className="mb-6 border border-border bg-card p-4">
           <div className="grid gap-3 sm:grid-cols-3">

@@ -23,9 +23,28 @@
  */
 import model from "./mlb-props-model.json";
 import { PARK_FACTORS } from "./park-factors";
+import { isPlayoffGame, playoffPrice } from "./mlb-postseason";
 
 const API = "https://statsapi.mlb.com/api/v1";
 const C = model.constants;
+
+/**
+ * The games the boards price: the regular season and every playoff round
+ * (F wild card, D division series, L championship series, W World Series).
+ * Spring training, exhibitions and the All-Star Game stay out — their lineups
+ * and innings are not the games the models learned.
+ */
+export const BOARD_GAME_TYPES = "R,F,D,L,W";
+
+/**
+ * The games a player's form is read from: regular season plus postseason. In
+ * the regular season the 30-day window holds every game a player played, and
+ * the model learned from exactly that; in October that is only true if the
+ * playoff games count too. Without them a Game 4 starter would look a month
+ * rested and an everyday bat like a part-timer, because the regular season
+ * ended weeks ago.
+ */
+const FORM_GAME_TYPES = "[R,P]";
 
 // League priors for shrinkage — must match research/mlb-props/features.py.
 const LG = {
@@ -110,6 +129,7 @@ type SlateGame = {
   homeSp: { id: number; name: string } | null;
   awaySp: { id: number; name: string } | null;
   lineups: { home: number[]; away: number[] }; // player ids in batting order
+  postseason: boolean;
 };
 
 function teamOf(t: any): SlateTeam {
@@ -119,7 +139,7 @@ function teamOf(t: any): SlateTeam {
 async function fetchSlate(date: string): Promise<SlateGame[]> {
   return cached(`slate:${date}`, 5 * 60_000, async () => {
     const d = await getJson(
-      `${API}/schedule?sportId=1&date=${date}&gameType=R&hydrate=probablePitcher,lineups,venue,team`,
+      `${API}/schedule?sportId=1&date=${date}&gameType=${BOARD_GAME_TYPES}&hydrate=probablePitcher,lineups,venue,team`,
     );
     const out: SlateGame[] = [];
     for (const day of d?.dates ?? []) {
@@ -141,6 +161,7 @@ async function fetchSlate(date: string): Promise<SlateGame[]> {
             home: (g?.lineups?.homePlayers ?? []).map((p: any) => n(p.id)),
             away: (g?.lineups?.awayPlayers ?? []).map((p: any) => n(p.id)),
           },
+          postseason: isPlayoffGame(g?.gameType),
         });
       }
     }
@@ -159,7 +180,7 @@ async function fetchRecentOrder(teamId: number, date: string): Promise<number[]>
     const to = new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
     try {
       const sched = await getJson(
-        `${API}/schedule?sportId=1&teamId=${teamId}&startDate=${from}&endDate=${to}&gameType=R`,
+        `${API}/schedule?sportId=1&teamId=${teamId}&startDate=${from}&endDate=${to}&gameType=${BOARD_GAME_TYPES}`,
       );
       const games = (sched?.dates ?? [])
         .flatMap((d: any) => d?.games ?? [])
@@ -240,7 +261,7 @@ async function fetchLogs<T>(
         const d = await cached(key, 30 * 60_000, () =>
           getJson(
             `${API}/people?personIds=${chunk.join(",")}` +
-              `&hydrate=stats(group=[${group}],type=[gameLog],season=${season},gameType=R)` +
+              `&hydrate=stats(group=[${group}],type=[gameLog],season=${season},gameType=${FORM_GAME_TYPES})` +
               `&fields=${fields}`,
             30000,
           ),
@@ -603,6 +624,8 @@ export type PropGame = {
   venue: string;
   park: number;
   lineupsPosted: boolean;
+  /** A playoff game: strikeout lines carry the playoff correction. */
+  postseason: boolean;
   picks: PropPick[];
 };
 export type PropsSlate = {
@@ -769,7 +792,10 @@ export async function propsSlate(date: string): Promise<PropsSlate> {
               PITCHER_PRIORS[key],
               5,
             );
-            const prob = infer(m, [...base, own, ownW]);
+            // Playoff starters leave sooner than the regular season taught the
+            // model, so their strikeout lines take the playoff correction.
+            const raw = infer(m, [...base, own, ownW]);
+            const prob = g.postseason ? playoffPrice(raw, "strikeouts") : raw;
             const t = tierFor(m, prob);
             picks.push({
               playerId: sp.id,
@@ -802,6 +828,7 @@ export async function propsSlate(date: string): Promise<PropsSlate> {
       venue: g.venue,
       park,
       lineupsPosted: g.lineups.home.length >= 9 && g.lineups.away.length >= 9,
+      postseason: g.postseason,
       picks,
     });
   }

@@ -164,9 +164,13 @@ function runChecks(p: TdParlay, cap: number, label: string) {
     `flags extrapolation exactly when it is extrapolating ` +
       `(${p.stackedPairs.opposed} opposed, measured up to ${VALIDATED[p.size]})`,
   );
+  // A thin slate — one game left, a tight per-game cap — can't fill the slip
+  // even reaching below the floor; the builder then gets as close as it can
+  // and says so with `short` (td-parlay.ts, step 3).
   check(
-    p.belowFloor === 0 || p.legs.length === p.size,
-    `reaching below the ${p.floor} floor only happens to fill the slip (${p.belowFloor} did)`,
+    p.belowFloor === 0 || p.legs.length === p.size || p.short,
+    `reaching below the ${p.floor} floor only happens to fill the slip, or to come as close as ` +
+      `a thin slate allows (${p.belowFloor} did${p.short ? `, still short at ${p.legs.length}` : ""})`,
   );
   check(
     p.legs.every((l) => l.reasons.length > 0),

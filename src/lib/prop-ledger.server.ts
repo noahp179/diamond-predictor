@@ -245,8 +245,8 @@ export async function snapshotStacks(date: string): Promise<number> {
 
 const MLB_API = "https://statsapi.mlb.com/api/v1";
 
-/** Final MLB games on a date, any game type (the boards are regular season,
- *  but nothing here should silently refuse a postseason game). */
+/** Final MLB games on a date, any game type — the boards record playoff
+ *  games as well as the regular season. */
 async function mlbFinals(date: string): Promise<Set<string>> {
   const res = await fetch(`${MLB_API}/schedule?sportId=1&date=${date}`, {
     headers: { accept: "application/json" },

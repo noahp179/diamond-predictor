@@ -208,7 +208,7 @@ export function MlbBaseParlayView() {
         <Note>
           {data?.askedGames
             ? `Every game on ${dayLabel(date)} has already started, so there is nothing left to bet`
-            : `No regular-season games on ${dayLabel(date)}`}{" "}
+            : `No games on ${dayLabel(date)}`}{" "}
           — showing <span className="text-foreground">{dayLabel(movedTo)}</span>. Pick a date above
           to override.
         </Note>
