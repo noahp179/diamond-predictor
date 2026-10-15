@@ -103,3 +103,20 @@ export const getSimAnalytics = createServerFn({ method: "GET" })
       }
     },
   );
+
+/** Tracked games, newest first: what happened next to what the board said. */
+export const getSimResults = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ league: League, offset: z.number().int().min(0).default(0) }))
+  .handler(async ({ data }) => {
+    const { readGameResults } = await import("./sim-props.server");
+    try {
+      return await readGameResults(data.league, data.offset);
+    } catch (err) {
+      console.error(`[sim-props] results ${data.league}:`, err);
+      return {
+        games: [] as import("./sim-props.server").ResultGame[],
+        more: false,
+        note: "The game results could not be read just now.",
+      };
+    }
+  });
