@@ -1,0 +1,108 @@
+{
+ "generated": "2026-10-15",
+ "note": "Log-odds shift applied to playoff games only; fitted on the 2024-2026 postseasons. See research/mlb-props/postseason_shift.py.",
+ "shift": {
+  "strikeouts": -0.4489,
+  "teamRuns": -0.2108,
+  "hitters": 0.0,
+  "twoBases": 0.0
+ },
+ "validation": {
+  "strikeouts": {
+   "shiftFit2024_25": -0.4677,
+   "test2026Raw": {
+    "n": 174,
+    "said": 0.4422,
+    "hit": 0.3678,
+    "brier": 0.1724,
+    "logloss": 0.5167
+   },
+   "test2026Adjusted": {
+    "n": 174,
+    "said": 0.3537,
+    "hit": 0.3678,
+    "brier": 0.1681,
+    "logloss": 0.5028
+   },
+   "allRaw": {
+    "n": 702,
+    "said": 0.4359,
+    "hit": 0.349,
+    "brier": 0.1794,
+    "logloss": 0.5343
+   }
+  },
+  "teamRuns": {
+   "shiftFit2024_25": -0.1027,
+   "test2026Raw": {
+    "n": 180,
+    "said": 0.3915,
+    "hit": 0.2722,
+    "brier": 0.2047,
+    "logloss": 0.5977
+   },
+   "test2026Adjusted": {
+    "n": 180,
+    "said": 0.3684,
+    "hit": 0.2722,
+    "brier": 0.1997,
+    "logloss": 0.5866
+   },
+   "allRaw": {
+    "n": 720,
+    "said": 0.4085,
+    "hit": 0.3611,
+    "brier": 0.2206,
+    "logloss": 0.6315
+   }
+  },
+  "hitters": {
+   "shiftFit2024_25": 0.008,
+   "test2026Raw": {
+    "n": 2160,
+    "said": 0.2371,
+    "hit": 0.2037,
+    "brier": 0.1369,
+    "logloss": 0.4271
+   },
+   "test2026Adjusted": {
+    "n": 2160,
+    "said": 0.2383,
+    "hit": 0.2037,
+    "brier": 0.137,
+    "logloss": 0.4274
+   },
+   "allRaw": {
+    "n": 8640,
+    "said": 0.2468,
+    "hit": 0.2394,
+    "brier": 0.151,
+    "logloss": 0.4614
+   }
+  },
+  "twoBases": {
+   "shiftFit2024_25": -0.0478,
+   "test2026Raw": {
+    "n": 540,
+    "said": 0.321,
+    "hit": 0.2685,
+    "brier": 0.1987,
+    "logloss": 0.5863
+   },
+   "test2026Adjusted": {
+    "n": 540,
+    "said": 0.3108,
+    "hit": 0.2685,
+    "brier": 0.1977,
+    "logloss": 0.584
+   },
+   "allRaw": {
+    "n": 2158,
+    "said": 0.3366,
+    "hit": 0.3156,
+    "brier": 0.2125,
+    "logloss": 0.6155
+   }
+  }
+ }
+}

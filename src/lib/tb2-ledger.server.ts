@@ -161,9 +161,10 @@ export async function snapshotTb2Picks(date: string): Promise<number> {
 
 // ----------------------------------------------------------------- settle
 
-/** Which games on a date have finished. One call covers the whole day. */
+/** Which games on a date have finished — regular season and playoffs alike.
+ *  One call covers the whole day. */
 async function finalGames(date: string): Promise<Set<string>> {
-  const res = await fetch(`${API}/schedule?sportId=1&date=${date}&gameType=R`, {
+  const res = await fetch(`${API}/schedule?sportId=1&date=${date}`, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(20000),
   });

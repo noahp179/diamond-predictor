@@ -2,6 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { MlbNoGames } from "@/components/MlbNoGames";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { boardPicks } from "@/lib/props-board";
 import { getMlbProps } from "@/lib/sports.functions";
@@ -144,7 +145,17 @@ export function MlbPropsView() {
       )}
       {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
 
-      {!isLoading && !isError && markets.length > 0 && (
+      {/* The models learned the regular season; say what changes in October. */}
+      {!isLoading && !isError && data?.games.some((g) => g.postseason) && (
+        <Note>
+          Playoff games. Hitter props are priced exactly as in the regular season — replayed on
+          every playoff game of 2024–26 they landed within about two points of their numbers.
+          Starters&apos; strikeout lines are marked down: playoff starters get pulled sooner, and
+          the regular-season model ran 7–11 points high on them.
+        </Note>
+      )}
+
+      {!isLoading && !isError && markets.length > 0 && (data?.games.length ?? 0) > 0 && (
         <div className="mb-6 border border-border bg-card">
           <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-2">
             {[{ key: "all", label: "Top picks", kind: "", base: 0, auc: 0 }, ...markets].map(
@@ -197,13 +208,11 @@ export function MlbPropsView() {
       )}
 
       {!isLoading && !isError && games.length === 0 && !data?.note && (
-        <div className="border border-border bg-card p-10 text-center">
-          <div className="font-display text-3xl">No props to project</div>
-          <p className="mt-2 font-mono text-sm text-muted-foreground">
-            Pick an MLB game day. Props need a slate, a posted or projected lineup, and enough
-            season-to-date history for the model to read.
-          </p>
-        </div>
+        <MlbNoGames
+          date={date}
+          title="No props to project"
+          reason="Props need a posted or projected lineup, and enough season-to-date history for the model to read."
+        />
       )}
     </SportShell>
   );

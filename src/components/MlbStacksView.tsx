@@ -2,6 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { MlbNoGames } from "@/components/MlbNoGames";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getMlbStacks } from "@/lib/sports.functions";
 import { todayET } from "@/lib/date";
@@ -181,6 +182,14 @@ export function MlbStacksView() {
       )}
       {!isLoading && !isError && data?.note && <Note>{data.note}</Note>}
 
+      {!isLoading && !isError && allTeams.some((t) => t.postseason) && (
+        <Note>
+          Playoff games. October runs are scarcer than the regular season the team model learned —
+          on the 2024–26 playoffs it ran 4–6 points high on every over — so playoff team totals are
+          marked down to match, and the stacks built on them with them.
+        </Note>
+      )}
+
       {!isLoading && !isError && bt && allTeams.length > 0 && (
         <div className="mb-6 border border-border bg-card p-4">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -265,13 +274,11 @@ export function MlbStacksView() {
       )}
 
       {!isLoading && !isError && allTeams.length === 0 && !data?.note && (
-        <div className="border border-border bg-card p-10 text-center">
-          <div className="font-display text-3xl">No games to stack</div>
-          <p className="mt-2 font-mono text-sm text-muted-foreground">
-            Pick a day with a slate. Team run models need a season of games behind them, so the
-            board sharpens after the first couple of weeks.
-          </p>
-        </div>
+        <MlbNoGames
+          date={date}
+          title="No games to stack"
+          reason="Team run models need a season of games behind them, so the board sharpens after the first couple of weeks."
+        />
       )}
     </SportShell>
   );

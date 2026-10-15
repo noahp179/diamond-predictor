@@ -217,7 +217,10 @@ export async function buildDixonColesPredictionsForDate(
   date: string,
 ): Promise<DixonColesPrediction[]> {
   const season = parseInt(date.slice(0, 4), 10);
-  const scheduleUrl = `${STATS_API}/schedule?sportId=1&gameType=R&hydrate=probablePitcher,team&startDate=${date}&endDate=${date}`;
+  // Regular season and every playoff round (wild card, division series, LCS,
+  // World Series): the ratings are fitted on the regular season, the
+  // predictions cover every game that counts.
+  const scheduleUrl = `${STATS_API}/schedule?sportId=1&gameType=R,F,D,L,W&hydrate=probablePitcher,team&startDate=${date}&endDate=${date}`;
   const [scheduleRes, seasonResults] = await Promise.all([
     fetchWithTimeout(scheduleUrl),
     fetchSeasonResults(season, date), // strictly before `date` — walk-forward safe

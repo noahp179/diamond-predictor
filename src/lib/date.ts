@@ -71,3 +71,15 @@ export function addDays(date: string, days: number): string {
   at.setUTCDate(at.getUTCDate() + days);
   return at.toISOString().slice(0, 10);
 }
+
+/** "Thu, Oct 15" — enough to tell the reader which day they are looking at. */
+export function dayLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return date;
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}

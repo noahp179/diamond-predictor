@@ -245,15 +245,18 @@ export const getTwoBaseParlays = createServerFn({ method: "GET" })
       // A fifteen-leg slip needs a day with hitters left to bet on. Look at the
       // asked-for day first and roll forward only if it is spent — baseball
       // plays nearly every day, so one step is almost always enough and two is
-      // the whole All-Star break.
+      // the whole All-Star break. A day that is no better — the postseason, the
+      // winter — is not worth moving the reader to, so then the asked-for day
+      // stays and the page says why it is empty.
       let date = asked;
       let built = await twoBaseParlayCandidates(asked);
-      let startedGames =
-        new Set(built.slate.picks.map((p) => p.gameId)).size -
-        new Set(built.candidates.map((c) => c.gameId)).size;
-      for (let i = 0; i < 2 && built.candidates.length < Math.min(...SIZES); i++) {
-        date = addDays(date, 1);
-        built = await twoBaseParlayCandidates(date);
+      const askedGames = new Set(built.slate.picks.map((p) => p.gameId)).size;
+      let startedGames = askedGames - new Set(built.candidates.map((c) => c.gameId)).size;
+      for (let i = 1; i <= 2 && built.candidates.length < Math.min(...SIZES); i++) {
+        const next = await twoBaseParlayCandidates(addDays(asked, i));
+        if (next.candidates.length < Math.min(...SIZES)) continue;
+        date = addDays(asked, i);
+        built = next;
         startedGames = 0;
       }
       const { slate, candidates } = built;
@@ -267,6 +270,9 @@ export const getTwoBaseParlays = createServerFn({ method: "GET" })
         sport: "mlb" as const,
         sizes: SIZES,
         games,
+        /** Games on the asked-for day, so a move to another day can say
+         *  whether this one was spent or simply had none. */
+        askedGames,
         /** Games on the asked-for day that had already started, so the page can
          *  explain a slate that is smaller than the one on the board. */
         startedGames,
@@ -291,6 +297,7 @@ export const getTwoBaseParlays = createServerFn({ method: "GET" })
         sport: "mlb" as const,
         sizes: SIZES,
         games: 0,
+        askedGames: 0,
         startedGames: 0,
         lineupsPosted: 0,
         candidates: 0,
@@ -330,6 +337,48 @@ export const getMlbTwoBases = createServerFn({ method: "GET" })
         note: "MLB Stats API is unreachable right now. Try refreshing in a moment.",
         source: "error" as const,
       };
+    }
+  });
+
+/** Every MLB game on a day, whatever its type. The prop boards price the
+ *  regular season and the playoffs, so when one comes up empty the page asks
+ *  this whether the day had no games at all or only games the boards sit out
+ *  — spring training, the All-Star Game — and says which. `games` counts the
+ *  ones the boards do cover. null when the Stats API can't be reached; the
+ *  board then keeps its own empty message. */
+export const getMlbDay = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ date: z.string() }))
+  .handler(async ({ data }) => {
+    const { BOARD_GAME_TYPES } = await import("./mlb-props.server");
+    const covered = new Set(BOARD_GAME_TYPES.split(","));
+    try {
+      const res = await fetch(
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${data.date}&hydrate=team`,
+        { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) },
+      );
+      if (!res.ok) return null;
+      const d = await res.json();
+      let games = 0;
+      const other: { kind: "spring" | "allstar"; label: string; matchup: string }[] = [];
+      for (const day of d?.dates ?? []) {
+        for (const g of day?.games ?? []) {
+          if (covered.has(g?.gameType)) {
+            games++;
+            continue;
+          }
+          const team = (side: "away" | "home") =>
+            g?.teams?.[side]?.team?.abbreviation ?? g?.teams?.[side]?.team?.name ?? "";
+          other.push({
+            kind: g?.gameType === "A" ? "allstar" : "spring",
+            label: g?.description || g?.seriesDescription || "",
+            matchup: `${team("away")} @ ${team("home")}`,
+          });
+        }
+      }
+      return { date: data.date, games, other };
+    } catch (err) {
+      console.error(`[mlbDay] ${data.date} failed:`, err);
+      return null;
     }
   });
 
