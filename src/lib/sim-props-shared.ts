@@ -447,6 +447,14 @@ export function calibrate(league: SimPropsLeague, market: string, p: number): nu
   return y[lo] + t * (y[hi] - y[lo]);
 }
 
+/** A player's projected average for a stat: the simulator's, through the
+ *  backtest's map from what it projected to what such players actually
+ *  averaged (research/player-props/fit_means.py) — the number to hold up
+ *  against a sportsbook's line. */
+export function projectionOf(league: SimPropsLeague, stat: string, simMean: number): number {
+  return calibrate(league, `mean:${stat}`, simMean);
+}
+
 /** The simulator's raw number for a market. */
 export function rawOf(pl: SimPlayer, market: string): number {
   if (market === "first") return pl.first;

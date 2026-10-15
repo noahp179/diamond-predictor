@@ -11,6 +11,7 @@ import { getSimPropsBoard, type SimBoardGame } from "@/lib/sim-props.functions";
 import {
   playersFrom,
   probOf,
+  projectionOf,
   simBoard,
   statWords,
   type Market,
@@ -291,7 +292,8 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
             <h2 className="font-display text-2xl">Most likely to {market.todo}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Ranked by how often it happened in the simulations. The bar is the chance; the note
-              underneath is what the simulator expects from him.
+              underneath is his projection — the simulator's average, corrected by what players it
+              projected the same way actually did — to set against a sportsbook's line.
             </p>
           </div>
           <ol>
@@ -371,8 +373,9 @@ function noteFor(league: SimPropsLeague, market: Market, p: Row): string {
   const mean = p.mean[stat];
   const w = statWords(league, stat);
   if (mean == null || !w || stat === "dd") return "";
-  const n = mean >= 20 ? mean.toFixed(0) : mean >= 1 ? mean.toFixed(1) : mean.toFixed(2);
-  return `averages ${n} ${w.noun} in the simulations`;
+  const x = projectionOf(league, stat, mean);
+  const n = x >= 20 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x.toFixed(2);
+  return `projects ${n} ${w.noun}`;
 }
 
 function HowItWorks({
@@ -420,7 +423,7 @@ function HowItWorks({
             {run.brier_100k.toFixed(4)}.
           </p>
         )}
-        {market.key !== "first" ? (
+        {market.key !== "first" && bt?.chosen !== "sim" ? (
           <p>
             <strong className="text-foreground">3. Correct with last season.</strong> A simulator is
             a little over-sure at the extremes — it can give a bench player 0%. So each raw
@@ -430,9 +433,9 @@ function HowItWorks({
           </p>
         ) : (
           <p>
-            <strong className="text-foreground">3. No correction needed.</strong> On last season the
-            simulator's first-scorer percentages already matched how often they came in, so they are
-            shown as it has them.
+            <strong className="text-foreground">3. No correction needed.</strong> On the backtest
+            the simulator's own percentages already matched how often they came in — correcting them
+            made them worse — so they are shown as it has them.
           </p>
         )}
       </div>

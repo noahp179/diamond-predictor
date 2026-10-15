@@ -110,7 +110,7 @@ def main() -> None:
     curves = {
         "nba": basketball_hockey("nba", [(f"pts:{i}", "pts", i, t) for i, t in enumerate([10, 15, 20, 25, 30])]),
         "nhl": basketball_hockey(
-            "nhl", [("pts:0", "pts", 0, 1), ("pts:1", "pts", 1, 2), ("g:0", "g", 0, 1), ("a:0", "a", 0, 1)]
+            "nhl", [("pts:0", "pts", 0, 1), ("pts:1", "pts", 1, 2), ("g:0", "g", 0, 1)]
         ),
     }
     for league in ("nfl", "cfb"):
@@ -119,11 +119,17 @@ def main() -> None:
     # Every other market on the boards: the maps evaluate_markets.py and
     # evaluate_nfl_props.py fitted on all their games, for the markets where
     # the calibrated simulator beat the raw one (the rest show it raw).
+    extra = []
     for league, name in (("nba", "cal_nba_markets.json"), ("nhl", "cal_nhl_markets.json"), ("nfl", "cal_nfl_props.json")):
         path = os.path.join(DATA, name)
-        if not os.path.exists(path):
-            continue
-        for key, c in json.load(open(path)).items():
+        if os.path.exists(path):
+            extra.append((league, json.load(open(path))))
+    # and the projections' maps (fit_means.py): "mean:<stat>"
+    path = os.path.join(DATA, "cal_means.json")
+    if os.path.exists(path):
+        extra += list(json.load(open(path)).items())
+    for league, maps in extra:
+        for key, c in maps.items():
             if key in curves.get(league, {}):
                 continue  # the points / goals / touchdown maps above stay as published
             x, y = np.array(c["x"]), np.array(c["y"])

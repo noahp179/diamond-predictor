@@ -171,6 +171,18 @@ def main() -> None:
         if os.path.exists(p):
             runs[sport] = json.load(open(p))
     out["runs"] = runs
+    # Four significant decimals is more than any number on the page shows,
+    # and the file ships to the browser.
+    def rnd(x):
+        if isinstance(x, float):
+            return round(x, 4)
+        if isinstance(x, dict):
+            return {k: rnd(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [rnd(v) for v in x]
+        return x
+
+    out = rnd(out)
     with open(OUT, "w") as f:
         json.dump(out, f, separators=(",", ":"))
     print("wrote", OUT, {k: list(v) for k, v in out.items()})
