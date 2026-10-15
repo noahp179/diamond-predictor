@@ -51,7 +51,9 @@ function verdict(
 ): { text: string; tone: "flat" | "over" | "under" } {
   const gap = r.actual - r.predicted;
   const m = margin(r.predicted, r.n);
-  if (Math.abs(gap) <= m) return { text: "about right", tone: "flat" };
+  // A big enough sample makes even a half-point gap "real"; under a point it
+  // is still about right.
+  if (Math.abs(gap) <= m || Math.abs(gap) < 0.01) return { text: "about right", tone: "flat" };
   if (gap > 0)
     return { text: `${verb} ${pct(Math.abs(gap))} more often than it claimed`, tone: "under" };
   return { text: `${verb} ${pct(Math.abs(gap))} less often than it claimed`, tone: "over" };
@@ -98,7 +100,11 @@ export function CalibrationTable({
 }) {
   if (rows.length === 0) return null;
   const total = rows.reduce((s, r) => s + r.n, 0);
-  const solid = rows.filter((r) => Math.abs(r.actual - r.predicted) > margin(r.predicted, r.n));
+  const solid = rows.filter(
+    (r) =>
+      Math.abs(r.actual - r.predicted) > margin(r.predicted, r.n) &&
+      Math.abs(r.actual - r.predicted) >= 0.01,
+  );
 
   return (
     <div>

@@ -367,11 +367,18 @@ function main() {
       for (const p of r.players) {
         const td = p.props.find((x) => x.key === "td");
         const mean = (p.avgBox[NFL.RTD] ?? 0) + (p.avgBox[NFL.RETD] ?? 0);
+        const props: Record<string, { mean: number; over: number[] }> = {};
+        for (const s of p.props)
+          props[s.key] = {
+            mean: Math.round(s.mean * 100) / 100,
+            over: s.over.map((x) => Math.round(x * 10000) / 10000),
+          };
         players[p.id] = {
           td: td ? td.over[0] : 1 - Math.exp(-mean),
           mean: Math.round(mean * 10000) / 10000,
           played: Math.round(p.played * 1000) / 1000,
           first: Math.round(p.first * 100000) / 100000,
+          props,
         };
       }
       out.write(

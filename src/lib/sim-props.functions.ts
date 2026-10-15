@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { todayET } from "./date";
 import type { SimPlayer } from "./sim-props-shared";
+import type { SimBandRow } from "./sim-props.server";
 
 const League = z.enum(["nba", "nhl", "nfl", "cfb"]);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -76,5 +77,19 @@ export const getSimPropsBoard = createServerFn({ method: "GET" })
         players: [],
         error: "ESPN's feed is unreachable right now. Try again in a moment.",
       };
+    }
+  });
+
+/** The live record behind a league's Analytics board: every simulation pick,
+ *  counted per market, confidence band and card rank. */
+export const getSimAnalytics = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ league: League }))
+  .handler(async ({ data }): Promise<{ rows: SimBandRow[]; note: string | null }> => {
+    const { readSimBands } = await import("./sim-props.server");
+    try {
+      return await readSimBands(data.league);
+    } catch (err) {
+      console.error(`[sim-props] analytics ${data.league}:`, err);
+      return { rows: [], note: "The live record could not be read just now." };
     }
   });

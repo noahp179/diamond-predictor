@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { todayET } from "@/lib/date";
-import { runSimSlot, SLOTS, type SimPropsLeague } from "@/lib/sim-props.server";
+import { runSimSlot, settleSimPicks, SLOTS, type SimPropsLeague } from "@/lib/sim-props.server";
 
 /**
  * Plays one slot of today's games up to 100,000 times each and stores every
  * player's chances in sim_props, for the simulation-driven prop boards.
  *
  *   GET /api/public/hooks/sim-props?league=nba&slot=0
+ *   GET /api/public/hooks/sim-props?league=nba&settle=1   (grade finished games)
  *
  * One cron per slot (vercel.json): a slot is a few games, sized to finish
  * inside one function's time limit at the full count. Same contract as the
@@ -25,6 +26,13 @@ function authorised(request: Request): boolean {
 async function run(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const league = url.searchParams.get("league") as SimPropsLeague | null;
+  if (league && LEAGUES.has(league) && url.searchParams.get("settle")) {
+    // The morning after: grade every pick from the box scores, with the whole
+    // function's time to do it in.
+    const result = await settleSimPicks(league, url.searchParams.get("date") ?? todayET(), 270_000);
+    console.log(`[cron] sim-props settle ${league}: ${JSON.stringify(result)}`);
+    return Response.json({ ok: true, ...result });
+  }
   const slot = Number(url.searchParams.get("slot") ?? "0");
   if (
     !league ||

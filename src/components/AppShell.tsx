@@ -136,7 +136,10 @@ export function AppShell({
       <main className="mx-auto max-w-6xl px-6 py-10">
         {children}
         {/* Every props board ends with its own forward record, in one place. */}
-        {boards && <BoardRecord sport={boards.sport} board={boards.board} />}
+        {/* The Analytics board is itself the record, market by market. */}
+        {boards && boards.board !== "analytics" && (
+          <BoardRecord sport={boards.sport} board={boards.board} />
+        )}
       </main>
 
       <footer className="border-t border-border">

@@ -21,10 +21,11 @@ import { supabase } from "@/integrations/supabase/client";
 
 import {
   marketSlug,
+  parseSlug,
   playersFrom,
   probOf,
-  SIM_BOARDS,
   simBoard,
+  simMarkets,
   simModelVersion,
   type SimPlayer,
   type SimPropsLeague,
@@ -46,6 +47,8 @@ export const SIM_VERSION = "sim-v1";
 /** The most plays per game, and how much of a job's time one slot may use. */
 export const TARGET_RUNS = 100_000;
 const CHUNK = 2_000;
+/** Picks recorded per market per game: the game's three likeliest players. */
+const PICKS_PER_GAME = 3;
 
 /** Games per scheduled slot, sized so a slot's games fit its time budget at
  *  100,000 plays (about a minute a game for basketball, football; a little
@@ -216,32 +219,31 @@ export async function snapshotSimPicks(league: SimPropsLeague, row: SimGameRow):
   if (!db) return 0;
   const rows: Record<string, unknown>[] = [];
   const matchup = `${row.away_abbr} @ ${row.home_abbr}`;
-  for (const board of SIM_BOARDS[league])
-    for (const m of board.markets) {
-      const slug = marketSlug(league, m.key);
-      const top = row.players
-        .map((p) => ({ p, prob: probOf(league, p, m.key) }))
-        .filter((x) => x.prob > 0.001)
-        .sort((a, b) => b.prob - a.prob)
-        .slice(0, 3);
-      top.forEach(({ p, prob }, i) =>
-        rows.push({
-          sport: league,
-          market: slug,
-          model_version: simModelVersion(league, slug),
-          event_id: row.event_id,
-          event_date: row.game_date,
-          player_id: p.id,
-          player: p.name,
-          team: p.team,
-          position: p.pos || null,
-          matchup,
-          pick_rank: i + 1,
-          prob: Math.round(prob * 10000) / 10000,
-          tier: null,
-        }),
-      );
-    }
+  for (const m of simMarkets(league)) {
+    const slug = marketSlug(league, m.key);
+    const top = row.players
+      .map((p) => ({ p, prob: probOf(league, p, m.key) }))
+      .filter((x) => x.prob > 0.001)
+      .sort((a, b) => b.prob - a.prob)
+      .slice(0, PICKS_PER_GAME);
+    top.forEach(({ p, prob }, i) =>
+      rows.push({
+        sport: league,
+        market: slug,
+        model_version: simModelVersion(league, slug),
+        event_id: row.event_id,
+        event_date: row.game_date,
+        player_id: p.id,
+        player: p.name,
+        team: p.team,
+        position: p.pos || null,
+        matchup,
+        pick_rank: i + 1,
+        prob: Math.round(prob * 10000) / 10000,
+        tier: null,
+      }),
+    );
+  }
   if (!rows.length) return 0;
   const { error, count } = await db.from("player_predictions").upsert(rows, {
     onConflict: "model_version,event_id,player_id",
@@ -262,7 +264,7 @@ const ESPN: Record<SimPropsLeague, string> = {
   cfb: "football/college-football",
 };
 
-type Box = {
+export type Box = {
   final: boolean;
   score: string;
   /** player id -> stat values the markets settle on; absent = did not play */
@@ -272,7 +274,7 @@ type Box = {
 };
 
 /** One finished game, read for settlement. Null while it is not final. */
-async function boxFor(league: SimPropsLeague, eventId: string): Promise<Box | null> {
+export async function boxFor(league: SimPropsLeague, eventId: string): Promise<Box | null> {
   const res = await fetch(
     `https://site.api.espn.com/apis/site/v2/sports/${ESPN[league]}/summary?event=${eventId}`,
     { signal: AbortSignal.timeout(15000) },
@@ -288,27 +290,50 @@ async function boxFor(league: SimPropsLeague, eventId: string): Promise<Box | nu
   const names = new Map<string, string>();
   for (const t of d.boxscore?.players ?? [])
     for (const st of t.statistics ?? []) {
-      const labels: string[] = st.labels ?? st.keys ?? [];
+      const labels: string[] = st.labels ?? [];
       const keys: string[] = st.keys ?? [];
       for (const a of st.athletes ?? []) {
         const id = a.athlete?.id;
         if (!id || a.didNotPlay || !(a.stats ?? []).length) continue;
         if (a.athlete?.displayName) names.set(String(a.athlete.displayName).toLowerCase(), id);
+        const raw = (k: string) => {
+          const i = labels.indexOf(k);
+          return String(a.stats[i >= 0 ? i : keys.indexOf(k)] ?? "");
+        };
+        // "3-7" (made-attempted) reads as its first number.
+        const v = (k: string) => Number(raw(k).split("-")[0].split("/")[0]) || 0;
         const row = lines.get(id) ?? {};
-        const v = (k: string) =>
-          Number(a.stats[labels.indexOf(k)] ?? a.stats[keys.indexOf(k)] ?? 0) || 0;
         if (league === "nba") {
-          if (v("MIN") > 0) row.pts = v("PTS");
-          else continue;
+          if (v("MIN") <= 0) continue;
+          Object.assign(row, nbaLine(v("PTS"), v("REB"), v("AST"), v("3PT"), v("STL"), v("BLK")));
         } else if (league === "nhl") {
-          if (st.name === "goalies") continue;
-          row.g = v("G");
-          row.a = v("A");
-          row.pts = row.g + row.a;
+          if (st.name === "goalies") {
+            // A dressed backup who never went in did not play.
+            if (!/[1-9]/.test(raw("TOI"))) continue;
+            row.sv = v("SV");
+          } else {
+            row.g = v("G");
+            row.a = v("A");
+            row.pts = row.g + row.a;
+            row.sog = v("S");
+          }
         } else {
-          if (st.name === "rushing") row.td = (row.td ?? 0) + v("rushingTouchdowns");
-          else if (st.name === "receiving") row.td = (row.td ?? 0) + v("receivingTouchdowns");
-          else row.td = row.td ?? 0;
+          const add = (k: string, x: number) => (row[k] = (row[k] ?? 0) + x);
+          if (st.name === "passing") {
+            add("cmp", v("completions/passingAttempts"));
+            add("pyd", v("passingYards"));
+            add("ptd", v("passingTouchdowns"));
+          } else if (st.name === "rushing") {
+            add("car", v("rushingAttempts"));
+            add("ryd", v("rushingYards"));
+            add("td", v("rushingTouchdowns"));
+          } else if (st.name === "receiving") {
+            add("rec", v("receptions"));
+            add("reyd", v("receivingYards"));
+            add("td", v("receivingTouchdowns"));
+          }
+          for (const k of ["td", "cmp", "pyd", "ptd", "car", "ryd", "rec", "reyd"]) row[k] ??= 0;
+          row.rry = row.ryd + row.reyd;
         }
         lines.set(id, row);
       }
@@ -329,13 +354,40 @@ async function boxFor(league: SimPropsLeague, eventId: string): Promise<Box | nu
   return { final: true, score, lines, first };
 }
 
-function outcome(league: SimPropsLeague, market: string, box: Box, pid: string): boolean | null {
+/** A basketball line, with the combinations the boards sell. */
+export function nbaLine(
+  pts: number,
+  reb: number,
+  ast: number,
+  tpm: number,
+  stl: number,
+  blk: number,
+) {
+  return {
+    pts,
+    reb,
+    ast,
+    "3pm": tpm,
+    stl,
+    blk,
+    pra: pts + reb + ast,
+    pr: pts + reb,
+    pa: pts + ast,
+    ra: reb + ast,
+    stk: stl + blk,
+    // categories in double figures: 2+ is a double-double, 3+ a triple-double
+    dd: [pts, reb, ast, stl, blk].filter((x) => x >= 10).length,
+  };
+}
+
+/** Did the pick come in? Null = void (he did not play), as a sportsbook has it. */
+export function outcome(market: string, box: Box, pid: string): boolean | null {
   const ln = box.lines.get(pid);
   if (!ln) return null; // did not play: void
   if (market === "firstgoal" || market === "firsttd") return box.first === pid;
-  const m = market.match(/^(pts|g|a|td)(\d+)$/);
-  if (!m) return null;
-  return (ln[m[1]] ?? 0) >= Number(m[2]);
+  const m = parseSlug(market);
+  if (!m || ln[m[0]] == null) return null;
+  return ln[m[0]] >= m[1];
 }
 
 /** Grade every pending simulation pick from the box score. */
@@ -349,17 +401,32 @@ export async function settleSimPicks(
   const t0 = Date.now();
   const since = new Date(`${throughDate}T00:00:00Z`);
   since.setUTCDate(since.getUTCDate() - 14);
-  const { data, error } = await db
-    .from("player_predictions")
-    .select("id, event_id, player_id, market, prob")
-    .eq("sport", league)
-    .like("model_version", `${league}-sim-%`)
-    .is("settled_at", null)
-    .gte("event_date", since.toISOString().slice(0, 10))
-    .lte("event_date", throughDate);
-  if (error) return { settled: 0, error: error.message };
-  const byGame = new Map<string, any[]>();
-  for (const r of data ?? []) byGame.set(r.event_id, [...(byGame.get(r.event_id) ?? []), r]);
+  // Every market of every game is a few rows, so a busy night runs past one
+  // page of the API: read them all.
+  const pending: {
+    id: number;
+    event_id: string;
+    player_id: string;
+    market: string;
+    prob: number;
+  }[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from("player_predictions")
+      .select("id, event_id, player_id, market, prob")
+      .eq("sport", league)
+      .like("model_version", `${league}-sim-%`)
+      .is("settled_at", null)
+      .gte("event_date", since.toISOString().slice(0, 10))
+      .lte("event_date", throughDate)
+      .order("id", { ascending: true })
+      .range(from, from + 999);
+    if (error) return { settled: 0, error: error.message };
+    pending.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  const byGame = new Map<string, typeof pending>();
+  for (const r of pending) byGame.set(r.event_id, [...(byGame.get(r.event_id) ?? []), r]);
   let settled = 0;
   for (const [eventId, rows] of byGame) {
     if (Date.now() - t0 > budgetMs) break;
@@ -367,8 +434,8 @@ export async function settleSimPicks(
       const box = await boxFor(league, eventId);
       if (!box) continue;
       const now = new Date().toISOString();
-      for (const r of rows) {
-        const hit = outcome(league, r.market, box, String(r.player_id));
+      const update = async (r: (typeof rows)[number]) => {
+        const hit = outcome(r.market, box, String(r.player_id));
         const p = Math.min(1 - 1e-9, Math.max(1e-9, Number(r.prob)));
         const upd =
           hit == null
@@ -380,14 +447,21 @@ export async function settleSimPicks(
                 final_score: box.score,
                 settled_at: now,
               };
-        const { error: uErr } = await db.from("player_predictions").update(upd).eq("id", r.id);
+        const { error: uErr } = await db
+          .from("player_predictions")
+          .update(upd)
+          .eq("id", r.id)
+          .is("settled_at", null);
         if (!uErr) settled += 1;
-      }
+      };
+      // A game's rows in parallel batches: one round trip each is the cost.
+      for (let i = 0; i < rows.length; i += 25)
+        await Promise.all(rows.slice(i, i + 25).map(update));
     } catch (err) {
       console.error(`[sim-props] settle ${league} ${eventId}:`, err);
     }
   }
-  return { settled };
+  return { settled, pending: pending.length - settled };
 }
 
 /** A simulation board's live record, for the record panel. */
@@ -404,4 +478,61 @@ export async function readSimBoard(league: SimPropsLeague, board: string) {
     countLabel: "picks",
     rankOrder: ["Pick 1", "Pick 2", "Pick 3"],
   });
+}
+
+// ------------------------------------------------------------- analytics
+
+export type SimBandRow = {
+  market: string;
+  pick_rank: number;
+  /** 0 = priced 0-10%, ... 9 = 90-100% */
+  band: number;
+  n: number;
+  hits: number;
+  said: number;
+  voids: number;
+  pending: number;
+  first_date: string | null;
+  last_settled: string | null;
+};
+
+/**
+ * Every simulation pick in the ledger, counted per market, confidence band
+ * and card rank (the sim_prop_bands view). Empty, with a reason, until the
+ * view exists and the first picks are written.
+ */
+export async function readSimBands(
+  league: SimPropsLeague,
+): Promise<{ rows: SimBandRow[]; note: string | null }> {
+  const rows: SimBandRow[] = [];
+  for (let from = 0; from < 20_000; from += 1000) {
+    const { data, error } = await reader()
+      .from("sim_prop_bands")
+      .select("market, pick_rank, band, n, hits, said, voids, pending, first_date, last_settled")
+      .eq("sport", league)
+      .order("market", { ascending: true })
+      .order("pick_rank", { ascending: true })
+      .order("band", { ascending: true })
+      .range(from, from + 999);
+    if (error) {
+      console.error(`[sim-props] bands ${league}:`, error.message);
+      return { rows: [], note: "The live record starts once the database view is in place." };
+    }
+    rows.push(
+      ...(data ?? []).map((r: Record<string, unknown>) => ({
+        market: String(r.market),
+        pick_rank: Number(r.pick_rank),
+        band: Number(r.band),
+        n: Number(r.n),
+        hits: Number(r.hits),
+        said: Number(r.said),
+        voids: Number(r.voids),
+        pending: Number(r.pending),
+        first_date: (r.first_date as string | null) ?? null,
+        last_settled: (r.last_settled as string | null) ?? null,
+      })),
+    );
+    if (!data || data.length < 1000) break;
+  }
+  return { rows, note: rows.length ? null : "No simulation picks have been recorded yet." };
 }

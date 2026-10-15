@@ -540,6 +540,12 @@ export interface PropDef {
   minMean?: number;
 }
 
+/** Categories in double figures, for the double- and triple-double props. */
+function doubles(r: number[]): number {
+  const cats = [r[NBA.PTS], r[NBA.OREB] + r[NBA.DREB], r[NBA.AST], r[NBA.STL], r[NBA.BLK]];
+  return cats.filter((v) => v >= 10).length;
+}
+
 const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
   nba: [
     {
@@ -575,6 +581,40 @@ const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
       minMean: 4,
     },
     {
+      key: "pr",
+      label: "Pts+Reb",
+      groups: ["player"],
+      get: (r) => r[NBA.PTS] + r[NBA.OREB] + r[NBA.DREB],
+      lines: [10, 15, 20, 25, 30, 35, 40],
+      minMean: 3,
+    },
+    {
+      key: "pa",
+      label: "Pts+Ast",
+      groups: ["player"],
+      get: (r) => r[NBA.PTS] + r[NBA.AST],
+      lines: [10, 15, 20, 25, 30, 35, 40],
+      minMean: 3,
+    },
+    {
+      key: "ra",
+      label: "Reb+Ast",
+      groups: ["player"],
+      get: (r) => r[NBA.OREB] + r[NBA.DREB] + r[NBA.AST],
+      lines: [5, 8, 10, 12, 15, 20],
+      minMean: 1.5,
+    },
+    {
+      key: "dd",
+      label: "Categories in double figures",
+      groups: ["player"],
+      // How many of points, rebounds, assists, steals and blocks reach double
+      // figures: 2+ is a double-double, 3+ a triple-double.
+      get: (r) => doubles(r),
+      lines: [2, 3],
+      minMean: 0.05,
+    },
+    {
       key: "3pm",
       label: "Threes made",
       groups: ["player"],
@@ -597,6 +637,14 @@ const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
       get: (r) => r[NBA.BLK],
       lines: [1, 2, 3],
       minMean: 0.2,
+    },
+    {
+      key: "stk",
+      label: "Steals+Blocks",
+      groups: ["player"],
+      get: (r) => r[NBA.STL] + r[NBA.BLK],
+      lines: [1, 2, 3, 4],
+      minMean: 0.4,
     },
     {
       key: "tov",
@@ -841,7 +889,7 @@ const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
       label: "Rushing yards",
       groups: ["qb", "skill"],
       get: (r) => r[NFL.RYD],
-      lines: [10, 25, 40, 50, 60, 75, 100, 125],
+      lines: [10, 25, 40, 50, 60, 75, 80, 100, 125],
       minMean: 8,
     },
     {
@@ -865,7 +913,7 @@ const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
       label: "Receiving yards",
       groups: ["skill"],
       get: (r) => r[NFL.REYD],
-      lines: [10, 25, 40, 50, 60, 75, 100, 125],
+      lines: [10, 25, 40, 50, 60, 75, 80, 100, 125],
       minMean: 8,
     },
     {
@@ -873,7 +921,7 @@ const PROPS_: Record<Exclude<SimLeague, "cfb">, PropDef[]> = {
       label: "Rush+Rec yards",
       groups: ["skill"],
       get: (r) => r[NFL.RYD] + r[NFL.REYD],
-      lines: [25, 50, 75, 100, 125, 150],
+      lines: [25, 50, 60, 75, 90, 100, 125, 150],
       minMean: 15,
     },
     {
