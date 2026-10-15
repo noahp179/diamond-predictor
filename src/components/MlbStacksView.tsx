@@ -2,6 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { MlbNoGames } from "@/components/MlbNoGames";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getMlbStacks } from "@/lib/sports.functions";
 import { todayET } from "@/lib/date";
@@ -265,13 +266,11 @@ export function MlbStacksView() {
       )}
 
       {!isLoading && !isError && allTeams.length === 0 && !data?.note && (
-        <div className="border border-border bg-card p-10 text-center">
-          <div className="font-display text-3xl">No games to stack</div>
-          <p className="mt-2 font-mono text-sm text-muted-foreground">
-            Pick a day with a slate. Team run models need a season of games behind them, so the
-            board sharpens after the first couple of weeks.
-          </p>
-        </div>
+        <MlbNoGames
+          date={date}
+          title="No games to stack"
+          reason="Team run models need a season of games behind them, so the board sharpens after the first couple of weeks."
+        />
       )}
     </SportShell>
   );

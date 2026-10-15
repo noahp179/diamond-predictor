@@ -2,10 +2,11 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { MlbNoGames } from "@/components/MlbNoGames";
 import { SportShell, StatBar, Stat, Note } from "@/components/SportShell";
 import { getTwoBaseParlays } from "@/lib/sports.functions";
 import { PAIR_FACTOR } from "@/lib/td-parlay";
-import { todayET } from "@/lib/date";
+import { dayLabel, todayET } from "@/lib/date";
 
 type Result = Awaited<ReturnType<typeof getTwoBaseParlays>>;
 type Parlay = Result["parlays"][number];
@@ -42,18 +43,6 @@ function capLabel(n: number): string {
 
 const pct = (p: number, dp = 0) => `${(p * 100).toFixed(dp)}%`;
 const price = (n: number) => (n > 0 ? `+${n.toLocaleString()}` : n.toLocaleString());
-
-/** "Mon Sep 22" — enough to tell the reader which day they are looking at. */
-function dayLabel(date: string): string {
-  const [y, m, d] = date.split("-").map(Number);
-  if (!y || !m || !d) return date;
-  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 /** On a fifteen-leg baseball slip this is the number that matters most. */
 function oneIn(n: number): string {
@@ -173,6 +162,9 @@ export function MlbBaseParlayView() {
   // leg on a game already under way is not a bet anybody can place.
   const shown = data?.date;
   const movedTo = shown && shown !== date ? shown : null;
+  // With no hitter to bet on there is no slip to size or cap, so the controls
+  // give way to the reason the day is empty.
+  const anyLegs = (data?.candidates ?? 0) > 0;
 
   return (
     <SportShell
@@ -214,9 +206,11 @@ export function MlbBaseParlayView() {
           one empty board for a misleading one. */}
       {!isLoading && !isError && movedTo && (
         <Note>
-          Every game on {dayLabel(date)} has already started, so there is nothing left to bet —
-          showing <span className="text-foreground">{dayLabel(movedTo)}</span>. Pick a date above to
-          override.
+          {data?.askedGames
+            ? `Every game on ${dayLabel(date)} has already started, so there is nothing left to bet`
+            : `No regular-season games on ${dayLabel(date)}`}{" "}
+          — showing <span className="text-foreground">{dayLabel(movedTo)}</span>. Pick a date above
+          to override.
         </Note>
       )}
 
@@ -224,10 +218,9 @@ export function MlbBaseParlayView() {
           slips are the ones that notice. */}
       {!isLoading && !isError && !movedTo && (data?.startedGames ?? 0) > 0 && (
         <Note>
-          {data?.startedGames} game{data?.startedGames === 1 ? " has" : "s have"} already started
-          and {data?.startedGames === 1 ? "is" : "are"} left out — a leg on a hitter who has already
-          batted is not a bet. The slip is built from the {data?.games} game
-          {data?.games === 1 ? "" : "s"} still to come.
+          {data?.games
+            ? `${data.startedGames} game${data.startedGames === 1 ? " has" : "s have"} already started and ${data.startedGames === 1 ? "is" : "are"} left out — a leg on a hitter who has already batted is not a bet. The slip is built from the ${data.games} game${data.games === 1 ? "" : "s"} still to come.`
+            : `Every game on ${dayLabel(date)} has already started, so there is nothing left to bet.`}
         </Note>
       )}
 
@@ -244,50 +237,54 @@ export function MlbBaseParlayView() {
 
       {!isLoading && !isError && parlays.length > 0 && (
         <>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {sizes.map((s) => {
-              const p = parlays.find((x) => x.size === s);
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSize(s)}
-                  aria-pressed={activeSize === s}
-                  className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                    activeSize === s
-                      ? "border-primary text-primary"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {s} legs
-                  <span className="ml-2 text-[10px] opacity-70">
-                    {p?.legs.length ? oneIn(p.oneIn) : "—"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {anyLegs && (
+            <>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {sizes.map((s) => {
+                  const p = parlays.find((x) => x.size === s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSize(s)}
+                      aria-pressed={activeSize === s}
+                      className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                        activeSize === s
+                          ? "border-primary text-primary"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {s} legs
+                      <span className="ml-2 text-[10px] opacity-70">
+                        {p?.legs.length ? oneIn(p.oneIn) : "—"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-          <div className="mb-6 flex flex-wrap items-center gap-2">
-            <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Legs from one game
-            </span>
-            {PER_GAME.map((o) => (
-              <button
-                key={o.label}
-                type="button"
-                onClick={() => setPerGame(o.value)}
-                aria-pressed={perGame === o.value}
-                className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
-                  perGame === o.value
-                    ? "border-primary text-primary"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+              <div className="mb-6 flex flex-wrap items-center gap-2">
+                <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Legs from one game
+                </span>
+                {PER_GAME.map((o) => (
+                  <button
+                    key={o.label}
+                    type="button"
+                    onClick={() => setPerGame(o.value)}
+                    aria-pressed={perGame === o.value}
+                    className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                      perGame === o.value
+                        ? "border-primary text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {current && current.legs.length > 0 && (
             <div className="mb-6 border border-border bg-card px-4 py-3">
@@ -388,12 +385,11 @@ export function MlbBaseParlayView() {
               ))}
             </div>
           ) : (
-            <div className="border border-border bg-card p-10 text-center">
-              <div className="font-display text-3xl">No slip to build</div>
-              <p className="mt-2 font-mono text-sm text-muted-foreground">
-                A parlay needs games that have not started yet. Pick a date in season.
-              </p>
-            </div>
+            <MlbNoGames
+              date={date}
+              title="No slip to build"
+              reason="A parlay needs games that have not started yet. Pick a later date above."
+            />
           )}
         </>
       )}
