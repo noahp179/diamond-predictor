@@ -477,6 +477,8 @@ export type ScoreboardGame = {
   indoor?: boolean;
   neutral: boolean;
   playoff: boolean;
+  /** ESPN season type 1: starters sit and rotations are trial runs. */
+  preseason: boolean;
   homeId: string;
   awayId: string;
   homeScore: number | null;
@@ -577,6 +579,7 @@ export function scoreboard(league: SimLeague, date: string): Promise<ScoreboardG
         indoor: c.venue?.indoor,
         neutral: c.neutralSite === true,
         playoff: ev.season?.type === 3,
+        preseason: ev.season?.type === 1,
         homeId: home.team.id,
         awayId: away.team.id,
         homeScore: score(home.score),

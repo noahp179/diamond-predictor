@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { todayET } from "./date";
 import type { SimPlayer } from "./sim-props-shared";
-import type { SimBandRow } from "./sim-props.server";
+import type { SeasonLedgerRow, SimBandRow } from "./sim-props.server";
 
 const League = z.enum(["nba", "nhl", "nfl", "cfb"]);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -50,6 +50,8 @@ export const getSimPropsBoard = createServerFn({ method: "GET" })
       ]);
       const byId = new Map(rows.map((r) => [r.event_id, r]));
       const games: SimBoardGame[] = slate
+        // The boards are regular-season (and playoff) boards.
+        .filter((g) => !g.preseason)
         .map((g) => {
           const r = byId.get(g.id);
           return {
@@ -84,12 +86,20 @@ export const getSimPropsBoard = createServerFn({ method: "GET" })
  *  counted per market, confidence band and card rank. */
 export const getSimAnalytics = createServerFn({ method: "GET" })
   .inputValidator(z.object({ league: League }))
-  .handler(async ({ data }): Promise<{ rows: SimBandRow[]; note: string | null }> => {
-    const { readSimBands } = await import("./sim-props.server");
-    try {
-      return await readSimBands(data.league);
-    } catch (err) {
-      console.error(`[sim-props] analytics ${data.league}:`, err);
-      return { rows: [], note: "The live record could not be read just now." };
-    }
-  });
+  .handler(
+    async ({
+      data,
+    }): Promise<{ rows: SimBandRow[]; note: string | null; season: SeasonLedgerRow[] }> => {
+      const { readSimBands, readSeasonLedger } = await import("./sim-props.server");
+      try {
+        const [bands, season] = await Promise.all([
+          readSimBands(data.league),
+          readSeasonLedger(data.league).catch(() => []),
+        ]);
+        return { ...bands, season };
+      } catch (err) {
+        console.error(`[sim-props] analytics ${data.league}:`, err);
+        return { rows: [], note: "The live record could not be read just now.", season: [] };
+      }
+    },
+  );

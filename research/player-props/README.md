@@ -338,3 +338,4 @@ The soccer research checked the same thing on its engine (`research/soccer-score
 - `runs_study.py`: 1k vs 10k vs 100k plays.
 - `evaluate_markets.py`, `evaluate_nfl_props.py`, `marketlib.py`, `dump_markets.ts`, `tables_markets.py`: every market on the boards.
 - `fit_means.py`: the corrected projections.
+- `season_to_date.py`: this season's games already played, replayed as the boards would have called them (calibration from earlier seasons only) → `src/lib/sim-props-season.json`, the "This season" view on the Analytics pages.

@@ -127,8 +127,11 @@ export async function runSimSlot(
   const t0 = Date.now();
   // The first slot of the morning grades the earlier days' picks.
   if (slot === 0) await settleSimPicks(league, date, 60_000).catch((e) => console.error(e));
+  // Preseason games are not simulated or recorded: starters sit and rotations
+  // are trial runs, so they say nothing about the boards (see
+  // supabase/fixes/20261013_remove_nba_preseason.sql).
   const slate = (await buildSlate(league as SimLeague, date))
-    .filter((g) => g.state === "pre")
+    .filter((g) => g.state === "pre" && !g.preseason)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id.localeCompare(b.id)));
   const per = PER_SLOT[league];
   const mine = slate.slice(slot * per, slot * per + per);
@@ -535,4 +538,113 @@ export async function readSimBands(
     if (!data || data.length < 1000) break;
   }
   return { rows, note: rows.length ? null : "No simulation picks have been recorded yet." };
+}
+
+// ------------------------------------------------- this season, other boards
+
+export type SeasonLedgerRow = {
+  model: string;
+  modelName: string;
+  market: string;
+  label: string;
+  /** settled picks that were not voided */
+  n: number;
+  hits: number;
+  said: number;
+  voids: number;
+  pending: number;
+  bands: { band: number; n: number; hits: number; said: number }[];
+  first: string | null;
+  last: string | null;
+};
+
+const MODEL_NAME: Record<string, string> = {
+  "nfl-td-pairrank-v1": "Previous TD model",
+  "nfl-td-logistic-v1": "Earlier TD model",
+  "nfl-props-logistic-v1": "Logistic prop models",
+};
+
+/**
+ * This season's picks from the boards that came before the simulations —
+ * written down before each game by their own ledgers (td-ledger,
+ * prop-ledger) and settled from the box score. The simulation markets have
+ * their own record (readSimBands); this is everything else for the sport.
+ */
+export async function readSeasonLedger(league: SimPropsLeague): Promise<SeasonLedgerRow[]> {
+  const now = new Date();
+  // Seasons here start in August or later: from 1 August of the season's year.
+  const year = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const rows: {
+    model_version: string;
+    market: string;
+    prob: number;
+    scored: boolean | null;
+    settled_at: string | null;
+    event_date: string;
+  }[] = [];
+  for (let from = 0; from < 20_000; from += 1000) {
+    const { data, error } = await reader()
+      .from("player_predictions")
+      .select("model_version, market, prob, scored, settled_at, event_date")
+      .eq("sport", league)
+      .eq("provenance", "forward")
+      .not("model_version", "like", "%-sim-%")
+      .gte("event_date", `${year}-08-01`)
+      .order("id", { ascending: true })
+      .range(from, from + 999);
+    if (error) {
+      console.error(`[sim-props] season ledger ${league}:`, error.message);
+      return [];
+    }
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  const { default: nflModel } = await import("./nfl-props-model.json");
+  const labels = (nflModel as { markets: Record<string, { label: string }> }).markets;
+  const byKey = new Map<string, SeasonLedgerRow>();
+  for (const r of rows) {
+    const k = `${r.model_version}|${r.market}`;
+    let o = byKey.get(k);
+    if (!o) {
+      o = {
+        model: r.model_version,
+        modelName: MODEL_NAME[r.model_version] ?? r.model_version,
+        market: r.market,
+        label: r.market === "anytime_td" ? "Anytime TD" : (labels[r.market]?.label ?? r.market),
+        n: 0,
+        hits: 0,
+        said: 0,
+        voids: 0,
+        pending: 0,
+        bands: [],
+        first: null,
+        last: null,
+      };
+      byKey.set(k, o);
+    }
+    o.first = !o.first || r.event_date < o.first ? r.event_date : o.first;
+    o.last = !o.last || r.event_date > o.last ? r.event_date : o.last;
+    if (!r.settled_at) {
+      o.pending += 1;
+      continue;
+    }
+    if (r.scored == null) {
+      o.voids += 1;
+      continue;
+    }
+    const p = Number(r.prob);
+    o.n += 1;
+    o.hits += r.scored ? 1 : 0;
+    o.said += p;
+    const band = Math.min(9, Math.floor(p * 10));
+    let b = o.bands.find((x) => x.band === band);
+    if (!b) {
+      b = { band, n: 0, hits: 0, said: 0 };
+      o.bands.push(b);
+    }
+    b.n += 1;
+    b.hits += r.scored ? 1 : 0;
+    b.said += p;
+  }
+  return [...byKey.values()].sort((a, b) => b.n + b.pending - (a.n + a.pending));
 }
