@@ -50,11 +50,11 @@ const CHUNK = 2_000;
 /** Picks recorded per market per game: the game's three likeliest players. */
 const PICKS_PER_GAME = 3;
 
-/** Games per scheduled slot, sized so a slot's games fit its time budget at
- *  100,000 plays (about a minute a game for basketball, football; a little
- *  more for hockey). */
-export const PER_SLOT: Record<SimPropsLeague, number> = { nba: 3, nhl: 3, nfl: 3, cfb: 8 };
-/** Scheduled slots per league (vercel.json has one cron per slot). College
+/** Scheduled slots per league (vercel.json has one cron per slot). The day's
+ *  games are spread evenly over all of them (see slotGames), so a quiet night
+ *  gives each game a whole job and a busy one shares. 100,000 plays take about
+ *  a minute a game for basketball and football and a little over two for
+ *  hockey, so a two-game hockey slot lands just under the full count. College
  *  has no cron: its boards use the touchdown model, which beat the simulator
  *  in the backtest. Run by hand, a busy Saturday's ~60 games across 8 slots
  *  get fewer than 100,000 plays each; the time budget decides, and the row
@@ -112,9 +112,22 @@ export async function simulateGame(
 }
 
 /**
- * One scheduled slot: games [slot*per, slot*per+per) of the date's slate, in
- * start order, each played up to TARGET_RUNS times within `budgetMs`. A game
- * already stored today with the full count, or already under way, is skipped.
+ * The games one slot plays: the slate, in start order, cut into SLOTS equal
+ * runs. Fixed blocks of three left a quiet night's last slots idle while the
+ * first squeezed three hockey games each into one job (34,000 plays apiece on
+ * 15 October). When the split is uneven the earlier slots take the extra
+ * game: the scheduler can fire a job up to an hour late, so the day's first
+ * games belong in its first jobs, and a one-game day is played by slot 0.
+ */
+export function slotGames<T>(slate: T[], slot: number, slots: number): T[] {
+  const at = (s: number) => Math.ceil((s * slate.length) / slots);
+  return slate.slice(at(slot), at(slot + 1));
+}
+
+/**
+ * One scheduled slot: its share of the date's slate (slotGames), each game
+ * played up to TARGET_RUNS times within `budgetMs`. A game already stored
+ * today with the full count, or already under way, is skipped.
  */
 export async function runSimSlot(
   league: SimPropsLeague,
@@ -133,8 +146,7 @@ export async function runSimSlot(
   const slate = (await buildSlate(league as SimLeague, date))
     .filter((g) => g.state === "pre" && !g.preseason)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id.localeCompare(b.id)));
-  const per = PER_SLOT[league];
-  const mine = slate.slice(slot * per, slot * per + per);
+  const mine = slotGames(slate, slot, SLOTS[league]);
   if (!mine.length) return { ok: true, games: 0, slate: slate.length };
 
   const { data: have } = await db
