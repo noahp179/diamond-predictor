@@ -127,8 +127,11 @@ export async function runSimSlot(
   const t0 = Date.now();
   // The first slot of the morning grades the earlier days' picks.
   if (slot === 0) await settleSimPicks(league, date, 60_000).catch((e) => console.error(e));
+  // Preseason games are not simulated or recorded: starters sit and rotations
+  // are trial runs, so they say nothing about the boards (see
+  // supabase/fixes/20261013_remove_nba_preseason.sql).
   const slate = (await buildSlate(league as SimLeague, date))
-    .filter((g) => g.state === "pre")
+    .filter((g) => g.state === "pre" && !g.preseason)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id.localeCompare(b.id)));
   const per = PER_SLOT[league];
   const mine = slate.slice(slot * per, slot * per + per);

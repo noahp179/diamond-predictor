@@ -1367,6 +1367,7 @@ export type SlateEntry = {
   venue: string;
   neutral: boolean;
   playoff: boolean;
+  preseason: boolean;
   home: SlateTeam;
   away: SlateTeam;
   homeScore: number | null;
@@ -1398,6 +1399,7 @@ export async function buildSlate(league: SimLeague, date: string): Promise<Slate
       venue: x.venue,
       neutral: x.neutral,
       playoff: x.playoff,
+      preseason: x.preseason,
       home: pick(x.homeId),
       away: pick(x.awayId),
       homeScore: x.homeScore,

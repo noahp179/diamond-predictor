@@ -50,6 +50,8 @@ export const getSimPropsBoard = createServerFn({ method: "GET" })
       ]);
       const byId = new Map(rows.map((r) => [r.event_id, r]));
       const games: SimBoardGame[] = slate
+        // The boards are regular-season (and playoff) boards.
+        .filter((g) => !g.preseason)
         .map((g) => {
           const r = byId.get(g.id);
           return {
