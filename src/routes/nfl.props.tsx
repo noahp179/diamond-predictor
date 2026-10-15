@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { NflPropsView } from "@/components/NflPropsView";
+import { SimAnalyticsView } from "@/components/SimAnalyticsView";
 import { SimPropsBoardView } from "@/components/SimPropsBoardView";
 import { TdParlayView } from "@/components/TdParlayView";
 import { PropsBoardsProvider } from "@/components/PropsBoards";
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/nfl/props")({
       {
         name: "description",
         content:
-          "Every NFL prop board in one place: receiving, rushing and passing props, anytime touchdown scorers and touchdown parlays — each tracked against what actually happened.",
+          "Every NFL prop board in one place: receptions, receiving, rushing and rush+rec yards, passing yards, TDs and completions, anytime and first touchdown scorers, touchdown parlays — every game simulated up to 100,000 times, each pick tracked against what actually happened.",
       },
     ],
   }),
@@ -30,13 +31,16 @@ export const Route = createFileRoute("/nfl/props")({
 
 function Page() {
   const board = boardOf("nfl", Route.useSearch().board);
-  let page: ReactNode = <NflPropsView />;
-  // Anytime and first touchdown come from the game simulator: on the 2025
-  // season and 2026 to date it beat the previous touchdown model (see
-  // research/player-props/results/nfl_td_backtest.json).
-  if (board === "td-scorers") page = <SimPropsBoardView league="nfl" board="td-scorers" />;
-  else if (board === "first-td") page = <SimPropsBoardView league="nfl" board="first-td" />;
+  let page: ReactNode;
+  // Every player prop and touchdown board comes from the game simulator. On
+  // the 2025 season and 2026 to date it beat the previous touchdown model,
+  // and matched or beat the logistic prop models on the lines they share
+  // (research/player-props/results/nfl_td_backtest.json,
+  // nfl_props_backtest.json). The logistic boards stay as "Model props".
+  if (board === "players") page = <NflPropsView />;
   else if (board === "parlays") page = <TdParlayView sport="nfl" />;
+  else if (board === "analytics") page = <SimAnalyticsView league="nfl" />;
+  else page = <SimPropsBoardView key={board} league="nfl" board={board} />;
   return (
     <PropsBoardsProvider sport="nfl" board={board}>
       {page}

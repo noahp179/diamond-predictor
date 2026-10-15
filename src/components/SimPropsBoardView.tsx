@@ -11,7 +11,9 @@ import { getSimPropsBoard, type SimBoardGame } from "@/lib/sim-props.functions";
 import {
   playersFrom,
   probOf,
+  projectionOf,
   simBoard,
+  statWords,
   type Market,
   type SimPlayer,
   type SimPropsLeague,
@@ -97,10 +99,7 @@ function when(iso: string) {
 export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; board: string }) {
   const def = simBoard(league, board);
   const [date, setDate] = useState(todayET());
-  const [marketKey, setMarketKey] = useState(
-    // Basketball opens on 20+ points; every other board on its first line.
-    def?.markets[league === "nba" ? Math.min(2, def.markets.length - 1) : 0]?.key ?? "",
-  );
+  const [marketKey, setMarketKey] = useState(def?.open ?? def?.markets[0]?.key ?? "");
   const [showAll, setShowAll] = useState(false);
   const load = useServerFn(getSimPropsBoard);
   const loadMatchup = useServerFn(getSimMatchup);
@@ -167,6 +166,10 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
   }
 
   if (!def || !market) return null;
+  // A board with several stats (Combos, Passing) picks the stat first, then
+  // the line; a single-stat board shows its lines straight away.
+  const groups = [...new Set(def.markets.map((m) => m.group).filter(Boolean))] as string[];
+  const lines = groups.length ? def.markets.filter((m) => m.group === market.group) : def.markets;
   const top = ranked[0];
   const bt = BT[league]?.[market.key];
   const shown = showAll ? ranked : ranked.slice(0, SHOW);
@@ -198,9 +201,37 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
         </StatBar>
       }
     >
-      {def.markets.length > 1 && (
+      {groups.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Stat">
+          {groups.map((g) => {
+            const on = g === market.group;
+            // A new stat opens on the middle of its ladder.
+            const pick = () => {
+              const next = def.markets.filter((m) => m.group === g);
+              setMarketKey(next[Math.floor((next.length - 1) / 2)].key);
+            };
+            return (
+              <button
+                key={g}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={pick}
+                className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-widest ${
+                  on
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {g}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {lines.length > 1 && (
         <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Line">
-          {def.markets.map((m) => (
+          {lines.map((m) => (
             <button
               key={m.key}
               type="button"
@@ -213,7 +244,7 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
                   : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
-              {m.label}
+              {groups.length ? m.short : m.label}
             </button>
           ))}
         </div>
@@ -258,18 +289,18 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
       {ranked.length > 0 && (
         <section className="border border-border bg-card">
           <div className="border-b border-border px-5 py-4 sm:px-6">
-            <h2 className="font-display text-2xl">
-              Most likely to {market.phrase.replace(/^scores/, "score").replace(/^gets/, "get")}
-            </h2>
+            <h2 className="font-display text-2xl">Most likely to {market.todo}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Ranked by how often it happened in the simulations. The bar is the chance; the note
-              underneath is what the simulator expects from him.
+              underneath is his projection — the simulator's average, corrected by what players it
+              projected the same way actually did — to set against a sportsbook's line.
             </p>
           </div>
           <ol>
             {shown.map(({ p, prob }, i) => (
               <PlayerRow
                 key={`${p.gameId}-${p.id}`}
+                league={league}
                 rank={i + 1}
                 p={p}
                 prob={prob}
@@ -296,12 +327,14 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
 }
 
 function PlayerRow({
+  league,
   rank,
   p,
   prob,
   market,
   game,
 }: {
+  league: SimPropsLeague;
   rank: number;
   p: Row;
   prob: number;
@@ -310,18 +343,7 @@ function PlayerRow({
 }) {
   const opp = game ? (p.side === "home" ? game.away.abbr : game.home.abbr) : "";
   const at = game ? (p.side === "home" ? "vs" : "@") : "";
-  const stat = market.key === "first" ? null : market.key.split(":")[0];
-  const mean = stat ? p.mean[stat] : undefined;
-  const note =
-    market.key === "first"
-      ? `scored first in ${pct(p.first, 1)} of plays`
-      : stat === "pts" && mean != null
-        ? `averages ${mean.toFixed(1)} ${p.mean.pts && stat === "pts" ? "points" : ""} in the simulations`
-        : stat === "td" && mean != null
-          ? `${mean.toFixed(2)} touchdowns a game in the simulations`
-          : stat === "g" && mean != null
-            ? `${mean.toFixed(2)} goals a game in the simulations`
-            : "";
+  const note = noteFor(league, market, p);
   return (
     <li className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 border-t border-border/60 px-5 py-3 first:border-t-0 sm:px-6">
       <span className="font-mono text-sm text-primary/70">{rank}</span>
@@ -344,6 +366,18 @@ function PlayerRow({
   );
 }
 
+/** What the simulator expects from him, under the bar. */
+function noteFor(league: SimPropsLeague, market: Market, p: Row): string {
+  if (market.key === "first") return `scored first in ${pct(p.first, 1)} of plays`;
+  const stat = market.key.split(":")[0];
+  const mean = p.mean[stat];
+  const w = statWords(league, stat);
+  if (mean == null || !w || stat === "dd") return "";
+  const x = projectionOf(league, stat, mean);
+  const n = x >= 20 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x.toFixed(2);
+  return `projects ${n} ${w.noun}`;
+}
+
 function HowItWorks({
   league,
   market,
@@ -355,9 +389,10 @@ function HowItWorks({
 }) {
   const methods = bt ? Object.entries(bt.methods).sort((a, b) => a[1].brier - b[1].brier) : [];
   const runStudy = RUNS?.[league];
-  const run = market.key.includes(":")
-    ? runStudy?.lines[Number(market.key.split(":")[1])]
-    : undefined;
+  const run =
+    league === "nba" && market.key.startsWith("pts:")
+      ? runStudy?.lines[Number(market.key.split(":")[1])]
+      : undefined;
   return (
     <section className="mt-10 border border-border bg-card">
       <div className="border-b border-border px-5 py-4 sm:px-6">
@@ -388,7 +423,7 @@ function HowItWorks({
             {run.brier_100k.toFixed(4)}.
           </p>
         )}
-        {market.key !== "first" ? (
+        {market.key !== "first" && bt?.chosen !== "sim" ? (
           <p>
             <strong className="text-foreground">3. Correct with last season.</strong> A simulator is
             a little over-sure at the extremes — it can give a bench player 0%. So each raw
@@ -398,9 +433,9 @@ function HowItWorks({
           </p>
         ) : (
           <p>
-            <strong className="text-foreground">3. No correction needed.</strong> On last season the
-            simulator's first-scorer percentages already matched how often they came in, so they are
-            shown as it has them.
+            <strong className="text-foreground">3. No correction needed.</strong> On the backtest
+            the simulator's own percentages already matched how often they came in — correcting them
+            made them worse — so they are shown as it has them.
           </p>
         )}
       </div>

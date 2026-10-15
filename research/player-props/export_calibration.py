@@ -110,14 +110,39 @@ def main() -> None:
     curves = {
         "nba": basketball_hockey("nba", [(f"pts:{i}", "pts", i, t) for i, t in enumerate([10, 15, 20, 25, 30])]),
         "nhl": basketball_hockey(
-            "nhl", [("pts:0", "pts", 0, 1), ("pts:1", "pts", 1, 2), ("g:0", "g", 0, 1), ("a:0", "a", 0, 1)]
+            "nhl", [("pts:0", "pts", 0, 1), ("pts:1", "pts", 1, 2), ("g:0", "g", 0, 1)]
         ),
     }
     for league in ("nfl", "cfb"):
         if os.path.exists(os.path.join(FT, f"{league}_model_preds.csv")):
             curves[league] = football(league)
+    # Every other market on the boards: the maps evaluate_markets.py and
+    # evaluate_nfl_props.py fitted on all their games, for the markets where
+    # the calibrated simulator beat the raw one (the rest show it raw).
+    extra = []
+    for league, name in (("nba", "cal_nba_markets.json"), ("nhl", "cal_nhl_markets.json"), ("nfl", "cal_nfl_props.json")):
+        path = os.path.join(DATA, name)
+        if os.path.exists(path):
+            extra.append((league, json.load(open(path))))
+    # and the projections' maps (fit_means.py): "mean:<stat>"
+    path = os.path.join(DATA, "cal_means.json")
+    if os.path.exists(path):
+        extra += list(json.load(open(path)).items())
+    for league, maps in extra:
+        for key, c in maps.items():
+            if key in curves.get(league, {}):
+                continue  # the points / goals / touchdown maps above stay as published
+            x, y = np.array(c["x"]), np.array(c["y"])
+            if len(x) > 40:
+                keep = np.unique(np.round(np.linspace(0, len(x) - 1, 40)).astype(int))
+                x, y = x[keep], y[keep]
+            curves.setdefault(league, {})[key] = {
+                "x": [round(float(v), 5) for v in x],
+                "y": [round(float(v), 5) for v in y],
+                "n": int(c.get("n", 0)),
+            }
     out = {
-        "version": "sim-props-cal-v1",
+        "version": "sim-props-cal-v2",
         "note": "Isotonic maps, simulator share -> observed rate, fitted on every backtested season. Keys are market:lineIndex.",
         "curves": curves,
     }

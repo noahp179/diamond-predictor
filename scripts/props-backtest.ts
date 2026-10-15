@@ -383,8 +383,6 @@ function main() {
           first: Math.round(p.first * 100000) / 100000,
         };
         for (const s of p.props) {
-          if (sport === "nba" ? s.key !== "pts" : !["pts", "g", "a", "sog"].includes(s.key))
-            continue;
           row[s.key] = {
             mean: Math.round(s.mean * 1000) / 1000,
             sd: Math.round(s.sd * 1000) / 1000,

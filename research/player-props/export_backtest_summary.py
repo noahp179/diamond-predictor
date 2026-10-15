@@ -103,6 +103,56 @@ def football(league: str, season: str) -> dict:
     return out
 
 
+TOP_UNIT = {"top3": "Top 3 per game came in", "top1": "Top pick per game came in"}
+
+
+def slim_new(m: dict, unit: str) -> dict:
+    hit, said = ("top1_hit", "top1_said") if unit == "top1" else ("top_hit", "top_said")
+    return {"brier": m["brier"], "log_loss": m["log_loss"], "auc": m["auc"], "top_hit": m[hit], "top_said": m[said]}
+
+
+def new_markets(out: dict, league: str, path: str, season: str) -> None:
+    """Every market of evaluate_markets.py / evaluate_nfl_props.py: added where
+    the published summary has no entry, and its fixed confidence bands added
+    to every entry (the Analytics page reads them)."""
+    if not os.path.exists(path):
+        return
+    d = json.load(open(path))
+    h2h = d.get("head_to_head", {})
+    for slug, m in d["markets"].items():
+        key, chosen, unit = m["key"], m["chosen"], m.get("top_unit", "top3")
+        ch = m["methods"][chosen]
+        entry = out.setdefault(league, {}).get(key)
+        if entry is None:
+            entry = {
+                "label": m["label"],
+                "season": season,
+                "n": ch["n"],
+                "games": ch["games"],
+                "chosen": chosen,
+                "top_unit": TOP_UNIT[unit],
+                "methods": {k: slim_new(v, unit) for k, v in m["methods"].items()},
+                "calibration": bands(ch["calibration"]),
+            }
+            out[league][key] = entry
+        entry["board"] = m.get("board")
+        entry["slug"] = slug
+        if entry["chosen"] in m["methods"]:
+            entry["bands"] = m["methods"][entry["chosen"]]["bands"]
+        if slug in h2h:
+            h = h2h[slug]
+            b = h.get("boot_chosen_vs_model") or h.get("boot_simcal_vs_model")
+            c = h.get("chosen", chosen)
+            entry["h2h"] = {
+                "n": h["n"],
+                "model": slim_new(h["methods"]["model"], unit),
+                "chosen": slim_new(h["methods"][c], unit),
+                "diff": b["diff"],
+                "lo": b["lo"],
+                "hi": b["hi"],
+            }
+
+
 def main() -> None:
     nba_keys = {f"{n}+ points": f"pts:{i}" for i, n in enumerate([10, 15, 20, 25, 30])}
     nhl_keys = {"1+ point": "pts:0", "2+ points": "pts:1", "1+ goal": "g:0", "First goal": "first"}
@@ -112,12 +162,27 @@ def main() -> None:
         "nfl": football("nfl", "the 2025 NFL season and 2026 to date"),
         "cfb": football("cfb", "the 2025 college season and 2026 to date"),
     }
+    new_markets(out, "nba", os.path.join(RES, "nba_markets_backtest.json"), "the 2025-26 NBA season")
+    new_markets(out, "nhl", os.path.join(RES, "nhl_markets_backtest.json"), "the 2025-26 NHL season")
+    new_markets(out, "nfl", os.path.join(RES, "nfl_props_backtest.json"), "the 2025 NFL season and 2026 to date")
     runs = {}
     for sport in ("nba", "nhl"):
         p = os.path.join(RES, f"{sport}_runs_study.json")
         if os.path.exists(p):
             runs[sport] = json.load(open(p))
     out["runs"] = runs
+    # Four significant decimals is more than any number on the page shows,
+    # and the file ships to the browser.
+    def rnd(x):
+        if isinstance(x, float):
+            return round(x, 4)
+        if isinstance(x, dict):
+            return {k: rnd(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [rnd(v) for v in x]
+        return x
+
+    out = rnd(out)
     with open(OUT, "w") as f:
         json.dump(out, f, separators=(",", ":"))
     print("wrote", OUT, {k: list(v) for k, v in out.items()})

@@ -12,14 +12,15 @@
 
 import calibration from "./sim-props-calibration.json";
 import type { MassResult } from "./sim/aggregate";
+import { PROPS } from "./sim/props";
 
 export type SimPropsLeague = "nba" | "nhl" | "nfl" | "cfb";
 
 /** The prop keys each league's boards read from the simulator. */
 export const SIM_KEYS: Record<SimPropsLeague, string[]> = {
-  nba: ["pts"],
-  nhl: ["pts", "g", "a"],
-  nfl: ["td"],
+  nba: ["pts", "reb", "ast", "3pm", "pra", "pr", "pa", "ra", "dd", "stl", "blk", "stk"],
+  nhl: ["pts", "g", "a", "sog", "sv"],
+  nfl: ["td", "rec", "reyd", "ryd", "rry", "pyd", "ptd", "cmp", "car"],
   cfb: ["td"],
 };
 
@@ -39,10 +40,16 @@ export type SimPlayer = {
 export type Market = {
   /** "pts:2" = the simulator's pts prop at its third line; "first" = first scorer */
   key: string;
+  /** "20+ points" */
   label: string;
+  /** "20+" — the chip when the board's stat is already chosen */
   short: string;
-  /** "a player scores 20 or more points" — for sentences on the page */
+  /** "scores 20 or more points" — for sentences on the page */
   phrase: string;
+  /** "score 20 or more points" — after "most likely to" */
+  todo: string;
+  /** The stat this market belongs to, when a board holds several ("Pts+Reb") */
+  group?: string;
 };
 
 export type BoardDef = {
@@ -50,24 +57,248 @@ export type BoardDef = {
   label: string;
   hint: string;
   markets: Market[];
+  /** the market a reader lands on */
+  open?: string;
   /** what one row is, for the record panel */
   unit: string;
 };
 
-const pts = (i: number, n: number): Market => ({
-  key: `pts:${i}`,
-  label: `${n}+ points`,
-  short: `${n}+`,
-  phrase: `scores ${n} or more points`,
-});
+/** How each stat reads in a sentence. */
+type StatWords = {
+  /** plural noun after the number: "rebounds" */
+  noun: string;
+  /** chip / heading name of the stat: "Rebounds" */
+  name: string;
+  /** verb, third person and base: ["gets", "get"] */
+  verb: [string, string];
+  /** for the 1+ line: ["scores a goal", "score a goal"] */
+  one?: [string, string];
+  /** "averages 9.4 rebounds" — what the mean is called */
+  per?: string;
+  /** the 1+ line's name: "Anytime goal" */
+  sing?: string;
+  /** the noun in a sentence, when it differs: "throws for 250 or more yards" */
+  said?: string;
+};
+
+const W: Record<string, StatWords> = {
+  "nba:pts": { noun: "points", name: "Points", verb: ["scores", "score"] },
+  "nba:reb": { noun: "rebounds", name: "Rebounds", verb: ["grabs", "grab"] },
+  "nba:ast": { noun: "assists", name: "Assists", verb: ["hands out", "hand out"] },
+  "nba:3pm": {
+    noun: "threes",
+    name: "Threes",
+    verb: ["makes", "make"],
+    one: ["makes a three", "make a three"],
+    sing: "1+ three",
+  },
+  "nba:pra": {
+    noun: "points + rebounds + assists",
+    name: "Pts+Reb+Ast",
+    verb: ["puts up", "put up"],
+  },
+  "nba:pr": { noun: "points + rebounds", name: "Pts+Reb", verb: ["puts up", "put up"] },
+  "nba:pa": { noun: "points + assists", name: "Pts+Ast", verb: ["puts up", "put up"] },
+  "nba:ra": { noun: "rebounds + assists", name: "Reb+Ast", verb: ["puts up", "put up"] },
+  "nba:stl": {
+    noun: "steals",
+    name: "Steals",
+    verb: ["records", "record"],
+    one: ["records a steal", "record a steal"],
+    sing: "1+ steal",
+  },
+  "nba:blk": {
+    noun: "blocks",
+    name: "Blocks",
+    verb: ["records", "record"],
+    one: ["records a block", "record a block"],
+    sing: "1+ block",
+  },
+  "nba:stk": {
+    noun: "steals + blocks",
+    name: "Stl+Blk",
+    verb: ["records", "record"],
+    one: ["records a steal or a block", "record a steal or a block"],
+    sing: "1+ steal or block",
+  },
+  "nhl:pts": {
+    noun: "points",
+    name: "Points",
+    verb: ["gets", "get"],
+    one: ["gets a point (goal or assist)", "get a point (goal or assist)"],
+    sing: "1+ point",
+  },
+  "nhl:g": {
+    noun: "goals",
+    name: "Goals",
+    verb: ["scores", "score"],
+    one: ["scores a goal", "score a goal"],
+    sing: "Anytime goal",
+  },
+  "nhl:a": {
+    noun: "assists",
+    name: "Assists",
+    verb: ["gets", "get"],
+    one: ["gets an assist", "get an assist"],
+    sing: "1+ assist",
+  },
+  "nhl:sog": { noun: "shots on goal", name: "Shots on goal", verb: ["puts up", "put up"] },
+  "nhl:sv": { noun: "saves", name: "Saves", verb: ["makes", "make"] },
+  "nfl:td": {
+    noun: "touchdowns",
+    name: "Touchdowns",
+    verb: ["scores", "score"],
+    one: ["scores a touchdown", "score a touchdown"],
+    per: "touchdowns a game",
+    sing: "Anytime TD",
+  },
+  "nfl:rec": { noun: "catches", name: "Receptions", verb: ["makes", "make"] },
+  "nfl:reyd": { noun: "receiving yards", name: "Receiving yards", verb: ["gains", "gain"] },
+  "nfl:ryd": { noun: "rushing yards", name: "Rushing yards", verb: ["gains", "gain"] },
+  "nfl:rry": { noun: "rushing + receiving yards", name: "Rush+Rec yards", verb: ["gains", "gain"] },
+  "nfl:car": { noun: "carries", name: "Carries", verb: ["gets", "get"] },
+  "nfl:pyd": {
+    noun: "passing yards",
+    name: "Passing yards",
+    said: "yards",
+    verb: ["throws for", "throw for"],
+  },
+  "nfl:ptd": {
+    noun: "touchdown passes",
+    name: "Passing TDs",
+    verb: ["throws", "throw"],
+    one: ["throws a touchdown pass", "throw a touchdown pass"],
+    sing: "1+ TD pass",
+  },
+  "nfl:cmp": {
+    noun: "completions",
+    name: "Completions",
+    said: "passes",
+    verb: ["completes", "complete"],
+  },
+};
+
+/** The simulator's lines for a stat (src/lib/sim/props.ts). */
+export function linesOf(league: SimPropsLeague, stat: string): number[] {
+  return PROPS[league].find((d) => d.key === stat)?.lines ?? [];
+}
+
+export function statWords(league: SimPropsLeague, stat: string): StatWords | undefined {
+  return W[`${league === "cfb" ? "nfl" : league}:${stat}`];
+}
+
+/** One rung of a stat's ladder: the simulator's line at index i. */
+function rung(league: SimPropsLeague, stat: string, i: number, group = false): Market {
+  const line = linesOf(league, stat)[i];
+  const w = statWords(league, stat)!;
+  const key = `${stat}:${i}`;
+  if (stat === "dd") {
+    const what = line >= 3 ? "triple-double" : "double-double";
+    return {
+      key,
+      label: line >= 3 ? "Triple-double" : "Double-double",
+      short: line >= 3 ? "Triple" : "Double",
+      phrase: `records a ${what}`,
+      todo: `record a ${what}`,
+    };
+  }
+  const [v3, v] = w.verb;
+  const single = line === 1 && w.one;
+  return {
+    key,
+    label: line === 1 && w.sing ? w.sing : `${line}+ ${w.noun}`,
+    short: `${line}+`,
+    phrase: single ? w.one![0] : `${v3} ${line} or more ${w.said ?? w.noun}`,
+    todo: single ? w.one![1] : `${v} ${line} or more ${w.said ?? w.noun}`,
+    group: group ? w.name : undefined,
+  };
+}
+
+/** A stat's ladder at the given line indices. */
+const ladder = (league: SimPropsLeague, stat: string, idx: number[], group = false) =>
+  idx.map((i) => rung(league, stat, i, group));
+
+const FIRST: Record<"nhl" | "nfl", Market> = {
+  nhl: {
+    key: "first",
+    label: "First goal",
+    short: "First",
+    phrase: "scores the first goal",
+    todo: "score the first goal",
+  },
+  nfl: {
+    key: "first",
+    label: "First TD",
+    short: "First",
+    phrase: "scores the first touchdown",
+    todo: "score the first touchdown",
+  },
+};
 
 export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
   nba: [
     {
       key: "points",
       label: "Points",
-      hint: "who scores 10, 15, 20, 25 or 30+",
-      markets: [pts(0, 10), pts(1, 15), pts(2, 20), pts(3, 25), pts(4, 30)],
+      hint: "10, 15, 20, 25 or 30+",
+      markets: ladder("nba", "pts", [0, 1, 2, 3, 4]),
+      open: "pts:2",
+      unit: "picks",
+    },
+    {
+      key: "rebounds",
+      label: "Rebounds",
+      hint: "4 to 12+ boards",
+      markets: ladder("nba", "reb", [0, 1, 2, 3, 4]),
+      open: "reb:2",
+      unit: "picks",
+    },
+    {
+      key: "assists",
+      label: "Assists",
+      hint: "2 to 10+ dimes",
+      markets: ladder("nba", "ast", [0, 1, 2, 3, 4]),
+      open: "ast:2",
+      unit: "picks",
+    },
+    {
+      key: "threes",
+      label: "Threes",
+      hint: "1 to 5+ made",
+      markets: ladder("nba", "3pm", [0, 1, 2, 3, 4]),
+      open: "3pm:1",
+      unit: "picks",
+    },
+    {
+      key: "combos",
+      label: "Combos",
+      hint: "PRA, Pts+Reb, Pts+Ast, Reb+Ast",
+      markets: [
+        ...ladder("nba", "pra", [1, 2, 3, 4, 5], true),
+        ...ladder("nba", "pr", [1, 2, 3, 4, 5], true),
+        ...ladder("nba", "pa", [1, 2, 3, 4, 5], true),
+        ...ladder("nba", "ra", [0, 1, 2, 3, 4], true),
+      ],
+      open: "pra:3",
+      unit: "picks",
+    },
+    {
+      key: "double-double",
+      label: "Double-double",
+      hint: "double- and triple-doubles",
+      markets: ladder("nba", "dd", [0, 1]),
+      unit: "picks",
+    },
+    {
+      key: "defense",
+      label: "Steals & blocks",
+      hint: "steals, blocks, both",
+      markets: [
+        ...ladder("nba", "stl", [0, 1], true),
+        ...ladder("nba", "blk", [0, 1], true),
+        ...ladder("nba", "stk", [0, 1, 2], true),
+      ],
+      open: "stk:1",
       unit: "picks",
     },
   ],
@@ -76,44 +307,102 @@ export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
       key: "points",
       label: "Points",
       hint: "a goal or an assist",
-      markets: [
-        { key: "pts:0", label: "1+ point", short: "1+", phrase: "gets a point (goal or assist)" },
-        { key: "pts:1", label: "2+ points", short: "2+", phrase: "gets two or more points" },
-      ],
+      markets: ladder("nhl", "pts", [0, 1, 2]),
       unit: "picks",
     },
     {
       key: "goals",
       label: "Goalscorers",
       hint: "who scores a goal",
-      markets: [{ key: "g:0", label: "Anytime goal", short: "Goal", phrase: "scores a goal" }],
+      markets: ladder("nhl", "g", [0, 1]),
+      unit: "picks",
+    },
+    {
+      key: "assists",
+      label: "Assists",
+      hint: "1+ or 2+ assists",
+      markets: ladder("nhl", "a", [0, 1]),
+      unit: "picks",
+    },
+    {
+      key: "shots",
+      label: "Shots on goal",
+      hint: "2 to 5+ shots",
+      markets: ladder("nhl", "sog", [1, 2, 3, 4]),
+      open: "sog:2",
       unit: "picks",
     },
     {
       key: "first-goal",
       label: "First goal",
       hint: "who scores the game's first goal",
-      markets: [
-        { key: "first", label: "First goal", short: "First", phrase: "scores the first goal" },
-      ],
+      markets: [FIRST.nhl],
+      unit: "picks",
+    },
+    {
+      key: "saves",
+      label: "Goalie saves",
+      hint: "20, 25 or 30+ saves",
+      markets: ladder("nhl", "sv", [0, 1, 3]),
+      open: "sv:1",
       unit: "picks",
     },
   ],
   nfl: [
     {
+      key: "receiving",
+      label: "Receiving",
+      hint: "catches and receiving yards",
+      markets: [
+        ...ladder("nfl", "rec", [1, 2, 3, 4, 5], true),
+        ...ladder("nfl", "reyd", [1, 2, 3, 4, 5, 6, 7], true),
+      ],
+      open: "reyd:4",
+      unit: "picks",
+    },
+    {
+      key: "rushing",
+      label: "Rushing",
+      hint: "rushing yards and carries",
+      markets: [
+        ...ladder("nfl", "ryd", [1, 2, 3, 4, 5, 6, 7], true),
+        ...ladder("nfl", "car", [1, 2, 3, 4], true),
+      ],
+      open: "ryd:3",
+      unit: "picks",
+    },
+    {
+      key: "scrimmage",
+      label: "Rush+Rec yards",
+      hint: "yards from scrimmage",
+      markets: ladder("nfl", "rry", [1, 2, 3, 4, 5, 6]),
+      open: "rry:3",
+      unit: "picks",
+    },
+    {
+      key: "passing",
+      label: "Passing",
+      hint: "yards, TDs, completions",
+      markets: [
+        ...ladder("nfl", "pyd", [2, 3, 4, 5, 6], true),
+        ...ladder("nfl", "ptd", [0, 1, 2], true),
+        ...ladder("nfl", "cmp", [1, 2, 3, 4], true),
+      ],
+      open: "pyd:4",
+      unit: "picks",
+    },
+    {
       key: "td-scorers",
       label: "TD scorers",
       hint: "who scores a touchdown",
-      markets: [{ key: "td:0", label: "Anytime TD", short: "TD", phrase: "scores a touchdown" }],
+      markets: ladder("nfl", "td", [0]),
       unit: "picks",
     },
     {
       key: "first-td",
       label: "First TD",
       hint: "who scores the first touchdown",
-      markets: [
-        { key: "first", label: "First TD", short: "First", phrase: "scores the first touchdown" },
-      ],
+      markets: [FIRST.nfl],
       unit: "picks",
     },
   ],
@@ -121,6 +410,13 @@ export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
   // for anytime and (split by share) for the first touchdown.
   cfb: [],
 };
+
+/** Every market a league's boards price, once each. */
+export function simMarkets(league: SimPropsLeague): Market[] {
+  const seen = new Map<string, Market>();
+  for (const b of SIM_BOARDS[league]) for (const m of b.markets) seen.set(m.key, m);
+  return [...seen.values()];
+}
 
 export function simBoard(league: SimPropsLeague, board: string): BoardDef | undefined {
   return SIM_BOARDS[league].find((b) => b.key === board);
@@ -149,6 +445,14 @@ export function calibrate(league: SimPropsLeague, market: string, p: number): nu
   }
   const t = x[hi] === x[lo] ? 0 : (p - x[lo]) / (x[hi] - x[lo]);
   return y[lo] + t * (y[hi] - y[lo]);
+}
+
+/** A player's projected average for a stat: the simulator's, through the
+ *  backtest's map from what it projected to what such players actually
+ *  averaged (research/player-props/fit_means.py) — the number to hold up
+ *  against a sportsbook's line. */
+export function projectionOf(league: SimPropsLeague, stat: string, simMean: number): number {
+  return calibrate(league, `mean:${stat}`, simMean);
 }
 
 /** The simulator's raw number for a market. */
@@ -201,17 +505,11 @@ export function playersFrom(
 // ------------------------------------------------------------- the record
 
 /** The ledger's code for a market: "pts:2" in the NBA -> "pts20", the NHL's
- *  "g:0" -> "g1", "first" -> "firstgoal" / "firsttd". */
+ *  "g:0" -> "g1", "3pm:1" -> "3pm2", "first" -> "firstgoal" / "firsttd". */
 export function marketSlug(league: SimPropsLeague, key: string): string {
   if (key === "first") return league === "nhl" ? "firstgoal" : "firsttd";
   const [stat, i] = key.split(":");
-  const lines: Record<string, number[]> = {
-    pts: league === "nba" ? [10, 15, 20, 25, 30] : [1, 2, 3, 4],
-    g: [1, 2, 3],
-    a: [1, 2, 3],
-    td: [1, 2, 3],
-  };
-  return `${stat}${lines[stat]?.[Number(i)] ?? i}`;
+  return `${stat}${linesOf(league, stat)[Number(i)] ?? i}`;
 }
 
 /** Each market carries its own model version, so a player can be on several
@@ -221,16 +519,21 @@ export function simModelVersion(league: SimPropsLeague, slug: string): string {
   return `${league}-sim-${slug}-v1`;
 }
 
-export const SIM_MARKET_LABELS: Record<string, string> = {
-  pts10: "10+ points",
-  pts15: "15+ points",
-  pts20: "20+ points",
-  pts25: "25+ points",
-  pts30: "30+ points",
-  pts1: "1+ point",
-  pts2: "2+ points",
-  g1: "Anytime goal",
-  td1: "Anytime touchdown",
-  firstgoal: "First goal",
-  firsttd: "First touchdown",
-};
+/** A ledger code back to its stat and line: "3pm2" -> ["3pm", 2]. */
+export function parseSlug(slug: string): [string, number] | null {
+  const m = slug.match(/^(.+?)(\d+)$/);
+  return m ? [m[1], Number(m[2])] : null;
+}
+
+/** A ledger code's bet name: "reb10" -> "10+ rebounds". */
+export function simMarketLabel(league: SimPropsLeague, slug: string): string {
+  return simMarkets(league).find((m) => marketSlug(league, m.key) === slug)?.label ?? slug;
+}
+
+/** Ledger code -> bet name for every simulation market (the NFL's "rec5" is
+ *  "5+ catches" whichever model wrote it). */
+export const SIM_MARKET_LABELS: Record<string, string> = Object.fromEntries(
+  (["nba", "nhl", "nfl"] as const).flatMap((lg) =>
+    simMarkets(lg).map((m) => [marketSlug(lg, m.key), m.label]),
+  ),
+);

@@ -13,6 +13,18 @@
       "schedule": "40 8 * * *"
     },
     {
+      "path": "/api/public/hooks/sim-props?league=nba&settle=1",
+      "schedule": "5 9 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=nhl&settle=1",
+      "schedule": "12 9 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=nfl&settle=1",
+      "schedule": "19 9 * * *"
+    },
+    {
       "path": "/api/public/hooks/sim-props?league=nba&slot=0",
       "schedule": "5 15 * * *"
     },
