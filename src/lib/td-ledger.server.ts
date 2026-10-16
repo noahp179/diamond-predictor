@@ -213,7 +213,12 @@ export async function snapshotTdPicks(sport: TdSport, date: string): Promise<num
 async function boxScoreTds(
   sport: TdSport,
   eventId: string,
-): Promise<{ tds: Map<string, number>; score: string; final: boolean } | null> {
+): Promise<{
+  tds: Map<string, number>;
+  played: Set<string>;
+  score: string;
+  final: boolean;
+} | null> {
   const url = `https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH[sport]}/summary?event=${eventId}`;
   const res = await fetch(url, {
     headers: { accept: "application/json" },
@@ -236,8 +241,13 @@ async function boxScoreTds(
   if (!final) return null;
 
   const tds = new Map<string, number>();
+  // Everyone with a line in any table — passing, rushing, receiving, fumbles,
+  // defence, returns, kicking — took the field.
+  const played = new Set<string>();
   for (const tb of d.boxscore?.players ?? []) {
     for (const cat of tb.statistics ?? []) {
+      for (const a of (cat.athletes ?? []) as { athlete?: { id?: string } }[])
+        if (a.athlete?.id) played.add(String(a.athlete.id));
       if (cat.name !== "rushing" && cat.name !== "receiving") continue;
       const keys = cat.keys ?? [];
       const field = cat.name === "rushing" ? "rushingTouchdowns" : "receivingTouchdowns";
@@ -256,7 +266,7 @@ async function boxScoreTds(
   }
   const home = comp?.competitors?.find((c) => c.homeAway === "home")?.score ?? "";
   const away = comp?.competitors?.find((c) => c.homeAway === "away")?.score ?? "";
-  return { tds, score: away && home ? `${away}-${home}` : "", final: true };
+  return { tds, played, score: away && home ? `${away}-${home}` : "", final: true };
 }
 
 /**
@@ -266,11 +276,16 @@ async function boxScoreTds(
  * Anything unresolved — postponed, still playing, no box score published — is
  * left pending and picked up on the next run.
  *
- * A player who appears in no box-score row did not record a carry or a catch,
- * which is a legitimate zero rather than missing data: he was active enough to
- * be picked and did not score. Scoring it as a miss is the honest reading, and
- * treating it as unsettled instead would quietly drop the board's worst calls
- * out of the record.
+ * A player with a line somewhere in the box score but no touchdown missed.
+ * A player in none of its tables — not passing, rushing, receiving, fumbles,
+ * defence or returns — did not play, and the pick is a void, as a sportsbook
+ * voids it and as the simulation boards grade it. This used to be scored a
+ * miss on the theory that he played and never touched the ball; checking the
+ * 2026 picks against the box scores showed otherwise — all 36 such "misses"
+ * were players who sat out, several of them listed questionable or doubtful.
+ * The cost of the rule is the rare player who took snaps without a single
+ * stat, voided rather than missed; ESPN's box score cannot tell the two
+ * apart.
  */
 export async function settleTdPicks(throughDate: string, lookbackDays = 21) {
   const db = admin();
@@ -327,14 +342,19 @@ export async function settleTdPicks(throughDate: string, lookbackDays = 21) {
         const p = Math.min(1 - 1e-9, Math.max(1e-9, Number(r.prob)));
         const { error: uErr } = await db
           .from("player_predictions")
-          .update({
-            scored,
-            touchdowns: tds,
-            brier: (p - (scored ? 1 : 0)) ** 2,
-            log_loss: -Math.log(scored ? p : 1 - p),
-            final_score: box.score || null,
-            settled_at: now,
-          })
+          .update(
+            box.played.has(String(r.player_id))
+              ? {
+                  scored,
+                  touchdowns: tds,
+                  brier: (p - (scored ? 1 : 0)) ** 2,
+                  log_loss: -Math.log(scored ? p : 1 - p),
+                  final_score: box.score || null,
+                  settled_at: now,
+                }
+              : // did not play: a void
+                { final_score: box.score || null, settled_at: now },
+          )
           .eq("id", r.id);
         if (uErr) console.error(`[td-ledger] settle ${r.id}:`, uErr.message);
         else settled += 1;

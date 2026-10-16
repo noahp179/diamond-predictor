@@ -179,7 +179,7 @@ function Legend() {
   );
 }
 
-function Result({ r }: { r: BoardRecordData["recent"][number]["result"] }) {
+export function Result({ r }: { r: BoardRecordData["recent"][number]["result"] }) {
   const map = {
     hit: { t: "✓ Hit", c: "text-emerald-500" },
     miss: { t: "✗ Miss", c: "text-red-500" },

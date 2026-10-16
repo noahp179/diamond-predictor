@@ -20,13 +20,17 @@ import { supabaseAdmin as _admin } from "@/integrations/supabase/client.server";
 import { supabase } from "@/integrations/supabase/client";
 
 import {
+  linesOf,
   marketSlug,
   parseSlug,
   playersFrom,
   probOf,
+  projectionOf,
   simBoard,
+  simMarketLabel,
   simMarkets,
   simModelVersion,
+  statWords,
   type SimPlayer,
   type SimPropsLeague,
 } from "./sim-props-shared";
@@ -282,11 +286,25 @@ const ESPN: Record<SimPropsLeague, string> = {
 export type Box = {
   final: boolean;
   score: string;
+  /** 'SEA @ DEN' */
+  matchup: string;
   /** player id -> stat values the markets settle on; absent = did not play */
   lines: Map<string, Record<string, number>>;
+  /** player id -> who he is, for the stored result */
+  who: Map<string, { name: string; team: string }>;
   /** player id of the first goal / first touchdown, null if none or a team score */
   first: string | null;
 };
+
+/** Where to check a game by hand. */
+const ESPN_SITE: Record<SimPropsLeague, string> = {
+  nba: "nba",
+  nhl: "nhl",
+  nfl: "nfl",
+  cfb: "college-football",
+};
+export const boxUrl = (league: SimPropsLeague, eventId: string) =>
+  `https://www.espn.com/${ESPN_SITE[league]}/boxscore/_/gameId/${eventId}`;
 
 /** One finished game, read for settlement. Null while it is not final. */
 export async function boxFor(league: SimPropsLeague, eventId: string): Promise<Box | null> {
@@ -301,7 +319,11 @@ export async function boxFor(league: SimPropsLeague, eventId: string): Promise<B
   const score = (comp.competitors ?? [])
     .map((c: any) => `${c.team?.abbreviation ?? "?"} ${c.score ?? "?"}`)
     .join(" – ");
+  const side = (h: string) =>
+    (comp.competitors ?? []).find((c: any) => c.homeAway === h)?.team?.abbreviation ?? "?";
+  const matchup = `${side("away")} @ ${side("home")}`;
   const lines = new Map<string, Record<string, number>>();
+  const who = new Map<string, { name: string; team: string }>();
   const names = new Map<string, string>();
   for (const t of d.boxscore?.players ?? [])
     for (const st of t.statistics ?? []) {
@@ -311,6 +333,10 @@ export async function boxFor(league: SimPropsLeague, eventId: string): Promise<B
         const id = a.athlete?.id;
         if (!id || a.didNotPlay || !(a.stats ?? []).length) continue;
         if (a.athlete?.displayName) names.set(String(a.athlete.displayName).toLowerCase(), id);
+        who.set(id, {
+          name: String(a.athlete?.displayName ?? ""),
+          team: String(t.team?.abbreviation ?? ""),
+        });
         const raw = (k: string) => {
           const i = labels.indexOf(k);
           return String(a.stats[i >= 0 ? i : keys.indexOf(k)] ?? "");
@@ -366,7 +392,185 @@ export async function boxFor(league: SimPropsLeague, eventId: string): Promise<B
       ?.toLowerCase();
     first = nm ? (names.get(nm) ?? null) : null;
   }
-  return { final: true, score, lines, first };
+  return { final: true, score, matchup, lines, who, first };
+}
+
+/**
+ * Store a final box score in game_results: every player's line in the stats
+ * the markets settle on, the score and who scored first, so any recorded pick
+ * can be checked against what happened. Players with no line (did not play)
+ * are left out, exactly as settlement voids them.
+ */
+export async function saveResult(
+  league: SimPropsLeague,
+  eventId: string,
+  box: Box,
+  gameDate: string | null,
+): Promise<boolean> {
+  const db = admin();
+  if (!db) return false;
+  const players = [...box.lines.entries()].map(([id, stats]) => ({
+    id,
+    name: box.who.get(id)?.name ?? "",
+    team: box.who.get(id)?.team ?? "",
+    stats,
+  }));
+  // Every player the board priced, graded at every line — only from a
+  // simulation stored before the game started, so nothing after the fact.
+  const { data: sim } = await db
+    .from("sim_props")
+    .select("players, generated_at, start_time")
+    .eq("league", league)
+    .eq("event_id", eventId)
+    .maybeSingle();
+  const priced =
+    sim && (!sim.start_time || String(sim.generated_at) <= String(sim.start_time))
+      ? pricedBands(league, sim.players as SimPlayer[], box)
+      : null;
+  const { error } = await db.from("game_results").upsert(
+    {
+      league,
+      event_id: eventId,
+      game_date: gameDate,
+      matchup: box.matchup,
+      final_score: box.score,
+      players,
+      first_scorer: box.first,
+      priced,
+      box_url: boxUrl(league, eventId),
+      source: "espn",
+      fetched_at: new Date().toISOString(),
+    },
+    { onConflict: "league,event_id" },
+  );
+  if (error) console.error(`[sim-props] result ${league} ${eventId}:`, error.message);
+  return !error;
+}
+
+/** A priced-and-graded tally: [band, priced, did it, sum of the board's numbers]. */
+export type PricedBand = [number, number, number, number];
+
+/**
+ * Every player a game's simulation priced, at every line its boards show,
+ * against the box score: per market and ten-point band of the board's number
+ * (as the board shows it, calibrated where it is), how many were priced there,
+ * how many did it and what the board said in sum. Players who did not play
+ * are left out (a void), as are those the board gave no real chance (under
+ * half a percent) — the linemen and backup goalies who would only pad the
+ * bottom band.
+ */
+export function pricedBands(
+  league: SimPropsLeague,
+  sim: SimPlayer[],
+  box: Box,
+): Record<string, PricedBand[]> {
+  const out: Record<string, PricedBand[]> = {};
+  for (const m of simMarkets(league)) {
+    const slug = marketSlug(league, m.key);
+    const bands = new Map<number, PricedBand>();
+    for (const pl of sim) {
+      const p = probOf(league, pl, m.key);
+      if (!(p >= 0.005)) continue;
+      const y = outcome(slug, box, String(pl.id));
+      if (y == null) continue;
+      const band = Math.min(9, Math.floor(p * 10));
+      const b = bands.get(band) ?? [band, 0, 0, 0];
+      b[1] += 1;
+      b[2] += y ? 1 : 0;
+      b[3] = Math.round((b[3] + p) * 1e4) / 1e4;
+      bands.set(band, b);
+    }
+    if (bands.size) out[slug] = [...bands.values()].sort((a, b) => a[0] - b[0]);
+  }
+  return out;
+}
+
+/** Every priced player at every line, summed over a league's stored games. */
+export async function readPricedBands(
+  league: SimPropsLeague,
+): Promise<{ market: string; band: number; n: number; hits: number; said: number }[]> {
+  const acc = new Map<string, { n: number; hits: number; said: number }>();
+  for (let from = 0; from < 20_000; from += 1000) {
+    const { data, error } = await reader()
+      .from("game_results")
+      .select("priced")
+      .eq("league", league)
+      .not("priced", "is", null)
+      .range(from, from + 999);
+    if (error) return [];
+    for (const r of (data ?? []) as { priced: Record<string, PricedBand[]> }[]) {
+      for (const [market, bands] of Object.entries(r.priced ?? {}))
+        for (const [band, n, hits, said] of bands) {
+          const k = `${market}|${band}`;
+          const a = acc.get(k) ?? { n: 0, hits: 0, said: 0 };
+          a.n += n;
+          a.hits += hits;
+          a.said += said;
+          acc.set(k, a);
+        }
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return [...acc.entries()].map(([k, v]) => {
+    const [market, band] = k.split("|");
+    return { market, band: Number(band), ...v };
+  });
+}
+
+/**
+ * Store the result of every tracked game that has none yet: each game this
+ * season with recorded picks (the simulation boards' and the boards before
+ * them) or a stored simulation, once it is final. The grading job calls it
+ * with whatever time it has left, newest games first, so the first run after
+ * this shipped works back through the season and later runs only add the
+ * night's games.
+ */
+export async function recordResults(
+  league: SimPropsLeague,
+  throughDate: string,
+  budgetMs = 60_000,
+): Promise<{ stored: number; missing: number }> {
+  const db = admin();
+  if (!db) return { stored: 0, missing: 0 };
+  const t0 = Date.now();
+  const year = Number(throughDate.slice(0, 4)) - (Number(throughDate.slice(5, 7)) >= 8 ? 0 : 1);
+  const games = new Map<string, string>(); // event id -> game date
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from("player_predictions")
+      .select("event_id, event_date")
+      .eq("sport", league)
+      .eq("provenance", "forward")
+      .gte("event_date", `${year}-08-01`)
+      .lte("event_date", throughDate)
+      .order("id", { ascending: true })
+      .range(from, from + 999);
+    if (error) return { stored: 0, missing: 0 };
+    for (const r of data ?? []) games.set(String(r.event_id), String(r.event_date));
+    if (!data || data.length < 1000) break;
+  }
+  const { data: sims } = await db
+    .from("sim_props")
+    .select("event_id, game_date")
+    .eq("league", league)
+    .lte("game_date", throughDate);
+  for (const r of sims ?? []) games.set(String(r.event_id), String(r.game_date));
+  const { data: have } = await db.from("game_results").select("event_id").eq("league", league);
+  const stored = new Set((have ?? []).map((r: { event_id: string }) => String(r.event_id)));
+  const todo = [...games.entries()]
+    .filter(([id]) => !stored.has(id))
+    .sort((a, b) => (a[1] < b[1] ? 1 : a[1] > b[1] ? -1 : 0));
+  let n = 0;
+  for (const [eventId, date] of todo) {
+    if (Date.now() - t0 > budgetMs) break;
+    try {
+      const box = await boxFor(league, eventId);
+      if (box && (await saveResult(league, eventId, box, date))) n += 1;
+    } catch (err) {
+      console.error(`[sim-props] result ${league} ${eventId}:`, err);
+    }
+  }
+  return { stored: n, missing: todo.length - n };
 }
 
 /** A basketball line, with the combinations the boards sell. */
@@ -421,6 +625,7 @@ export async function settleSimPicks(
   const pending: {
     id: number;
     event_id: string;
+    event_date: string;
     player_id: string;
     market: string;
     prob: number;
@@ -428,7 +633,7 @@ export async function settleSimPicks(
   for (let from = 0; ; from += 1000) {
     const { data, error } = await db
       .from("player_predictions")
-      .select("id, event_id, player_id, market, prob")
+      .select("id, event_id, event_date, player_id, market, prob")
       .eq("sport", league)
       .like("model_version", `${league}-sim-%`)
       .is("settled_at", null)
@@ -448,6 +653,8 @@ export async function settleSimPicks(
     try {
       const box = await boxFor(league, eventId);
       if (!box) continue;
+      // The box score the picks are graded on, kept so each can be checked.
+      await saveResult(league, eventId, box, rows[0].event_date);
       const now = new Date().toISOString();
       const update = async (r: (typeof rows)[number]) => {
         const hit = outcome(r.market, box, String(r.player_id));
@@ -659,4 +866,290 @@ export async function readSeasonLedger(league: SimPropsLeague): Promise<SeasonLe
     b.said += p;
   }
   return [...byKey.values()].sort((a, b) => b.n + b.pending - (a.n + a.pending));
+}
+
+// ------------------------------------------------------------ game by game
+
+export type ResultPick = {
+  /** "60+ receiving yards" */
+  market: string;
+  /** "Simulation", or the earlier board that wrote it */
+  model: string;
+  player: string;
+  team: string;
+  /** what the board said, as recorded before the game */
+  prob: number;
+  /** what happened, in words: "87 receiving yards", "scored first" */
+  actual: string;
+  result: "hit" | "miss" | "void" | "pending";
+};
+export type ResultStar = {
+  player: string;
+  team: string;
+  /** the stat that put him here: touchdowns, goals, points */
+  value: number;
+  /** the board's chance for him before the game (null: not priced) */
+  prob: number | null;
+  /** NBA: the board's projection instead of a chance */
+  proj: number | null;
+  /** where that chance ranked among everyone in the game, of how many */
+  rank: number | null;
+  of: number | null;
+  picked: boolean;
+};
+export type ResultGame = {
+  eventId: string;
+  date: string | null;
+  matchup: string;
+  score: string;
+  boxUrl: string;
+  simulated: boolean;
+  stars: { title: string; noun: string; rows: ResultStar[] };
+  picks: ResultPick[];
+  graded: number;
+  hits: number;
+};
+
+/** The stat each sport's "who did it" list is built on. */
+const STAR: Record<SimPropsLeague, { stat: string; title: string; noun: string }> = {
+  nfl: { stat: "td", title: "Who scored a touchdown", noun: "TD" },
+  cfb: { stat: "td", title: "Who scored a touchdown", noun: "TD" },
+  nhl: { stat: "g", title: "Who scored a goal", noun: "G" },
+  nba: { stat: "pts", title: "Top scorers", noun: "PTS" },
+};
+
+/** The logistic NFL prop models' codes, as box-score stats: "recy60" is 60+ receiving yards. */
+const NFL_MODEL_STAT: [RegExp, string][] = [
+  [/^recy(\d+)$/, "reyd"],
+  [/^rec(\d+)$/, "rec"],
+  [/^rushy(\d+)$/, "ryd"],
+  [/^scrim(\d+)$/, "rry"],
+  [/^passy(\d+)$/, "pyd"],
+  [/^passtd(\d+)$/, "ptd"],
+];
+
+type StoredLine = { id: string; name: string; team: string; stats: Record<string, number> };
+
+/**
+ * The box-score stat and line a ledger market code settles on, whichever board
+ * wrote it: the simulation's "reyd60" and the logistic model's "recy60" are
+ * both 60+ receiving yards, "anytime_td" is 1+ touchdowns. Null for the
+ * first-scorer markets, which settle on who scored first.
+ */
+export function marketStat(league: SimPropsLeague, market: string): [string, number] | null {
+  if (market === "anytime_td") return ["td", 1];
+  const m = parseSlug(market);
+  if (!m) return null;
+  if (league === "nfl" || league === "cfb")
+    for (const [re, st] of NFL_MODEL_STAT) if (re.test(market)) return [st, m[1]];
+  return m;
+}
+
+/**
+ * Tracked games, newest first, each with what happened next to what the board
+ * said: the box score's touchdown / goal scorers (NBA: top scorers) with the
+ * chance the board gave each before the game and where it ranked them, and
+ * every recorded pick with its real number and verdict. Built from
+ * game_results (the stored box scores), sim_props (the pre-game simulation)
+ * and player_predictions (the picks) — nothing recomputed after the fact.
+ */
+export async function readGameResults(
+  league: SimPropsLeague,
+  offset = 0,
+  limit = 8,
+): Promise<{ games: ResultGame[]; more: boolean; note: string | null }> {
+  const { data: res, error } = await reader()
+    .from("game_results")
+    .select("event_id, game_date, matchup, final_score, players, first_scorer, box_url")
+    .eq("league", league)
+    .order("game_date", { ascending: false })
+    .order("event_id", { ascending: true })
+    .range(offset, offset + limit);
+  if (error)
+    return {
+      games: [],
+      more: false,
+      note: "Game results are stored once the game_results table is in place.",
+    };
+  const rows = (res ?? []) as StoredResult[];
+  const more = rows.length > limit;
+  const page = rows.slice(0, limit);
+  if (!page.length)
+    return {
+      games: [],
+      more: false,
+      note: "No tracked game has finished and been stored yet — results are added each morning.",
+    };
+  const ids = page.map((r) => String(r.event_id));
+
+  const [{ data: sims }, picks] = await Promise.all([
+    reader().from("sim_props").select("event_id, players").eq("league", league).in("event_id", ids),
+    (async () => {
+      const out: StoredPick[] = [];
+      for (let from = 0; from < 20_000; from += 1000) {
+        const { data } = await reader()
+          .from("player_predictions")
+          .select(
+            "event_id, model_version, market, player_id, player, team, pick_rank, prob, scored, settled_at",
+          )
+          .eq("sport", league)
+          .eq("provenance", "forward")
+          .in("event_id", ids)
+          .order("id", { ascending: true })
+          .range(from, from + 999);
+        out.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+      }
+      return out;
+    })(),
+  ]);
+  const { default: nflModel } = await import("./nfl-props-model.json");
+  const modelLabels = (nflModel as { markets: Record<string, { label: string }> }).markets;
+  const simBy = new Map<string, SimPlayer[]>(
+    (sims ?? []).map((s: { event_id: string; players: SimPlayer[] }) => [
+      String(s.event_id),
+      s.players,
+    ]),
+  );
+  const games = resultGames(league, page, simBy, picks, modelLabels);
+  return { games, more, note: null };
+}
+
+/** A stored game's row, as game_results holds it. */
+export type StoredResult = {
+  event_id: string;
+  game_date: string | null;
+  matchup: string | null;
+  final_score: string | null;
+  players: StoredLine[];
+  first_scorer: string | null;
+  box_url: string | null;
+};
+/** A recorded pick, as player_predictions holds it. */
+export type StoredPick = {
+  event_id: string;
+  model_version: string;
+  market: string;
+  player_id: string;
+  player: string;
+  team: string;
+  pick_rank: number;
+  prob: number;
+  scored: boolean | null;
+  settled_at: string | null;
+};
+
+/**
+ * The game-by-game view from what is stored — pure, so it can be checked on
+ * real games without the database (scripts/test-game-results.ts).
+ */
+export function resultGames(
+  league: SimPropsLeague,
+  page: StoredResult[],
+  simBy: Map<string, SimPlayer[]>,
+  picks: StoredPick[],
+  modelLabels: Record<string, { label: string }>,
+): ResultGame[] {
+  const order = new Map(simMarkets(league).map((m, i) => [marketSlug(league, m.key), i]));
+  const star = STAR[league];
+  const oneIdx = linesOf(league, star.stat).indexOf(1);
+  const starMarket = oneIdx >= 0 ? `${star.stat}:${oneIdx}` : null;
+
+  return page.map((g): ResultGame => {
+    const lines = new Map(g.players.map((p) => [String(p.id), p]));
+    const sim = simBy.get(String(g.event_id)) ?? null;
+    const mine = picks.filter((p) => String(p.event_id) === String(g.event_id));
+
+    // what happened to each pick, in its own stat
+    const actualOf = (market: string, pid: string): string => {
+      const ln = lines.get(pid);
+      if (market === "firsttd" || market === "firstgoal") {
+        if (g.first_scorer === pid) return "scored first";
+        const who = g.first_scorer ? lines.get(g.first_scorer)?.name : null;
+        return who ? `first was ${who}` : "no first scorer";
+      }
+      if (!ln) return "did not play";
+      if (market === "anytime_td") return `${ln.stats.td ?? 0} ${star.noun}`;
+      const stat = marketStat(league, market)?.[0];
+      if (!stat || ln.stats[stat] == null) return "—";
+      const noun = statWords(league, stat)?.noun ?? stat;
+      return `${ln.stats[stat]} ${noun}`;
+    };
+    const labelOf = (model: string, market: string) =>
+      model.includes("-sim-")
+        ? simMarketLabel(league, market)
+        : market === "anytime_td"
+          ? "Anytime TD"
+          : (modelLabels[market]?.label ?? market);
+
+    const recorded: ResultPick[] = mine
+      .slice()
+      .sort(
+        (a, b) =>
+          (order.get(a.market) ?? 999) - (order.get(b.market) ?? 999) ||
+          a.model_version.localeCompare(b.model_version) ||
+          a.pick_rank - b.pick_rank,
+      )
+      .map((p) => ({
+        market: labelOf(p.model_version, p.market),
+        model: p.model_version.includes("-sim-")
+          ? "Simulation"
+          : (MODEL_NAME[p.model_version] ?? p.model_version),
+        player: p.player,
+        team: p.team,
+        prob: Number(p.prob),
+        actual: actualOf(p.market, String(p.player_id)),
+        result: !p.settled_at ? "pending" : p.scored == null ? "void" : p.scored ? "hit" : "miss",
+      }));
+
+    // who actually did it, and what the board had said about each
+    const ranked =
+      sim && starMarket
+        ? sim
+            .map((pl) => ({ id: pl.id, p: probOf(league, pl, starMarket) }))
+            .sort((a, b) => b.p - a.p)
+        : [];
+    const rankOf = new Map(ranked.map((r, i) => [r.id, { rank: i + 1, p: r.p }]));
+    const simOf = new Map((sim ?? []).map((pl) => [pl.id, pl]));
+    const pickedIds = new Set(mine.map((p) => String(p.player_id)));
+    const earlierTd = new Map(
+      mine
+        .filter((p) => p.market === "anytime_td")
+        .map((p) => [String(p.player_id), Number(p.prob)]),
+    );
+    let doers = g.players.filter((p) => (p.stats[star.stat] ?? 0) >= 1);
+    doers.sort((a, b) => (b.stats[star.stat] ?? 0) - (a.stats[star.stat] ?? 0));
+    if (league === "nba") doers = doers.slice(0, 5);
+    const stars: ResultStar[] = doers.map((p) => {
+      const r = rankOf.get(String(p.id));
+      const pl = simOf.get(String(p.id));
+      return {
+        player: p.name,
+        team: p.team,
+        value: p.stats[star.stat] ?? 0,
+        prob: league === "nba" ? null : (r?.p ?? earlierTd.get(String(p.id)) ?? null),
+        proj:
+          league === "nba" && pl?.mean?.pts != null
+            ? projectionOf(league, "pts", pl.mean.pts)
+            : null,
+        rank: league === "nba" ? null : (r?.rank ?? null),
+        of: league === "nba" ? null : ranked.length || null,
+        picked: pickedIds.has(String(p.id)),
+      };
+    });
+
+    const graded = recorded.filter((p) => p.result === "hit" || p.result === "miss");
+    return {
+      eventId: String(g.event_id),
+      date: g.game_date,
+      matchup: g.matchup ?? "",
+      score: g.final_score ?? "",
+      boxUrl: g.box_url ?? boxUrl(league, String(g.event_id)),
+      simulated: !!sim,
+      stars: { title: star.title, noun: star.noun, rows: stars },
+      picks: recorded,
+      graded: graded.length,
+      hits: graded.filter((p) => p.result === "hit").length,
+    };
+  });
 }

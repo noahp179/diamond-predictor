@@ -1,14 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { todayET } from "@/lib/date";
-import { runSimSlot, settleSimPicks, SLOTS, type SimPropsLeague } from "@/lib/sim-props.server";
+import {
+  recordResults,
+  runSimSlot,
+  settleSimPicks,
+  SLOTS,
+  type SimPropsLeague,
+} from "@/lib/sim-props.server";
 
 /**
  * Plays one slot of today's games up to 100,000 times each and stores every
  * player's chances in sim_props, for the simulation-driven prop boards.
  *
  *   GET /api/public/hooks/sim-props?league=nba&slot=0
- *   GET /api/public/hooks/sim-props?league=nba&settle=1   (grade finished games)
+ *   GET /api/public/hooks/sim-props?league=nba&settle=1   (grade finished games and
+ *                                                          store their box scores)
  *
  * One cron per slot (vercel.json): a slot is a few games, sized to finish
  * inside one function's time limit at the full count. Same contract as the
@@ -27,11 +34,14 @@ async function run(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const league = url.searchParams.get("league") as SimPropsLeague | null;
   if (league && LEAGUES.has(league) && url.searchParams.get("settle")) {
-    // The morning after: grade every pick from the box scores, with the whole
-    // function's time to do it in.
-    const result = await settleSimPicks(league, url.searchParams.get("date") ?? todayET(), 270_000);
-    console.log(`[cron] sim-props settle ${league}: ${JSON.stringify(result)}`);
-    return Response.json({ ok: true, ...result });
+    // The morning after: grade every pick from the box scores, then store the
+    // box score of any tracked game still without one, in the time left.
+    const t0 = Date.now();
+    const date = url.searchParams.get("date") ?? todayET();
+    const result = await settleSimPicks(league, date, 240_000);
+    const results = await recordResults(league, date, Math.max(0, 270_000 - (Date.now() - t0)));
+    console.log(`[cron] sim-props settle ${league}: ${JSON.stringify({ ...result, results })}`);
+    return Response.json({ ok: true, ...result, results });
   }
   const slot = Number(url.searchParams.get("slot") ?? "0");
   if (
