@@ -22,7 +22,7 @@ export const Route = createFileRoute("/nfl/props")({
       {
         name: "description",
         content:
-          "Every NFL prop board in one place: receptions, receiving, rushing and rush+rec yards, passing yards, TDs and completions, anytime and first touchdown scorers, touchdown parlays — every game simulated up to 100,000 times, each pick tracked against what actually happened.",
+          "Every NFL prop board in one place: receptions, receiving, rushing and rush+rec yards, passing yards, TDs and completions, anytime and first touchdown scorers, touchdown parlays — every game simulated 10,000 times, each pick tracked against what actually happened.",
       },
     ],
   }),
