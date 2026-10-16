@@ -8,6 +8,13 @@
 -- next to the pre-game simulation (sim_props) and the recorded picks, any
 -- pick can be checked by hand — and box_url is where to check it.
 --
+-- `priced` grades every player the board priced, not only its three picks:
+-- for each market (60+ receiving yards, 75+, ...) and each ten-point band of
+-- the board's number, how many players it priced there, how many did it, and
+-- the sum of what it said — from the simulation stored before the game
+-- (sim_props) against this box score. Summed over games it is each line's
+-- accuracy on every player, a far bigger sample than the picks alone.
+--
 -- Written by the morning grading job (/api/public/hooks/sim-props?settle=1)
 -- for every game it grades, and for every earlier game this season that has
 -- recorded picks but no stored result yet. One row per game; a later fetch
@@ -22,11 +29,17 @@ create table if not exists public.game_results (
   -- [{id, name, team, stats: {stat: value}}], ids are ESPN athlete ids
   players jsonb not null,
   first_scorer text,                      -- player id of the first goal / touchdown
+  -- {market: [[band, priced, did it, sum of the board's numbers], ...]}; null
+  -- when the game was not simulated before it started
+  priced jsonb,
   box_url text,
   source text not null default 'espn',
   fetched_at timestamptz not null default now(),
   primary key (league, event_id)
 );
+
+-- (for a table created from an earlier draft of this file)
+alter table public.game_results add column if not exists priced jsonb;
 
 create index if not exists game_results_by_date on public.game_results (league, game_date desc);
 

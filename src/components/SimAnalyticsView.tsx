@@ -176,6 +176,28 @@ export function SimAnalyticsView({ league }: { league: SimPropsLeague }) {
     return { byMarket, byBand, all };
   }, [data]);
 
+  // Every player the board priced, graded at every line (game_results.priced).
+  const priced = useMemo(() => {
+    const byMarket = new Map<string, Tally>();
+    const byBand = new Map<string, Map<number, Tally>>();
+    const all = new Map<number, Tally>();
+    const bump = (t: Tally | undefined, r: Tally): Tally => ({
+      n: (t?.n ?? 0) + r.n,
+      hits: (t?.hits ?? 0) + r.hits,
+      said: (t?.said ?? 0) + r.said,
+    });
+    for (const r of data?.priced ?? []) {
+      byMarket.set(r.market, bump(byMarket.get(r.market), r));
+      const bands = byBand.get(r.market) ?? new Map<number, Tally>();
+      bands.set(r.band, bump(bands.get(r.band), r));
+      byBand.set(r.market, bands);
+      all.set(r.band, bump(all.get(r.band), r));
+    }
+    const total = [...byMarket.values()].reduce((t, m) => bump(t, m), { n: 0, hits: 0, said: 0 });
+    return { byMarket, byBand, all, total };
+  }, [data]);
+  const [scope, setScope] = useState<"priced" | "picks">("priced");
+
   const liveTotal = [...live.byMarket.values()].reduce(
     (s, m) => ({
       n: s.n + m.n,
@@ -267,22 +289,67 @@ export function SimAnalyticsView({ league }: { league: SimPropsLeague }) {
             }
           />
           <Stat label="Waiting on games" value={tracked.pending.toLocaleString()} />
-          <Stat label="Markets tracked" value={`${markets.length}`} />
+          <Stat label="Player-lines graded" value={priced.total.n.toLocaleString()} />
         </StatBar>
       }
     >
       <section className="border border-border bg-card">
         <div className="border-b border-border px-5 py-4 sm:px-6">
-          <h2 className="font-display text-2xl">The simulation boards&apos; picks</h2>
+          <h2 className="font-display text-2xl">How the board&apos;s numbers held up</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Each game&apos;s three likeliest players in every market, written down the morning of
-            the game and graded from the box score the morning after. Every market pooled — read a
-            row as a sentence: of the picks priced at 70–80%, how many came in?
+            Every market pooled. &ldquo;Every player priced&rdquo; grades each player the board put
+            a number on, at every line, from the simulation stored before the game against the box
+            score. &ldquo;Top three picks&rdquo; is each game&apos;s three likeliest players per
+            market, the picks written down that morning. Read a row as a sentence: of the players
+            priced at 70–80%, how many did it?
           </p>
+          <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Which players">
+            {(
+              [
+                ["priced", "Every player priced"],
+                ["picks", "Top three picks"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={scope === k}
+                onClick={() => setScope(k)}
+                className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest ${
+                  scope === k
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="px-5 py-5 sm:px-6">
           {isLoading ? (
             <div className="h-40 animate-pulse bg-secondary/40" />
+          ) : scope === "priced" ? (
+            priced.total.n ? (
+              <>
+                <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
+                  {priced.total.n.toLocaleString()} player-lines graded: did it{" "}
+                  {pct(priced.total.hits / priced.total.n, 1)} of the time; the board said{" "}
+                  {pct(priced.total.said / priced.total.n, 1)}.
+                </p>
+                <CalibrationTable
+                  rows={bandRows([...priced.all.entries()].map(([band, v]) => ({ band, ...v })))}
+                  unit="player-lines"
+                  verb="did it"
+                />
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nothing graded yet — each simulated game&apos;s players are graded at every line the
+                morning after it finishes.
+              </p>
+            )
           ) : liveTotal.n ? (
             <CalibrationTable
               rows={bandRows([...live.all.entries()].map(([band, v]) => ({ band, ...v })))}
@@ -322,11 +389,13 @@ export function SimAnalyticsView({ league }: { league: SimPropsLeague }) {
 
       <section className="mt-8 border border-border bg-card">
         <div className="border-b border-border px-5 py-4 sm:px-6">
-          <h2 className="font-display text-2xl">Market by market</h2>
+          <h2 className="font-display text-2xl">Line by line</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            The simulation picks graded so far in each market, and how the ones priced in each band
-            did. Small samples read as counts (&ldquo;3 of 4&rdquo;) — a market needs dozens of
-            graded picks before its percentages mean much.
+            Every line on the boards — 40+, 50+, 60+, 75+ receiving yards and so on — graded on
+            every player the board priced: how often they did it against what the board said, and
+            how the ones it priced in each band did. The last columns are the top three picks alone.
+            Small samples read as counts (&ldquo;3 of 4&rdquo;) — a line needs dozens of players
+            before its percentages mean much. Tap a line for its tables.
           </p>
           <BoardTabs boards={boards} board={board} setBoard={setBoard} />
         </div>
@@ -334,15 +403,16 @@ export function SimAnalyticsView({ league }: { league: SimPropsLeague }) {
           <table className="w-full min-w-[760px] border-collapse font-mono text-[11px]">
             <thead>
               <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
-                <th className="px-5 py-2 font-normal sm:px-6">Market</th>
-                <th className="py-2 pr-3 text-right font-normal">Graded</th>
-                <th className="py-2 pr-3 text-right font-normal">Came in (said)</th>
+                <th className="px-5 py-2 font-normal sm:px-6">Line</th>
+                <th className="py-2 pr-3 text-right font-normal">Players priced</th>
+                <th className="py-2 pr-3 text-right font-normal">Did it (said)</th>
                 {HIGH_BANDS.map((b) => (
                   <th key={b} className="py-2 pr-3 text-right font-normal">
                     Said {b * 10}
                     {b === 9 ? "+" : `–${b * 10 + 10}`}%
                   </th>
                 ))}
+                <th className="py-2 pr-3 text-right font-normal">Top picks: came in (said)</th>
                 <th className="py-2 pr-5 text-right font-normal sm:pr-6">Waiting</th>
               </tr>
             </thead>
@@ -354,6 +424,8 @@ export function SimAnalyticsView({ league }: { league: SimPropsLeague }) {
                   boardLabel={b.label}
                   live={live.byMarket.get(marketSlug(league, m.key))}
                   liveBands={live.byBand.get(marketSlug(league, m.key))}
+                  priced={priced.byMarket.get(marketSlug(league, m.key))}
+                  pricedBands={priced.byBand.get(marketSlug(league, m.key))}
                 />
               ))}
             </tbody>
@@ -481,23 +553,28 @@ function TrackedRow({
   boardLabel,
   live,
   liveBands,
+  priced,
+  pricedBands,
 }: {
   market: Market;
   boardLabel: string;
   live?: Live;
   liveBands?: Map<number, Live>;
+  priced?: Tally;
+  pricedBands?: Map<number, Tally>;
 }) {
   const [open, setOpen] = useState(false);
+  const any = !!(live?.n || priced?.n);
   return (
     <Fragment>
       <tr
-        className={`border-b border-border/50 ${live?.n ? "cursor-pointer hover:bg-secondary/30" : ""}`}
-        onClick={() => live?.n && setOpen(!open)}
-        aria-expanded={live?.n ? open : undefined}
+        className={`border-b border-border/50 ${any ? "cursor-pointer hover:bg-secondary/30" : ""}`}
+        onClick={() => any && setOpen(!open)}
+        aria-expanded={any ? open : undefined}
       >
         <td className="px-5 py-2.5 sm:px-6">
           <div className="normal-case text-foreground">
-            {live?.n ? (open ? "▾ " : "▸ ") : ""}
+            {any ? (open ? "▾ " : "▸ ") : ""}
             {market.group && !market.label.includes(market.group)
               ? `${market.group} ${market.short}`
               : market.label}
@@ -506,7 +583,27 @@ function TrackedRow({
             {boardLabel}
           </div>
         </td>
-        <td className="py-2.5 pr-3 text-right tabular-nums">{live?.n ? live.n : "—"}</td>
+        <td className="py-2.5 pr-3 text-right tabular-nums">
+          {priced?.n ? priced.n.toLocaleString() : "—"}
+        </td>
+        <td className="py-2.5 pr-3 text-right tabular-nums">
+          {priced?.n ? (
+            <>
+              {share(priced.hits, priced.n)}{" "}
+              <span className="text-muted-foreground">({pct(priced.said / priced.n)})</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </td>
+        {HIGH_BANDS.map((k) => {
+          const b = pricedBands?.get(k);
+          return (
+            <td key={k} className="py-2.5 pr-3 text-right tabular-nums">
+              {b?.n ? share(b.hits, b.n) : <span className="text-muted-foreground">—</span>}
+            </td>
+          );
+        })}
         <td className="py-2.5 pr-3 text-right tabular-nums">
           {live?.n ? (
             <>
@@ -517,30 +614,59 @@ function TrackedRow({
             <span className="text-muted-foreground">—</span>
           )}
         </td>
-        {HIGH_BANDS.map((k) => {
-          const b = liveBands?.get(k);
-          return (
-            <td key={k} className="py-2.5 pr-3 text-right tabular-nums">
-              {b?.n ? share(b.hits, b.n) : <span className="text-muted-foreground">—</span>}
-            </td>
-          );
-        })}
         <td className="py-2.5 pr-5 text-right tabular-nums text-muted-foreground sm:pr-6">
           {live?.pending || "—"}
         </td>
       </tr>
-      {open && live?.n && liveBands ? (
+      {open && any ? (
         <tr className="border-b border-border/50 bg-background/40">
-          <td colSpan={9} className="px-5 py-5 sm:px-6">
-            <p className="mb-3 font-sans text-xs normal-case text-muted-foreground">
-              {live.n} graded, {live.voids} void (did not play), {live.pending} waiting. Came in{" "}
-              {pct(live.hits / live.n, 1)}; the board said {pct(live.said / live.n, 1)}.
-            </p>
-            <CalibrationTable
-              rows={bandRows([...liveBands.entries()].map(([band, v]) => ({ band, ...v })))}
-              unit="picks"
-              verb="came in"
-            />
+          <td colSpan={10} className="px-5 py-5 sm:px-6">
+            <div className="grid gap-8 lg:grid-cols-2">
+              <div>
+                <h3 className="mb-1 font-display text-lg normal-case">Every player priced</h3>
+                {priced?.n && pricedBands ? (
+                  <>
+                    <p className="mb-3 font-sans text-xs normal-case text-muted-foreground">
+                      {priced.n} players priced, {priced.hits} did it (
+                      {pct(priced.hits / priced.n, 1)}
+                      ); the board said {pct(priced.said / priced.n, 1)}.
+                    </p>
+                    <CalibrationTable
+                      rows={bandRows(
+                        [...pricedBands.entries()].map(([band, v]) => ({ band, ...v })),
+                      )}
+                      unit="players"
+                      verb="did it"
+                    />
+                  </>
+                ) : (
+                  <p className="font-sans text-xs normal-case text-muted-foreground">
+                    Nothing graded yet.
+                  </p>
+                )}
+              </div>
+              <div>
+                <h3 className="mb-1 font-display text-lg normal-case">Top three picks</h3>
+                {live?.n && liveBands ? (
+                  <>
+                    <p className="mb-3 font-sans text-xs normal-case text-muted-foreground">
+                      {live.n} graded, {live.voids} void (did not play), {live.pending} waiting.
+                      Came in {pct(live.hits / live.n, 1)}; the board said{" "}
+                      {pct(live.said / live.n, 1)}.
+                    </p>
+                    <CalibrationTable
+                      rows={bandRows([...liveBands.entries()].map(([band, v]) => ({ band, ...v })))}
+                      unit="picks"
+                      verb="came in"
+                    />
+                  </>
+                ) : (
+                  <p className="font-sans text-xs normal-case text-muted-foreground">
+                    {live?.pending ? `${live.pending} picks waiting on their games.` : "None yet."}
+                  </p>
+                )}
+              </div>
+            </div>
           </td>
         </tr>
       ) : null}
