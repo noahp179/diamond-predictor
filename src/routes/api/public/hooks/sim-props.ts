@@ -10,7 +10,7 @@ import {
 } from "@/lib/sim-props.server";
 
 /**
- * Plays one slot of today's games up to 100,000 times each and stores every
+ * Plays one slot of today's games 10,000 times each and stores every
  * player's chances in sim_props, for the simulation-driven prop boards.
  *
  *   GET /api/public/hooks/sim-props?league=nba&slot=0

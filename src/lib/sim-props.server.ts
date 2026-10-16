@@ -3,15 +3,15 @@
  *
  * NBA points, NHL points / goals / first goal, NFL and college touchdowns and
  * first touchdown: each comes from the site's own game simulator, playing
- * every game on the slate up to 100,000 times and reading off each player's
+ * every game on the slate 10,000 times and reading off each player's
  * chance of reaching each line. The backtests (research/player-props) chose
  * this, against season averages, fitted models and blends, on seasons the
  * simulator never saw; their calibration maps (sim-props-calibration.json)
  * turn the simulator's raw share into a percentage that has actually come in
  * that often.
  *
- * A hundred thousand plays of a game takes about a minute of computing, so it
- * cannot happen on a page load. Scheduled jobs (/api/public/hooks/sim-props,
+ * Ten thousand plays of a game take a few seconds of computing — too long for
+ * a page load across a whole slate. Scheduled jobs (/api/public/hooks/sim-props,
  * one per "slot" of games) play the day's games a few at a time within a time
  * budget and store the result in sim_props; the boards read it from there.
  */
@@ -49,20 +49,23 @@ const reader = () => supabase as unknown as AnyTable;
 export type { SimPlayer, SimPropsLeague };
 export const SIM_VERSION = "sim-v1";
 
-/** The most plays per game, and how much of a job's time one slot may use. */
-export const TARGET_RUNS = 100_000;
+/** Plays per game. 10,000 rather than 100,000: replayed on 66 NBA games
+ *  (research/player-props/runs_study.py), a player's number at 10,000 sat
+ *  0.2-0.3 points from the 100,000-play one, the error score was the same to
+ *  four decimals and the top three matched in 98-100% of games — and a tenth
+ *  of the computing keeps the morning jobs inside the hosting plan's monthly
+ *  CPU allowance (Vercel Hobby: 4 CPU-hours). */
+export const TARGET_RUNS = 10_000;
 const CHUNK = 2_000;
 /** Picks recorded per market per game: the game's three likeliest players. */
 const PICKS_PER_GAME = 3;
 
 /** Scheduled slots per league (vercel.json has one cron per slot). The day's
- *  games are spread evenly over all of them (see slotGames), so a quiet night
- *  gives each game a whole job and a busy one shares. 100,000 plays take about
- *  a minute a game for basketball and football and a little over two for
- *  hockey, so a two-game hockey slot lands just under the full count. College
- *  takes about 35 seconds a game: a 52-game Saturday over 10 slots is five or
- *  six games a slot, inside the budget; a busier one gets fewer plays a game —
- *  the time budget decides, and the row records it. */
+ *  games are spread evenly over all of them (see slotGames). 10,000 plays take
+ *  about 5 seconds a game for basketball and football and 15 for hockey, so
+ *  every slot finishes well inside its budget; the slots mostly spread the
+ *  ESPN fetches — a 52-game college Saturday over 10 slots is five or six
+ *  games a slot. */
 export const SLOTS: Record<SimPropsLeague, number> = { nba: 5, nhl: 6, nfl: 6, cfb: 10, mlb: 4 };
 
 export type SimGameRow = {

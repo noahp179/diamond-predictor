@@ -21,8 +21,8 @@ import {
 import { getSimMatchup } from "@/lib/sim/sim.functions";
 
 /**
- * A simulation-driven prop board: every game on the date played up to
- * 100,000 times by the site's simulator, and the players ranked by how often
+ * A simulation-driven prop board: every game on the date played 10,000
+ * times by the site's simulator, and the players ranked by how often
  * they reached the line — corrected by the calibration map the backtest
  * learned, so that 60% on this page has meant 6 in 10.
  *
@@ -94,8 +94,10 @@ type RunLine = {
   mean_abs_diff_1k: number;
   mean_abs_diff_10k: number;
   brier_1k: number;
+  brier_10k: number;
   brier_100k: number;
   top3_same_1k: number;
+  top3_same_10k: number;
 };
 const RUNS = (backtest as unknown as { runs?: Record<string, { games: number; lines: RunLine[] }> })
   .runs;
@@ -213,7 +215,7 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
       current="props"
       eyebrow={`Diamond Edge · ${LEAGUE_NAME[league]} ${def.label}`}
       title={`${def.label}: who's most likely`}
-      blurb={`Every ${SPORT_WORD[league]} on the slate is played up to 100,000 times by the site's simulator — ${BUILT_FROM[league]}. A player's percentage is how often he ${market.phrase} across those plays, corrected by what last season showed those percentages really mean.`}
+      blurb={`Every ${SPORT_WORD[league]} on the slate is played 10,000 times by the site's simulator — ${BUILT_FROM[league]}. A player's percentage is how often he ${market.phrase} across those plays, corrected by what last season showed those percentages really mean.`}
       date={date}
       onDateChange={(d) => {
         setDate(d);
@@ -308,7 +310,7 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-primary/40 bg-primary/10 px-5 py-4 text-sm">
           <span>
             {pending.length} {pending.length === 1 ? "game hasn't" : "games haven't"} been simulated
-            yet — the morning runs play each game 100,000 times around {RUN_TIME[league]} Eastern.
+            yet — the morning runs play each game 10,000 times around {RUN_TIME[league]} Eastern.
             {running && (
               <span className="ml-2 font-mono text-xs text-muted-foreground">
                 Playing {running.game}: {running.done.toLocaleString()} /{" "}
@@ -446,24 +448,24 @@ function HowItWorks({
           plays each game {PLAY_UNIT[league]} from every player's season numbers — blended with last
           season early on, and pulled toward the league average for anyone with little playing time
           — against tonight's opponent, with{" "}
-          {league === "mlb" ? "the day's lineup" : "the injury report"} applied. It plays it up to
-          100,000 times.
+          {league === "mlb" ? "the day's lineup" : "the injury report"} applied. It plays it 10,000
+          times.
         </p>
         <p>
           <strong className="text-foreground">2. Count.</strong> If a player {market.phrase} in
-          61,000 of 100,000 plays, the simulator says 61%. With 100,000 plays that count is good to
-          about a quarter of a point; the uncertainty that matters is the simulator's, not the
-          counting.
+          6,100 of 10,000 plays, the simulator says 61%. With 10,000 plays that count is good to
+          about a point; the uncertainty that matters is the simulator's, not the counting.
         </p>
         {run && runStudy && (
           <p>
-            <strong className="text-foreground">Why 100,000.</strong> We replayed {runStudy.games}{" "}
-            of last season's games at 1,000, 10,000 and 100,000 plays. At 1,000 a player's number
-            sat {(run.mean_abs_diff_1k * 100).toFixed(1)} points from the 100,000-play number on
-            average, and {pct(1 - run.top3_same_1k)} of each game's top three changed; at 10,000 it
-            sat {(run.mean_abs_diff_10k * 100).toFixed(1)} points away. The extra plays sharpen the
-            numbers, not the order: the error score moved from {run.brier_1k.toFixed(4)} to{" "}
-            {run.brier_100k.toFixed(4)}.
+            <strong className="text-foreground">Why 10,000.</strong> We replayed {runStudy.games} of
+            last season's games at 1,000, 10,000 and 100,000 plays. At 10,000 a player's number sat{" "}
+            {(run.mean_abs_diff_10k * 100).toFixed(1)} points from the 100,000-play number on
+            average, and {pct(1 - run.top3_same_10k)} of each game's top three changed (at 1,000:{" "}
+            {(run.mean_abs_diff_1k * 100).toFixed(1)} points and {pct(1 - run.top3_same_1k)}). The
+            error score was {run.brier_10k.toFixed(4)} at 10,000 plays and{" "}
+            {run.brier_100k.toFixed(4)} at 100,000: ten times the plays would not make the board
+            more accurate.
           </p>
         )}
         {(market.key !== "first" || bt?.chosen === "sim_cal") && bt?.chosen !== "sim" ? (

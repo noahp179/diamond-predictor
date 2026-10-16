@@ -592,7 +592,7 @@ export function rawOf(pl: SimPlayer, market: string): number {
 }
 
 /** The number the board shows: raw, then calibrated where a map exists. A
- *  player the simulator never saw do it in 100,000 games is not priced at all —
+ *  player the simulator never saw do it in any of its plays is not priced at all —
  *  the map's floor is for players with some role in the market, not for a
  *  receiver's carries or a defenceman's saves. */
 export function probOf(league: SimPropsLeague, pl: SimPlayer, market: string): number {
