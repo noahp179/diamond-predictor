@@ -25,7 +25,7 @@ export const Route = createFileRoute("/mlb/props")({
       {
         name: "description",
         content:
-          "Who is most likely to get a hit, homer, drive in a run, steal a base, strike out 6 or go 6 innings tonight — every game simulated up to 100,000 times — plus the logistic prop models, 2+ total bases, parlays and team stacks, each tracked against what actually happened.",
+          "Who is most likely to get a hit, homer, drive in a run, steal a base, strike out 6 or go 6 innings tonight — every game simulated 10,000 times — plus the logistic prop models, 2+ total bases, parlays and team stacks, each tracked against what actually happened.",
       },
     ],
   }),

@@ -7,7 +7,7 @@ import { boardOf } from "@/lib/props-boards";
 
 /**
  * NBA Props — points, rebounds, assists, threes, the combos, double-doubles,
- * steals and blocks, from every game played up to 100,000 times by the site's
+ * steals and blocks, from every game played 10,000 times by the site's
  * simulator; and Analytics, every market's record at each confidence level.
  */
 export const Route = createFileRoute("/nba/props")({
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/nba/props")({
       {
         name: "description",
         content:
-          "Who is most likely to reach every common NBA prop line tonight — points, rebounds, assists, threes, PRA and the other combos, double-doubles, steals and blocks — every game simulated up to 100,000 times, calibrated and backtested on last season.",
+          "Who is most likely to reach every common NBA prop line tonight — points, rebounds, assists, threes, PRA and the other combos, double-doubles, steals and blocks — every game simulated 10,000 times, calibrated and backtested on last season.",
       },
     ],
   }),
