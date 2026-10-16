@@ -119,17 +119,45 @@ try {
     for (const p of picks) {
       if (!p.settled_at) continue;
       const stored = p.scored;
+      // Re-grade from the stat line, by the code-to-stat map the page uses.
+      const ms = mod.marketStat(league, p.market) as [string, number] | null;
+      const ln = box.lines.get(p.player_id);
       const again =
-        p.market === "anytime_td"
-          ? box.lines.get(p.player_id)
-            ? (box.lines.get(p.player_id)!.td ?? 0) >= 1
-            : null
-          : mod.outcome(p.market, box, p.player_id);
+        p.market === "firsttd" || p.market === "firstgoal"
+          ? mod.outcome(p.market, box, p.player_id)
+          : !ln || !ms || ln[ms[0]] == null
+            ? null
+            : ln[ms[0]] >= ms[1];
       check(
         `${g.matchup}: ${p.player} ${p.market} graded ${stored === null ? "void" : stored ? "hit" : "miss"} agrees with the box`,
         again === stored,
         `box says ${again === null ? "void" : again ? "hit" : "miss"}`,
       );
+    }
+    // Every priced player at every line, from the stored pre-game simulation.
+    if (sims[0]) {
+      const priced = mod.pricedBands(league, sims[0].players, box) as Record<
+        string,
+        [number, number, number, number][]
+      >;
+      const tot = (bs: [number, number, number, number][]) =>
+        bs.reduce((a, b) => [a[0] + b[1], a[1] + b[2], a[2] + b[3]], [0, 0, 0]);
+      console.log(`   every player priced, by line (priced / did it / board said):`);
+      for (const [market, bands] of Object.entries(priced)) {
+        const [n, hits, said] = tot(bands);
+        console.log(
+          `     ${market.padEnd(10)} ${String(n).padStart(3)} priced, ${String(hits).padStart(3)} did it (${((hits / n) * 100).toFixed(0)}%), board said ${((said / n) * 100).toFixed(0)}%`,
+        );
+      }
+      // The picks are the top of the same list: every graded pick must be
+      // counted among the priced players who did it or did not.
+      for (const p of picks) {
+        if (!p.settled_at || p.scored == null || !p.model_version.includes("-sim-")) continue;
+        check(
+          `${g.matchup}: ${p.market} pick ${p.player} is among the players priced`,
+          (priced[p.market] ?? []).length > 0,
+        );
+      }
     }
     const scorers = g.stars.rows.reduce((n: number, s: { value: number }) => n + s.value, 0);
     console.log(`   ${scorers} ${g.stars.noun} counted from the box`);

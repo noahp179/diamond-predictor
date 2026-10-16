@@ -541,13 +541,17 @@ type Curve = { x: number[]; y: number[] };
 const CAL = calibration as unknown as { curves: Record<string, Record<string, Curve>> };
 
 /** The backtest's calibration map for a market: simulator share in, the share
- *  that actually came in out. Linear between knots, flat beyond the ends. A
- *  market without a map (first scorer) is shown as the simulator has it. */
+ *  that actually came in out. Linear between knots, flat above the top one,
+ *  and below the lowest knot scaled down to zero — the map was fitted on the
+ *  players the simulator gave a real chance, and holding its bottom value flat
+ *  under them priced a defenceman at 29% for 20 saves and a running back at
+ *  20% for two touchdown passes. A market without a map (first scorer) is
+ *  shown as the simulator has it. */
 export function calibrate(league: SimPropsLeague, market: string, p: number): number {
   const c = CAL.curves[league]?.[market];
   if (!c || !c.x.length) return p;
   const { x, y } = c;
-  if (p <= x[0]) return y[0];
+  if (p <= x[0]) return x[0] > 0 ? (y[0] * Math.max(0, p)) / x[0] : y[0];
   if (p >= x[x.length - 1]) return y[y.length - 1];
   let lo = 0;
   let hi = x.length - 1;
@@ -575,9 +579,13 @@ export function rawOf(pl: SimPlayer, market: string): number {
   return pl.p[key]?.[Number(i)] ?? 0;
 }
 
-/** The number the board shows: raw, then calibrated where a map exists. */
+/** The number the board shows: raw, then calibrated where a map exists. A
+ *  player the simulator never saw do it in 100,000 games is not priced at all —
+ *  the map's floor is for players with some role in the market, not for a
+ *  receiver's carries or a defenceman's saves. */
 export function probOf(league: SimPropsLeague, pl: SimPlayer, market: string): number {
   const raw = rawOf(pl, market);
+  if (!(raw > 0)) return 0;
   return market === "first" ? raw : calibrate(league, market, raw);
 }
 

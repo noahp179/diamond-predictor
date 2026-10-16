@@ -419,6 +419,18 @@ export async function saveResult(
     team: box.who.get(id)?.team ?? "",
     stats,
   }));
+  // Every player the board priced, graded at every line — only from a
+  // simulation stored before the game started, so nothing after the fact.
+  const { data: sim } = await db
+    .from("sim_props")
+    .select("players, generated_at, start_time")
+    .eq("league", league)
+    .eq("event_id", eventId)
+    .maybeSingle();
+  const priced =
+    sim && (!sim.start_time || String(sim.generated_at) <= String(sim.start_time))
+      ? pricedBands(league, sim.players as SimPlayer[], box)
+      : null;
   const { error } = await db.from("game_results").upsert(
     {
       league,
@@ -428,6 +440,7 @@ export async function saveResult(
       final_score: box.score,
       players,
       first_scorer: box.first,
+      priced,
       box_url: boxUrl(league, eventId),
       source: "espn",
       fetched_at: new Date().toISOString(),
@@ -436,6 +449,76 @@ export async function saveResult(
   );
   if (error) console.error(`[sim-props] result ${league} ${eventId}:`, error.message);
   return !error;
+}
+
+/** A priced-and-graded tally: [band, priced, did it, sum of the board's numbers]. */
+export type PricedBand = [number, number, number, number];
+
+/**
+ * Every player a game's simulation priced, at every line its boards show,
+ * against the box score: per market and ten-point band of the board's number
+ * (as the board shows it, calibrated where it is), how many were priced there,
+ * how many did it and what the board said in sum. Players who did not play
+ * are left out (a void), as are those the board gave no real chance (under
+ * half a percent) — the linemen and backup goalies who would only pad the
+ * bottom band.
+ */
+export function pricedBands(
+  league: SimPropsLeague,
+  sim: SimPlayer[],
+  box: Box,
+): Record<string, PricedBand[]> {
+  const out: Record<string, PricedBand[]> = {};
+  for (const m of simMarkets(league)) {
+    const slug = marketSlug(league, m.key);
+    const bands = new Map<number, PricedBand>();
+    for (const pl of sim) {
+      const p = probOf(league, pl, m.key);
+      if (!(p >= 0.005)) continue;
+      const y = outcome(slug, box, String(pl.id));
+      if (y == null) continue;
+      const band = Math.min(9, Math.floor(p * 10));
+      const b = bands.get(band) ?? [band, 0, 0, 0];
+      b[1] += 1;
+      b[2] += y ? 1 : 0;
+      b[3] = Math.round((b[3] + p) * 1e4) / 1e4;
+      bands.set(band, b);
+    }
+    if (bands.size) out[slug] = [...bands.values()].sort((a, b) => a[0] - b[0]);
+  }
+  return out;
+}
+
+/** Every priced player at every line, summed over a league's stored games. */
+export async function readPricedBands(
+  league: SimPropsLeague,
+): Promise<{ market: string; band: number; n: number; hits: number; said: number }[]> {
+  const acc = new Map<string, { n: number; hits: number; said: number }>();
+  for (let from = 0; from < 20_000; from += 1000) {
+    const { data, error } = await reader()
+      .from("game_results")
+      .select("priced")
+      .eq("league", league)
+      .not("priced", "is", null)
+      .range(from, from + 999);
+    if (error) return [];
+    for (const r of (data ?? []) as { priced: Record<string, PricedBand[]> }[]) {
+      for (const [market, bands] of Object.entries(r.priced ?? {}))
+        for (const [band, n, hits, said] of bands) {
+          const k = `${market}|${band}`;
+          const a = acc.get(k) ?? { n: 0, hits: 0, said: 0 };
+          a.n += n;
+          a.hits += hits;
+          a.said += said;
+          acc.set(k, a);
+        }
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return [...acc.entries()].map(([k, v]) => {
+    const [market, band] = k.split("|");
+    return { market, band: Number(band), ...v };
+  });
 }
 
 /**
@@ -985,6 +1068,21 @@ const NFL_MODEL_STAT: [RegExp, string][] = [
 type StoredLine = { id: string; name: string; team: string; stats: Record<string, number> };
 
 /**
+ * The box-score stat and line a ledger market code settles on, whichever board
+ * wrote it: the simulation's "reyd60" and the logistic model's "recy60" are
+ * both 60+ receiving yards, "anytime_td" is 1+ touchdowns. Null for the
+ * first-scorer markets, which settle on who scored first.
+ */
+export function marketStat(league: SimPropsLeague, market: string): [string, number] | null {
+  if (market === "anytime_td") return ["td", 1];
+  const m = parseSlug(market);
+  if (!m) return null;
+  if (league === "nfl" || league === "cfb")
+    for (const [re, st] of NFL_MODEL_STAT) if (re.test(market)) return [st, m[1]];
+  return m;
+}
+
+/**
  * Tracked games, newest first, each with what happened next to what the board
  * said: the box score's touchdown / goal scorers (NBA: top scorers) with the
  * chance the board gave each before the game and where it ranked them, and
@@ -1109,9 +1207,7 @@ export function resultGames(
       }
       if (!ln) return "did not play";
       if (market === "anytime_td") return `${ln.stats.td ?? 0} ${star.noun}`;
-      let stat = parseSlug(market)?.[0] ?? null;
-      if (league === "nfl" || league === "cfb")
-        for (const [re, st] of NFL_MODEL_STAT) if (re.test(market)) stat = st;
+      const stat = marketStat(league, market)?.[0];
       if (!stat || ln.stats[stat] == null) return "—";
       const noun = statWords(league, stat)?.noun ?? stat;
       return `${ln.stats[stat]} ${noun}`;

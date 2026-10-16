@@ -15,6 +15,9 @@ import { todayET } from "./date";
 import type { SimPlayer } from "./sim-props-shared";
 import type { SeasonLedgerRow, SimBandRow } from "./sim-props.server";
 
+/** Every priced player at one line and band, summed over the stored games. */
+export type PricedRow = { market: string; band: number; n: number; hits: number; said: number };
+
 const League = z.enum(["nba", "nhl", "nfl", "cfb", "mlb"]);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -89,17 +92,29 @@ export const getSimAnalytics = createServerFn({ method: "GET" })
   .handler(
     async ({
       data,
-    }): Promise<{ rows: SimBandRow[]; note: string | null; season: SeasonLedgerRow[] }> => {
-      const { readSimBands, readSeasonLedger } = await import("./sim-props.server");
+    }): Promise<{
+      rows: SimBandRow[];
+      note: string | null;
+      season: SeasonLedgerRow[];
+      priced: PricedRow[];
+    }> => {
+      const { readSimBands, readSeasonLedger, readPricedBands } =
+        await import("./sim-props.server");
       try {
-        const [bands, season] = await Promise.all([
+        const [bands, season, priced] = await Promise.all([
           readSimBands(data.league),
           readSeasonLedger(data.league).catch(() => []),
+          readPricedBands(data.league).catch(() => []),
         ]);
-        return { ...bands, season };
+        return { ...bands, season, priced };
       } catch (err) {
         console.error(`[sim-props] analytics ${data.league}:`, err);
-        return { rows: [], note: "The live record could not be read just now.", season: [] };
+        return {
+          rows: [],
+          note: "The live record could not be read just now.",
+          season: [],
+          priced: [],
+        };
       }
     },
   );
