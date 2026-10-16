@@ -12,7 +12,9 @@ sim-props.server.ts) — the same thing sklearn's IsotonicRegression.predict
 does, so the numbers match the backtest's.
 
 Markets where the raw simulator was already the better-calibrated choice
-(the first-scorer markets) are left out, and the site shows the raw number.
+(the first-scorer markets, except college's) are left out, and the site
+shows the raw number. Leagues and keys this script does not fit (MLB's maps
+and playoff adjustment, from evaluate_mlb.py) are kept as they are.
 """
 
 from __future__ import annotations
@@ -103,7 +105,36 @@ def football(league: str) -> dict:
                 continue
             x.append(float(sp.get("td", 0.0)))
             y.append(1.0 if r["scored"] == "1" else 0.0)
-    return {"td:0": fit(np.array(x), np.array(y))}
+    xa, ya = np.array(x), np.array(y)
+    if league == "cfb":
+        # Fitted on the players the simulator gave some chance: the board
+        # prices no one else (probOf), and with the rest in, the bottom knot
+        # sat at 0% -> 7.7% — a floor under every player it barely priced
+        # (the candidates it never gave a touchdown scored 7.7% of the time).
+        xa, ya = xa[xa > 0], ya[xa > 0]
+    out = {"td:0": fit(xa, ya)}
+    if league == "cfb":
+        # College's first-scorer share is over-sure where NFL's is not: on
+        # 2025-26 its top pick a game said 17.7% and came in 14.4%; through
+        # this map (cross-fitted in evaluate_football.py) 14.2% and 15.1%.
+        import evaluate_football as EF
+
+        ftd = EF.first_td(league)
+        fx, fy = [], []
+        with open(os.path.join(FT, f"{league}_model_preds.csv")) as f:
+            for r in csv.DictReader(f):
+                eid = str(r["event_id"])
+                if r.get("candidate") != "1" or str(r.get("in_box", "1")) != "1" or eid not in ftd:
+                    continue
+                g = sims.get(eid)
+                sp = g["players"].get(str(r["player_id"])) if g else None
+                if sp is None:
+                    continue
+                fx.append(float(sp.get("first", 0.0)))
+                fy.append(1.0 if ftd[eid] == str(r["player_id"]) else 0.0)
+        fxa, fya = np.array(fx), np.array(fy)
+        out["first"] = fit(fxa[fxa > 0], fya[fxa > 0])
+    return out
 
 
 def main() -> None:
@@ -120,7 +151,12 @@ def main() -> None:
     # evaluate_nfl_props.py fitted on all their games, for the markets where
     # the calibrated simulator beat the raw one (the rest show it raw).
     extra = []
-    for league, name in (("nba", "cal_nba_markets.json"), ("nhl", "cal_nhl_markets.json"), ("nfl", "cal_nfl_props.json")):
+    for league, name in (
+        ("nba", "cal_nba_markets.json"),
+        ("nhl", "cal_nhl_markets.json"),
+        ("nfl", "cal_nfl_props.json"),
+        ("cfb", "cal_cfb_props.json"),
+    ):
         path = os.path.join(DATA, name)
         if os.path.exists(path):
             extra.append((league, json.load(open(path))))
@@ -141,7 +177,12 @@ def main() -> None:
                 "y": [round(float(v), 5) for v in y],
                 "n": int(c.get("n", 0)),
             }
+    # what other scripts merged in (MLB: evaluate_mlb.py) stays
+    old = json.load(open(OUT)) if os.path.exists(OUT) else {}
+    for league, maps in old.get("curves", {}).items():
+        curves.setdefault(league, maps)
     out = {
+        **old,
         "version": "sim-props-cal-v2",
         "note": "Isotonic maps, simulator share -> observed rate, fitted on every backtested season. Keys are market:lineIndex.",
         "curves": curves,

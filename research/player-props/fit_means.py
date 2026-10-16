@@ -13,7 +13,7 @@ against a sportsbook's line.
 For every stat on the boards: an isotonic map from the simulator's average to
 what those players actually averaged, fitted on every backtested game (NBA
 and NHL: 2024-25 and 2025-26, the same player-games evaluate_markets.py
-scores; NFL: 2025 and 2026 to date, players who appeared). Before/after on
+scores; NFL and college: 2025 and 2026 to date, players who appeared). Before/after on
 the held-out season is printed as mean absolute error.
 
 Writes data/cal_means.json: {league: {"mean:<stat>": {x, y, n}}}.
@@ -81,23 +81,24 @@ def main() -> None:
             y = np.array([r["line"]["sv"] for r in G])
             test = np.array([r["season"] == EM.TEST for r in G])
             put(out, "nhl", "sv", fit(x, y, test, "sv"))
-    print("nfl")
-    sims, games = EN.load_sims(), {g["id"]: g for g in EN.load_games()}
-    per: dict[str, list] = {}
-    for gid, s in sims.items():
-        g = games.get(gid)
-        if not g:
-            continue
-        for pid, sp in s["players"].items():
-            ln = g["lines"].get(pid)
-            if ln is None:
+    for league in ("nfl", "cfb"):
+        print(league)
+        sims, games = EN.load_sims(league), {g["id"]: g for g in EN.load_games(league)}
+        per: dict[str, list] = {}
+        for gid, s in sims.items():
+            g = games.get(gid)
+            if not g:
                 continue
-            for st, v in sp.get("props", {}).items():
-                if st in EN.STATS:
-                    per.setdefault(st, []).append((v["mean"], ln[st], g["season"] == 2026))
-    for st, v in per.items():
-        a = np.array(v, dtype=float)
-        put(out, "nfl", st, fit(a[:, 0], a[:, 1], a[:, 2] > 0, st))
+            for pid, sp in s["players"].items():
+                ln = g["lines"].get(pid)
+                if ln is None:
+                    continue
+                for st, v in sp.get("props", {}).items():
+                    if st in EN.STATS:
+                        per.setdefault(st, []).append((v["mean"], ln[st], g["season"] == 2026))
+        for st, v in per.items():
+            a = np.array(v, dtype=float)
+            put(out, league, st, fit(a[:, 0], a[:, 1], a[:, 2] > 0, st))
     with open(os.path.join(DATA, "cal_means.json"), "w") as f:
         json.dump(out, f)
 

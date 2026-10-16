@@ -1,13 +1,15 @@
 """
-evaluate_nfl_props.py — NFL yardage, catch and passing props: the simulator
-against the site's logistic prop models and a season-average baseline.
+evaluate_nfl_props.py — football yardage, catch and passing props (NFL and
+college): the simulator against a season-average baseline, and for the NFL
+the site's logistic prop models.
 
-    python3 research/player-props/evaluate_nfl_props.py
+    python3 research/player-props/evaluate_nfl_props.py [nfl|cfb]
 
 Games: every game of the 2025 season and 2026 to date that
 scripts/props-backtest-football.ts simulated (1,000 plays each, from what was
 known that morning). Outcomes come from the same ESPN summaries
-(research/football-td/data/raw/nfl).
+(research/football-td/data/raw/{league}). College is scored on the NFL's own
+markets: its boards are the NFL's, at the same lines.
 
 Who is scored, per market: every player the simulator priced for that stat
 (it prices a stat only for players it expects some of — research note in
@@ -26,10 +28,11 @@ Methods
   model    the site's shipped logistic prop model (nfl-props-model.json),
            reproduced by research/nfl-props/dump_shipped_preds.py, for the
            14 lines it prices — scored head-to-head on the rows both methods
-           price (its own eligibility rules, and the simulator's).
+           price (its own eligibility rules, and the simulator's). NFL only:
+           college has no logistic prop models.
 
-Writes research/player-props/results/nfl_props_backtest.json and
-data/cal_nfl_props.json (the live calibration knots).
+Writes research/player-props/results/{league}_props_backtest.json and
+data/cal_{league}_props.json (the live calibration knots).
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ import glob
 import gzip
 import json
 import os
+import sys
 from collections import defaultdict
 
 import numpy as np
@@ -47,7 +51,8 @@ import marketlib as L
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
-RAW = os.path.join(HERE, "..", "football-td", "data", "raw", "nfl")
+LEAGUE = sys.argv[1] if __name__ == "__main__" and len(sys.argv) > 1 else "nfl"
+assert LEAGUE in ("nfl", "cfb"), LEAGUE
 LOGIT = os.path.join(HERE, "..", "nfl-props", "data", "logistic_preds.csv")
 OUT = os.path.join(HERE, "results")
 
@@ -113,16 +118,17 @@ def read_game(path: str) -> dict | None:
     }
 
 
-def load_games() -> list[dict]:
-    games = [g for g in (read_game(p) for p in glob.glob(os.path.join(RAW, "*.json.gz"))) if g]
+def load_games(league: str = LEAGUE) -> list[dict]:
+    raw = os.path.join(HERE, "..", "football-td", "data", "raw", league)
+    games = [g for g in (read_game(p) for p in glob.glob(os.path.join(raw, "*.json.gz"))) if g]
     games.sort(key=lambda g: (g["date"], g["id"]))
     return games
 
 
-def load_sims() -> dict:
+def load_sims(league: str = LEAGUE) -> dict:
     out = {}
     for s in (2025, 2026):
-        p = os.path.join(DATA, f"sim_nfl_{s}.jsonl")
+        p = os.path.join(DATA, f"sim_{league}_{s}.jsonl")
         if os.path.exists(p):
             for line in open(p):
                 g = json.loads(line)
@@ -132,7 +138,7 @@ def load_sims() -> dict:
 
 def load_logit() -> dict:
     out = {}
-    if not os.path.exists(LOGIT):
+    if LEAGUE != "nfl" or not os.path.exists(LOGIT):
         return out
     with open(LOGIT) as f:
         for r in csv.DictReader(f):
@@ -145,12 +151,13 @@ def load_logit() -> dict:
 
 
 def main() -> None:
+    # college plays the NFL's boards at the same lines (PROPS.cfb is PROPS.nfl)
     markets = [m for m in json.load(open(os.path.join(DATA, "markets.json")))["nfl"] if m["idx"] is not None]
     markets = [m for m in markets if m["stat"] in STATS]
     sims = load_sims()
     logit = load_logit()
     games = load_games()
-    print(f"nfl: {len(games)} finished games read, {len(sims)} simulated, {len(logit)} logistic predictions")
+    print(f"{LEAGUE}: {len(games)} finished games read, {len(sims)} simulated, {len(logit)} logistic predictions")
 
     # walk: as-of season averages
     cur: dict[str, dict] = defaultdict(lambda: defaultdict(float))
@@ -194,7 +201,7 @@ def main() -> None:
                 cur[pid][s] += ln[s]
 
     print(f"  player-games with a simulation and an appearance: {len(rows)}")
-    res = {"league": "nfl", "seasons": "2025 + 2026 to date", "markets": {}, "head_to_head": {}}
+    res = {"league": LEAGUE, "seasons": "2025 + 2026 to date", "markets": {}, "head_to_head": {}}
     cal_out = {}
     for m in markets:
         stat, idx, slug = m["stat"], m["idx"], m["slug"]
@@ -260,9 +267,9 @@ def main() -> None:
         print(line)
 
     os.makedirs(OUT, exist_ok=True)
-    with open(os.path.join(OUT, "nfl_props_backtest.json"), "w") as f:
+    with open(os.path.join(OUT, f"{LEAGUE}_props_backtest.json"), "w") as f:
         json.dump(res, f, indent=1)
-    with open(os.path.join(DATA, "cal_nfl_props.json"), "w") as f:
+    with open(os.path.join(DATA, f"cal_{LEAGUE}_props.json"), "w") as f:
         json.dump(cal_out, f)
 
 

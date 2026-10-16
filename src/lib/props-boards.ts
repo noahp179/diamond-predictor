@@ -51,9 +51,15 @@ export const PROPS_BOARDS: Record<PropsSport, { key: string; label: string; hint
     { key: "analytics", label: "Analytics", hint: "every market's accuracy" },
   ],
   cfb: [
-    { key: "td-scorers", label: "TD scorers", hint: "one or two scorers a game" },
+    { key: "receiving", label: "Receiving", hint: "catches and receiving yards" },
+    { key: "rushing", label: "Rushing", hint: "rushing yards and carries" },
+    { key: "scrimmage", label: "Rush+Rec yards", hint: "yards from scrimmage" },
+    { key: "passing", label: "Passing", hint: "yards, TDs, completions" },
+    { key: "td-scorers", label: "TD scorers", hint: "who scores a touchdown" },
     { key: "first-td", label: "First TD", hint: "who scores the first touchdown" },
     { key: "parlays", label: "TD parlays", hint: "5 to 20-leg touchdown slips" },
+    { key: "td-model", label: "TD model", hint: "the touchdown model's one or two a game" },
+    { key: "analytics", label: "Analytics", hint: "every market's accuracy" },
   ],
 };
 

@@ -21,7 +21,7 @@ export const SIM_KEYS: Record<SimPropsLeague, string[]> = {
   nba: ["pts", "reb", "ast", "3pm", "pra", "pr", "pa", "ra", "dd", "stl", "blk", "stk"],
   nhl: ["pts", "g", "a", "sog", "sv"],
   nfl: ["td", "rec", "reyd", "ryd", "rry", "pyd", "ptd", "cmp", "car"],
-  cfb: ["td"],
+  cfb: ["td", "rec", "reyd", "ryd", "rry", "pyd", "ptd", "cmp", "car"],
   mlb: ["h", "tb", "hr", "r", "rbi", "hrr", "sb", "k", "outs", "er"],
 };
 
@@ -283,6 +283,67 @@ const FIRST: Record<"nhl" | "nfl", Market> = {
   },
 };
 
+/** Football's boards — the NFL's and college's are the same, at the same
+ *  lines (PROPS.cfb is PROPS.nfl). */
+const footballBoards = (league: "nfl" | "cfb"): BoardDef[] => [
+  {
+    key: "receiving",
+    label: "Receiving",
+    hint: "catches and receiving yards",
+    markets: [
+      ...ladder(league, "rec", [1, 2, 3, 4, 5], true),
+      ...ladder(league, "reyd", [1, 2, 3, 4, 5, 6, 7], true),
+    ],
+    open: "reyd:4",
+    unit: "picks",
+  },
+  {
+    key: "rushing",
+    label: "Rushing",
+    hint: "rushing yards and carries",
+    markets: [
+      ...ladder(league, "ryd", [1, 2, 3, 4, 5, 6, 7], true),
+      ...ladder(league, "car", [1, 2, 3, 4], true),
+    ],
+    open: "ryd:3",
+    unit: "picks",
+  },
+  {
+    key: "scrimmage",
+    label: "Rush+Rec yards",
+    hint: "yards from scrimmage",
+    markets: ladder(league, "rry", [1, 2, 3, 4, 5, 6]),
+    open: "rry:3",
+    unit: "picks",
+  },
+  {
+    key: "passing",
+    label: "Passing",
+    hint: "yards, TDs, completions",
+    markets: [
+      ...ladder(league, "pyd", [2, 3, 4, 5, 6], true),
+      ...ladder(league, "ptd", [0, 1, 2], true),
+      ...ladder(league, "cmp", [1, 2, 3, 4], true),
+    ],
+    open: "pyd:4",
+    unit: "picks",
+  },
+  {
+    key: "td-scorers",
+    label: "TD scorers",
+    hint: "who scores a touchdown",
+    markets: ladder(league, "td", [0]),
+    unit: "picks",
+  },
+  {
+    key: "first-td",
+    label: "First TD",
+    hint: "who scores the first touchdown",
+    markets: [FIRST.nfl],
+    unit: "picks",
+  },
+];
+
 export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
   nba: [
     {
@@ -396,67 +457,11 @@ export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
       unit: "picks",
     },
   ],
-  nfl: [
-    {
-      key: "receiving",
-      label: "Receiving",
-      hint: "catches and receiving yards",
-      markets: [
-        ...ladder("nfl", "rec", [1, 2, 3, 4, 5], true),
-        ...ladder("nfl", "reyd", [1, 2, 3, 4, 5, 6, 7], true),
-      ],
-      open: "reyd:4",
-      unit: "picks",
-    },
-    {
-      key: "rushing",
-      label: "Rushing",
-      hint: "rushing yards and carries",
-      markets: [
-        ...ladder("nfl", "ryd", [1, 2, 3, 4, 5, 6, 7], true),
-        ...ladder("nfl", "car", [1, 2, 3, 4], true),
-      ],
-      open: "ryd:3",
-      unit: "picks",
-    },
-    {
-      key: "scrimmage",
-      label: "Rush+Rec yards",
-      hint: "yards from scrimmage",
-      markets: ladder("nfl", "rry", [1, 2, 3, 4, 5, 6]),
-      open: "rry:3",
-      unit: "picks",
-    },
-    {
-      key: "passing",
-      label: "Passing",
-      hint: "yards, TDs, completions",
-      markets: [
-        ...ladder("nfl", "pyd", [2, 3, 4, 5, 6], true),
-        ...ladder("nfl", "ptd", [0, 1, 2], true),
-        ...ladder("nfl", "cmp", [1, 2, 3, 4], true),
-      ],
-      open: "pyd:4",
-      unit: "picks",
-    },
-    {
-      key: "td-scorers",
-      label: "TD scorers",
-      hint: "who scores a touchdown",
-      markets: ladder("nfl", "td", [0]),
-      unit: "picks",
-    },
-    {
-      key: "first-td",
-      label: "First TD",
-      hint: "who scores the first touchdown",
-      markets: [FIRST.nfl],
-      unit: "picks",
-    },
-  ],
-  // College stays on its touchdown model: on 2025-26 it beat the simulator
-  // for anytime and (split by share) for the first touchdown.
-  cfb: [],
+  nfl: footballBoards("nfl"),
+  // College on the simulator like the NFL (research/player-props
+  // evaluate_nfl_props.py cfb). Its touchdown model ranked anytime scorers
+  // better on 2025-26 and stays on the site as its own board.
+  cfb: footballBoards("cfb"),
   mlb: [
     {
       key: "hits",
@@ -552,8 +557,8 @@ const CAL = calibration as unknown as {
  *  and below the lowest knot scaled down to zero — the map was fitted on the
  *  players the simulator gave a real chance, and holding its bottom value flat
  *  under them priced a defenceman at 29% for 20 saves and a running back at
- *  20% for two touchdown passes. A market without a map (first scorer) is
- *  shown as the simulator has it. */
+ *  20% for two touchdown passes. A market without a map (the first scorer,
+ *  but for college's) is shown as the simulator has it. */
 export function calibrate(league: SimPropsLeague, market: string, p: number): number {
   const c = CAL.curves[league]?.[market];
   if (!c || !c.x.length) return p;
@@ -593,7 +598,7 @@ export function rawOf(pl: SimPlayer, market: string): number {
 export function probOf(league: SimPropsLeague, pl: SimPlayer, market: string): number {
   const raw = rawOf(pl, market);
   if (!(raw > 0)) return 0;
-  return market === "first" ? raw : calibrate(league, market, raw);
+  return calibrate(league, market, raw);
 }
 
 const round = (x: number, d = 5) => Math.round(x * 10 ** d) / 10 ** d;
@@ -670,7 +675,7 @@ export function simMarketLabel(league: SimPropsLeague, slug: string): string {
 /** Ledger code -> bet name for every simulation market (the NFL's "rec5" is
  *  "5+ catches" whichever model wrote it). */
 export const SIM_MARKET_LABELS: Record<string, string> = Object.fromEntries(
-  (["nba", "nhl", "nfl", "mlb"] as const).flatMap((lg) =>
+  (["nba", "nhl", "nfl", "cfb", "mlb"] as const).flatMap((lg) =>
     simMarkets(lg).map((m) => [marketSlug(lg, m.key), m.label]),
   ),
 );

@@ -60,11 +60,10 @@ const PICKS_PER_GAME = 3;
  *  gives each game a whole job and a busy one shares. 100,000 plays take about
  *  a minute a game for basketball and football and a little over two for
  *  hockey, so a two-game hockey slot lands just under the full count. College
- *  has no cron: its boards use the touchdown model, which beat the simulator
- *  in the backtest. Run by hand, a busy Saturday's ~60 games across 8 slots
- *  get fewer than 100,000 plays each; the time budget decides, and the row
- *  records it. */
-export const SLOTS: Record<SimPropsLeague, number> = { nba: 5, nhl: 6, nfl: 6, cfb: 8, mlb: 4 };
+ *  takes about 35 seconds a game: a 52-game Saturday over 10 slots is five or
+ *  six games a slot, inside the budget; a busier one gets fewer plays a game —
+ *  the time budget decides, and the row records it. */
+export const SLOTS: Record<SimPropsLeague, number> = { nba: 5, nhl: 6, nfl: 6, cfb: 10, mlb: 4 };
 
 export type SimGameRow = {
   league: SimPropsLeague;
@@ -1045,12 +1044,15 @@ const MODEL_NAME: Record<string, string> = {
   "nfl-td-pairrank-v1": "Previous TD model",
   "nfl-td-logistic-v1": "Earlier TD model",
   "nfl-props-logistic-v1": "Logistic prop models",
+  "cfb-td-extratrees-v1": "TD model",
+  "cfb-td-logistic-v1": "Earlier TD model",
   "mlb-props-logistic-v1": "Logistic prop models",
   "mlb-tb2-logistic-v1": "2+ bases model",
 };
 
 /** Bet names for the logistic prop models' market codes, per league. */
 async function modelLabelsFor(league: SimPropsLeague): Promise<Record<string, { label: string }>> {
+  if (league === "cfb") return {}; // the touchdown model's one market is named above
   if (league === "mlb") {
     const { default: m } = await import("./mlb-props-model.json");
     return {
