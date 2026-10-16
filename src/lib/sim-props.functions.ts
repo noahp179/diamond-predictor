@@ -18,7 +18,7 @@ import type { SeasonLedgerRow, SimBandRow } from "./sim-props.server";
 /** Every priced player at one line and band, summed over the stored games. */
 export type PricedRow = { market: string; band: number; n: number; hits: number; said: number };
 
-const League = z.enum(["nba", "nhl", "nfl", "cfb"]);
+const League = z.enum(["nba", "nhl", "nfl", "cfb", "mlb"]);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export type SimBoardGame = {
@@ -31,6 +31,8 @@ export type SimBoardGame = {
   runs: number;
   generatedAt: string | null;
   basis: string | null;
+  /** A playoff game: its numbers carry the league's playoff adjustment. */
+  playoff: boolean;
 };
 
 export type SimBoardData = {
@@ -67,6 +69,7 @@ export const getSimPropsBoard = createServerFn({ method: "GET" })
             runs: r?.runs ?? 0,
             generatedAt: r?.generated_at ?? null,
             basis: r?.basis ?? null,
+            playoff: g.playoff,
           };
         })
         .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));

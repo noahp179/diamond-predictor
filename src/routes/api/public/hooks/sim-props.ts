@@ -22,7 +22,7 @@ import {
  * other hooks — Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; an
  * unauthenticated GET only reports whether a run could write.
  */
-const LEAGUES = new Set<SimPropsLeague>(["nba", "nhl", "nfl", "cfb"]);
+const LEAGUES = new Set<SimPropsLeague>(["nba", "nhl", "nfl", "cfb", "mlb"]);
 
 function authorised(request: Request): boolean {
   const expected = process.env.CRON_SECRET;

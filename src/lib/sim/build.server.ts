@@ -1113,6 +1113,52 @@ export function assembleMatchup(
   throw new Error(`assembleMatchup: ${league as string}`);
 }
 
+/**
+ * A baseball matchup from a season's numbers, two teams' metadata and
+ * rosters, the game's context and the probable starters. Pure, like
+ * assembleMatchup: the MLB props backtest (scripts/props-backtest-mlb.ts)
+ * hands it a season rebuilt as of any morning. The park comes from the home
+ * club's abbreviation (ESPN's spelling).
+ */
+export function assembleMlb(
+  se: Season,
+  homeMeta: TeamMeta,
+  awayMeta: TeamMeta,
+  homeRoster: RosterEntry[],
+  awayRoster: RosterEntry[],
+  ctx: MatchupContext,
+  probable?: { home?: string; away?: string },
+): Extract<SimMatchup, { league: "mlb" }> {
+  const lg = mlbEnv(se);
+  const isPitcher = (e: RosterEntry) => e.pos === "SP" || e.pos === "RP" || e.pos === "P";
+  const mk = (meta: TeamMeta, ros: RosterEntry[], probable?: string): MlbTeam => {
+    const batters: MlbBatter[] = [];
+    const pitchers: MlbPitcher[] = [];
+    for (const e of ros) {
+      const s = pooled(se, e.id);
+      const pitched = mlbPitch(s).bf;
+      const batted = mlbPa(s).pa;
+      if (isPitcher(e) || pitched > 60) pitchers.push(mlbPitcher(se, e, lg));
+      if (!isPitcher(e) || batted > 60) batters.push(mlbBatter(se, e, lg));
+    }
+    batters.sort((a, b) => b.pa - a.pa);
+    pitchers.sort((a, b) => b.starts - a.starts || b.ip - a.ip);
+    return {
+      ...teamInfo(meta, teamRates(se, meta.id, lg.env.rpg), se),
+      batters,
+      pitchers,
+      probable,
+    };
+  };
+  return {
+    league: "mlb",
+    home: mk(homeMeta, homeRoster, probable?.home),
+    away: mk(awayMeta, awayRoster, probable?.away),
+    env: lg.env,
+    ctx: { ...ctx, park: PARK[homeMeta.abbr] ?? 100 },
+  };
+}
+
 export type MatchupRequest = {
   league: SimLeague;
   homeId: string;
@@ -1171,37 +1217,8 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
       game?.probable,
     );
 
-  if (league === "mlb") {
-    const lg = mlbEnv(se);
-    const isPitcher = (e: RosterEntry) => e.pos === "SP" || e.pos === "RP" || e.pos === "P";
-    const mk = (meta: TeamMeta, ros: RosterEntry[], probable?: string): MlbTeam => {
-      const batters: MlbBatter[] = [];
-      const pitchers: MlbPitcher[] = [];
-      for (const e of ros) {
-        const s = pooled(se, e.id);
-        const pitched = mlbPitch(s).bf;
-        const batted = mlbPa(s).pa;
-        if (isPitcher(e) || pitched > 60) pitchers.push(mlbPitcher(se, e, lg));
-        if (!isPitcher(e) || batted > 60) batters.push(mlbBatter(se, e, lg));
-      }
-      batters.sort((a, b) => b.pa - a.pa);
-      pitchers.sort((a, b) => b.starts - a.starts || b.ip - a.ip);
-      return {
-        ...teamInfo(meta, teamRates(se, meta.id, lg.env.rpg), se),
-        batters,
-        pitchers,
-        probable,
-      };
-    };
-    ctx.park = PARK[homeMeta.abbr] ?? 100;
-    return {
-      league,
-      home: mk(homeMeta, homeRoster, game?.probable.home),
-      away: mk(awayMeta, awayRoster, game?.probable.away),
-      env: lg.env,
-      ctx,
-    };
-  }
+  if (league === "mlb")
+    return assembleMlb(se, homeMeta, awayMeta, homeRoster, awayRoster, ctx, game?.probable);
 
   const [fse, ratings] =
     league === "cfb"

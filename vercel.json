@@ -25,6 +25,26 @@
       "schedule": "19 9 * * *"
     },
     {
+      "path": "/api/public/hooks/sim-props?league=mlb&settle=1",
+      "schedule": "26 9 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=mlb&slot=0",
+      "schedule": "5 14 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=mlb&slot=1",
+      "schedule": "12 14 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=mlb&slot=2",
+      "schedule": "19 14 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=mlb&slot=3",
+      "schedule": "26 14 * * *"
+    },
+    {
       "path": "/api/public/hooks/sim-props?league=nba&slot=0",
       "schedule": "5 15 * * *"
     },

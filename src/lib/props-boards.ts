@@ -6,10 +6,19 @@ export type PropsSport = "mlb" | "nfl" | "cfb" | "nba" | "nhl";
 
 export const PROPS_BOARDS: Record<PropsSport, { key: string; label: string; hint: string }[]> = {
   mlb: [
-    { key: "players", label: "Player props", hint: "hits, bases, homers, strikeouts" },
+    { key: "hits", label: "Hits", hint: "1, 2 or 3+ hits" },
+    { key: "bases", label: "Total bases", hint: "2, 3 or 4+ bases" },
+    { key: "homers", label: "Home runs", hint: "who homers" },
+    { key: "runs-rbi", label: "Runs & RBI", hint: "runs scored, runs driven in" },
+    { key: "hrr", label: "H+R+RBI", hint: "hits + runs + RBI" },
+    { key: "steals", label: "Stolen bases", hint: "who steals a base" },
+    { key: "strikeouts", label: "Strikeouts", hint: "starters, 4 to 8+ K" },
+    { key: "pitching", label: "Outs & runs", hint: "outs recorded, earned runs" },
+    { key: "players", label: "Model props", hint: "the logistic prop models" },
     { key: "two-bases", label: "2+ bases", hint: "every hitter's chance of 2+ total bases" },
     { key: "parlays", label: "Parlays", hint: "5, 10 and 15-leg 2+ bases slips" },
     { key: "stacks", label: "Team stacks", hint: "team runs with that team's hitters" },
+    { key: "analytics", label: "Analytics", hint: "every market's accuracy" },
   ],
   nfl: [
     { key: "receiving", label: "Receiving", hint: "catches and receiving yards" },
