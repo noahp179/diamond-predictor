@@ -97,6 +97,7 @@ const LEAGUE_NAME: Record<SimPropsLeague, string> = {
   nhl: "NHL",
   nfl: "NFL",
   cfb: "College football",
+  mlb: "MLB",
 };
 const HIGH_BANDS = [5, 6, 7, 8, 9]; // 50-60% ... 90-100%
 const pct = (x: number, d = 0) => `${(x * 100).toFixed(d)}%`;

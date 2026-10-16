@@ -14,7 +14,7 @@ import calibration from "./sim-props-calibration.json";
 import type { MassResult } from "./sim/aggregate";
 import { PROPS } from "./sim/props";
 
-export type SimPropsLeague = "nba" | "nhl" | "nfl" | "cfb";
+export type SimPropsLeague = "nba" | "nhl" | "nfl" | "cfb" | "mlb";
 
 /** The prop keys each league's boards read from the simulator. */
 export const SIM_KEYS: Record<SimPropsLeague, string[]> = {
@@ -22,6 +22,7 @@ export const SIM_KEYS: Record<SimPropsLeague, string[]> = {
   nhl: ["pts", "g", "a", "sog", "sv"],
   nfl: ["td", "rec", "reyd", "ryd", "rry", "pyd", "ptd", "cmp", "car"],
   cfb: ["td"],
+  mlb: ["h", "tb", "hr", "r", "rbi", "hrr", "sb", "k", "outs", "er"],
 };
 
 export type SimPlayer = {
@@ -175,6 +176,53 @@ const W: Record<string, StatWords> = {
     name: "Completions",
     said: "passes",
     verb: ["completes", "complete"],
+  },
+  "mlb:h": {
+    noun: "hits",
+    name: "Hits",
+    verb: ["gets", "get"],
+    one: ["gets a hit", "get a hit"],
+    sing: "1+ hit",
+  },
+  "mlb:tb": { noun: "total bases", name: "Total bases", verb: ["records", "record"] },
+  "mlb:hr": {
+    noun: "home runs",
+    name: "Home runs",
+    verb: ["hits", "hit"],
+    one: ["hits a home run", "hit a home run"],
+    sing: "Anytime HR",
+  },
+  "mlb:r": {
+    noun: "runs",
+    name: "Runs",
+    verb: ["scores", "score"],
+    one: ["scores a run", "score a run"],
+    sing: "1+ run",
+  },
+  "mlb:rbi": {
+    noun: "RBI",
+    name: "RBI",
+    said: "runs",
+    verb: ["drives in", "drive in"],
+    one: ["drives in a run", "drive in a run"],
+    sing: "1+ RBI",
+  },
+  "mlb:hrr": { noun: "hits + runs + RBI", name: "H+R+RBI", verb: ["puts up", "put up"] },
+  "mlb:sb": {
+    noun: "stolen bases",
+    name: "Stolen bases",
+    verb: ["steals", "steal"],
+    one: ["steals a base", "steal a base"],
+    sing: "1+ stolen base",
+  },
+  "mlb:k": { noun: "strikeouts", name: "Strikeouts", verb: ["records", "record"] },
+  "mlb:outs": { noun: "outs", name: "Outs recorded", verb: ["records", "record"] },
+  "mlb:er": {
+    noun: "earned runs",
+    name: "Earned runs allowed",
+    verb: ["allows", "allow"],
+    one: ["allows an earned run", "allow an earned run"],
+    sing: "1+ earned run",
   },
 };
 
@@ -409,6 +457,71 @@ export const SIM_BOARDS: Record<SimPropsLeague, BoardDef[]> = {
   // College stays on its touchdown model: on 2025-26 it beat the simulator
   // for anytime and (split by share) for the first touchdown.
   cfb: [],
+  mlb: [
+    {
+      key: "hits",
+      label: "Hits",
+      hint: "1, 2 or 3+ hits",
+      markets: ladder("mlb", "h", [0, 1, 2]),
+      unit: "picks",
+    },
+    {
+      key: "bases",
+      label: "Total bases",
+      hint: "2, 3 or 4+ bases",
+      markets: ladder("mlb", "tb", [1, 2, 3]),
+      unit: "picks",
+    },
+    {
+      key: "homers",
+      label: "Home runs",
+      hint: "who homers",
+      markets: ladder("mlb", "hr", [0]),
+      unit: "picks",
+    },
+    {
+      key: "runs-rbi",
+      label: "Runs & RBI",
+      hint: "runs scored, runs driven in",
+      markets: [...ladder("mlb", "r", [0, 1], true), ...ladder("mlb", "rbi", [0, 1], true)],
+      open: "rbi:0",
+      unit: "picks",
+    },
+    {
+      key: "hrr",
+      label: "H+R+RBI",
+      hint: "hits + runs + RBI, 2 to 4+",
+      markets: ladder("mlb", "hrr", [1, 2, 3]),
+      open: "hrr:2",
+      unit: "picks",
+    },
+    {
+      key: "steals",
+      label: "Stolen bases",
+      hint: "who steals a base",
+      markets: ladder("mlb", "sb", [0]),
+      unit: "picks",
+    },
+    {
+      key: "strikeouts",
+      label: "Strikeouts",
+      hint: "starters, 4 to 8+ K",
+      markets: ladder("mlb", "k", [1, 2, 3, 4, 5]),
+      open: "k:3",
+      unit: "picks",
+    },
+    {
+      key: "pitching",
+      label: "Outs & runs",
+      hint: "outs recorded, earned runs allowed",
+      markets: [
+        ...ladder("mlb", "outs", [1, 2, 3, 4], true),
+        ...ladder("mlb", "er", [0, 1, 2], true),
+      ],
+      open: "outs:4",
+      unit: "picks",
+    },
+  ],
 };
 
 /** Every market a league's boards price, once each. */
@@ -533,7 +646,7 @@ export function simMarketLabel(league: SimPropsLeague, slug: string): string {
 /** Ledger code -> bet name for every simulation market (the NFL's "rec5" is
  *  "5+ catches" whichever model wrote it). */
 export const SIM_MARKET_LABELS: Record<string, string> = Object.fromEntries(
-  (["nba", "nhl", "nfl"] as const).flatMap((lg) =>
+  (["nba", "nhl", "nfl", "mlb"] as const).flatMap((lg) =>
     simMarkets(lg).map((m) => [marketSlug(lg, m.key), m.label]),
   ),
 );

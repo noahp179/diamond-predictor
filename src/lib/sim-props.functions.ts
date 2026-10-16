@@ -15,7 +15,7 @@ import { todayET } from "./date";
 import type { SimPlayer } from "./sim-props-shared";
 import type { SeasonLedgerRow, SimBandRow } from "./sim-props.server";
 
-const League = z.enum(["nba", "nhl", "nfl", "cfb"]);
+const League = z.enum(["nba", "nhl", "nfl", "cfb", "mlb"]);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export type SimBoardGame = {

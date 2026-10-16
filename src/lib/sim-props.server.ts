@@ -34,6 +34,7 @@ import {
   type SimPlayer,
   type SimPropsLeague,
 } from "./sim-props-shared";
+import { addDays, etDateOf } from "./date";
 import { Accumulator } from "./sim/aggregate";
 import { buildMatchup, buildSlate, type SlateEntry } from "./sim/build.server";
 import { seedFor } from "./sim/core";
@@ -63,7 +64,7 @@ const PICKS_PER_GAME = 3;
  *  in the backtest. Run by hand, a busy Saturday's ~60 games across 8 slots
  *  get fewer than 100,000 plays each; the time budget decides, and the row
  *  records it. */
-export const SLOTS: Record<SimPropsLeague, number> = { nba: 5, nhl: 6, nfl: 6, cfb: 8 };
+export const SLOTS: Record<SimPropsLeague, number> = { nba: 5, nhl: 6, nfl: 6, cfb: 8, mlb: 4 };
 
 export type SimGameRow = {
   league: SimPropsLeague;
@@ -281,6 +282,7 @@ const ESPN: Record<SimPropsLeague, string> = {
   nhl: "hockey/nhl",
   nfl: "football/nfl",
   cfb: "football/college-football",
+  mlb: "baseball/mlb",
 };
 
 export type Box = {
@@ -302,6 +304,7 @@ const ESPN_SITE: Record<SimPropsLeague, string> = {
   nhl: "nhl",
   nfl: "nfl",
   cfb: "college-football",
+  mlb: "mlb",
 };
 export const boxUrl = (league: SimPropsLeague, eventId: string) =>
   `https://www.espn.com/${ESPN_SITE[league]}/boxscore/_/gameId/${eventId}`;
@@ -322,6 +325,7 @@ export async function boxFor(league: SimPropsLeague, eventId: string): Promise<B
   const side = (h: string) =>
     (comp.competitors ?? []).find((c: any) => c.homeAway === h)?.team?.abbreviation ?? "?";
   const matchup = `${side("away")} @ ${side("home")}`;
+  if (league === "mlb") return mlbBox(d, comp, score, matchup);
   const lines = new Map<string, Record<string, number>>();
   const who = new Map<string, { name: string; team: string }>();
   const names = new Map<string, string>();
@@ -488,6 +492,138 @@ export async function recordResults(
     }
   }
   return { stored: n, missing: todo.length - n };
+}
+
+// ------------------------------------------------------------ MLB box score
+
+const MLB_API = "https://statsapi.mlb.com/api/v1";
+
+/** A name as both feeds can agree on it: no accents, case, punctuation or suffix. */
+const normName = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "")
+    .replace(/[^a-z]/g, "");
+/** Last name plus first initial, for the nickname cases ("Mike" / "Michael"). */
+const shortName = (s: string) => {
+  const parts = s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, "")
+    .replace(/[^a-z ]/g, "")
+    .trim()
+    .split(/\s+/);
+  return `${parts[0]?.[0] ?? ""}${parts[parts.length - 1] ?? ""}`;
+};
+
+/**
+ * A finished MLB game, graded from MLB's own box score.
+ *
+ * ESPN's MLB box score has hits, runs, RBI, home runs and strikeouts per
+ * player but not doubles, triples or stolen bases, so total bases and steals
+ * cannot be read from it. MLB's Stats API has every one of them. The picks
+ * carry ESPN ids (the simulator runs on ESPN's rosters), so ESPN says who
+ * played and MLB says what each of them did: the game is found on MLB's
+ * schedule by date and teams, and each ESPN player is matched to MLB's line
+ * by name within his team (full name, then last name and first initial). A
+ * player who cannot be matched keeps the numbers ESPN does have, and his total
+ * bases and steals are left out, so those picks void rather than guess.
+ */
+async function mlbBox(d: any, comp: any, score: string, matchup: string): Promise<Box | null> {
+  const start = String(comp.date ?? "");
+  const espnSide = new Map<string, "home" | "away">();
+  const espnName = new Map<"home" | "away", string>();
+  for (const c of comp.competitors ?? []) {
+    if (c.team?.id) espnSide.set(String(c.team.id), c.homeAway);
+    espnName.set(c.homeAway, normName(String(c.team?.displayName ?? c.team?.name ?? "")));
+  }
+  // MLB's schedule for the game's day (and the next, for a late start that
+  // crosses midnight in UTC).
+  const day = start ? etDateOf(start) : "";
+  if (!day) return null;
+  const sched = await fetch(
+    `${MLB_API}/schedule?sportId=1&startDate=${day}&endDate=${addDays(day, 1)}&hydrate=team`,
+    { signal: AbortSignal.timeout(15000) },
+  ).then((r) => (r.ok ? r.json() : null));
+  const cands = ((sched?.dates ?? []) as any[])
+    .flatMap((x) => x.games ?? [])
+    .filter(
+      (g: any) =>
+        normName(String(g.teams?.home?.team?.name ?? "")) === espnName.get("home") &&
+        normName(String(g.teams?.away?.team?.name ?? "")) === espnName.get("away"),
+    )
+    .sort(
+      (a: any, b: any) =>
+        Math.abs(Date.parse(a.gameDate) - Date.parse(start)) -
+        Math.abs(Date.parse(b.gameDate) - Date.parse(start)),
+    );
+  const pk = cands[0]?.gamePk;
+  if (!pk) {
+    console.error(`[sim-props] mlb: no MLB game for ${matchup} on ${day}`);
+    return null; // left pending, tried again tomorrow
+  }
+  const mb = await fetch(`${MLB_API}/game/${pk}/boxscore`, {
+    signal: AbortSignal.timeout(15000),
+  }).then((r) => (r.ok ? r.json() : null));
+  if (!mb) return null;
+  type MlbLine = { name: string; bat: any; pit: any };
+  const mlbBy: Record<
+    "home" | "away",
+    { full: Map<string, MlbLine>; short: Map<string, MlbLine[]> }
+  > = { home: { full: new Map(), short: new Map() }, away: { full: new Map(), short: new Map() } };
+  for (const sd of ["home", "away"] as const)
+    for (const p of Object.values<any>(mb.teams?.[sd]?.players ?? {})) {
+      const name = String(p.person?.fullName ?? "");
+      const ln: MlbLine = { name, bat: p.stats?.batting ?? {}, pit: p.stats?.pitching ?? {} };
+      mlbBy[sd].full.set(normName(name), ln);
+      const k = shortName(name);
+      mlbBy[sd].short.set(k, [...(mlbBy[sd].short.get(k) ?? []), ln]);
+    }
+
+  const lines = new Map<string, Record<string, number>>();
+  const who = new Map<string, { name: string; team: string }>();
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  for (const t of d.boxscore?.players ?? []) {
+    const sd = espnSide.get(String(t.team?.id ?? ""));
+    if (!sd) continue;
+    for (const st of t.statistics ?? []) {
+      const keys: string[] = st.keys ?? [];
+      for (const a of st.athletes ?? []) {
+        const id = a.athlete?.id ? String(a.athlete.id) : null;
+        if (!id || a.didNotPlay || !(a.stats ?? []).length) continue;
+        const name = String(a.athlete?.displayName ?? "");
+        who.set(id, { name, team: String(t.team?.abbreviation ?? "") });
+        const espn = (k: string) => String(a.stats[keys.indexOf(k)] ?? "");
+        const short = mlbBy[sd].short.get(shortName(name)) ?? [];
+        const m = mlbBy[sd].full.get(normName(name)) ?? (short.length === 1 ? short[0] : null);
+        const row = lines.get(id) ?? {};
+        if (st.type === "batting" || st.name === "batting") {
+          const b = m?.bat ?? null;
+          row.h = b ? n(b.hits) : n(espn("hits"));
+          row.hr = b ? n(b.homeRuns) : n(espn("homeRuns"));
+          row.r = b ? n(b.runs) : n(espn("runs"));
+          row.rbi = b ? n(b.rbi) : n(espn("RBIs"));
+          row.hrr = row.h + row.r + row.rbi;
+          if (b) {
+            row.tb = n(b.totalBases);
+            row.sb = n(b.stolenBases);
+          }
+        } else if (st.type === "pitching" || st.name === "pitching") {
+          const p = m?.pit ?? null;
+          const [whole, part] = espn("fullInnings.partInnings").split(".");
+          row.k = p ? n(p.strikeOuts) : n(espn("strikeouts"));
+          row.outs = p ? n(p.outs) : n(whole) * 3 + n(part);
+          row.er = p ? n(p.earnedRuns) : n(espn("earnedRuns"));
+        }
+        if (!m) console.warn(`[sim-props] mlb: no MLB line for ${name} (${matchup})`);
+        lines.set(id, row);
+      }
+    }
+  }
+  return { final: true, score, matchup, lines, who, first: null };
 }
 
 /** A basketball line, with the combinations the boards sell. */
@@ -833,6 +969,7 @@ const STAR: Record<SimPropsLeague, { stat: string; title: string; noun: string }
   cfb: { stat: "td", title: "Who scored a touchdown", noun: "TD" },
   nhl: { stat: "g", title: "Who scored a goal", noun: "G" },
   nba: { stat: "pts", title: "Top scorers", noun: "PTS" },
+  mlb: { stat: "hr", title: "Who homered", noun: "HR" },
 };
 
 /** The logistic NFL prop models' codes, as box-score stats: "recy60" is 60+ receiving yards. */

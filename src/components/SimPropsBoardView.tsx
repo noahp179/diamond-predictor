@@ -35,12 +35,14 @@ const LEAGUE_NAME: Record<SimPropsLeague, string> = {
   nhl: "NHL",
   nfl: "NFL",
   cfb: "College football",
+  mlb: "MLB",
 };
 const SPORT_WORD: Record<SimPropsLeague, string> = {
   nba: "game",
   nhl: "game",
   nfl: "game",
   cfb: "game",
+  mlb: "game",
 };
 const BROWSER_RUNS = 10_000;
 const SHOW = 15;
