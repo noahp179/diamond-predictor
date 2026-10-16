@@ -44,6 +44,30 @@ const SPORT_WORD: Record<SimPropsLeague, string> = {
   cfb: "game",
   mlb: "game",
 };
+/** What a simulated game is built from, in the sport's own terms. */
+const BUILT_FROM: Record<SimPropsLeague, string> = {
+  nba: "each player's minutes, shot rates and role against tonight's opponent",
+  nhl: "each player's minutes, shot rates and role against tonight's opponent",
+  nfl: "each player's minutes, shot rates and role against tonight's opponent",
+  cfb: "each player's minutes, shot rates and role against tonight's opponent",
+  mlb: "every plate appearance against tonight's starter and bullpen, in tonight's park, with the day's nine — the posted lineup card once MLB has it, else the team's last one",
+};
+/** How the simulator steps through a game. */
+const PLAY_UNIT: Record<SimPropsLeague, string> = {
+  nba: "possession by possession",
+  nhl: "shift by shift",
+  nfl: "snap by snap",
+  cfb: "snap by snap",
+  mlb: "plate appearance by plate appearance",
+};
+/** When the morning runs happen, Eastern. */
+const RUN_TIME: Record<SimPropsLeague, string> = {
+  nba: "11am",
+  nhl: "11am",
+  nfl: "11am",
+  cfb: "11am",
+  mlb: "10am",
+};
 const BROWSER_RUNS = 10_000;
 const SHOW = 15;
 
@@ -156,7 +180,12 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
         setLocal((s) => ({
           ...s,
           [g.id]: {
-            players: playersFrom(league, result, { home: g.home.abbr, away: g.away.abbr }),
+            players: playersFrom(
+              league,
+              result,
+              { home: g.home.abbr, away: g.away.abbr },
+              g.playoff,
+            ),
             runs: result.n,
           },
         }));
@@ -182,7 +211,7 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
       current="props"
       eyebrow={`Diamond Edge · ${LEAGUE_NAME[league]} ${def.label}`}
       title={`${def.label}: who's most likely`}
-      blurb={`Every ${SPORT_WORD[league]} on the slate is played up to 100,000 times by the site's simulator — each player's minutes, shot rates and role against tonight's opponent. A player's percentage is how often he ${market.phrase} across those plays, corrected by what last season showed those percentages really mean.`}
+      blurb={`Every ${SPORT_WORD[league]} on the slate is played up to 100,000 times by the site's simulator — ${BUILT_FROM[league]}. A player's percentage is how often he ${market.phrase} across those plays, corrected by what last season showed those percentages really mean.`}
       date={date}
       onDateChange={(d) => {
         setDate(d);
@@ -264,11 +293,20 @@ export function SimPropsBoardView({ league, board }: { league: SimPropsLeague; b
         </div>
       )}
 
+      {league === "mlb" && games.some((g) => g.playoff) && (
+        <div className="mb-6 border border-border bg-card px-5 py-4 text-sm text-muted-foreground">
+          Playoff games. Replayed on the 2024–26 postseasons, the simulator let starters go deeper
+          and scored more than playoff games do — it said 72% for a starter&apos;s 15+ outs where
+          43% came in. Playoff numbers here are adjusted down to match: outs most, then strikeouts
+          and earned runs, hitters a little.
+        </div>
+      )}
+
       {pending.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-primary/40 bg-primary/10 px-5 py-4 text-sm">
           <span>
             {pending.length} {pending.length === 1 ? "game hasn't" : "games haven't"} been simulated
-            yet — the morning runs play each game 100,000 times around 11am Eastern.
+            yet — the morning runs play each game 100,000 times around {RUN_TIME[league]} Eastern.
             {running && (
               <span className="ml-2 font-mono text-xs text-muted-foreground">
                 Playing {running.game}: {running.done.toLocaleString()} /{" "}
@@ -403,10 +441,11 @@ function HowItWorks({
       <div className="space-y-3 px-5 py-5 text-sm text-muted-foreground sm:px-6">
         <p>
           <strong className="text-foreground">1. Play the game, many times.</strong> The simulator
-          plays each game possession by possession (shift by shift in hockey, snap by snap in
-          football) from every player's season numbers — blended with last season early on, and
-          pulled toward the league average for anyone with little playing time — against tonight's
-          opponent, with the injury report applied. It plays it up to 100,000 times.
+          plays each game {PLAY_UNIT[league]} from every player's season numbers — blended with last
+          season early on, and pulled toward the league average for anyone with little playing time
+          — against tonight's opponent, with{" "}
+          {league === "mlb" ? "the day's lineup" : "the injury report"} applied. It plays it up to
+          100,000 times.
         </p>
         <p>
           <strong className="text-foreground">2. Count.</strong> If a player {market.phrase} in

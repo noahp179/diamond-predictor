@@ -100,7 +100,9 @@ export async function simulateGame(
     date,
     gameId: g.id,
   });
-  const play = runner(m, { benched: [], activated: [] });
+  // Baseball: the day's nine, so the bench sits (see mlbBenched).
+  const lineup = league === "mlb" ? await mlbBenched(m, g, date).catch(() => null) : null;
+  const play = runner(m, { benched: lineup?.benched ?? [], activated: [] });
   const acc = new Accumulator(m);
   const base = (Number(g.id) * 2654435761) >>> 0;
   let n = 0;
@@ -112,8 +114,134 @@ export async function simulateGame(
     await new Promise((r) => setTimeout(r, 0));
   }
   const r = acc.summary(0);
-  const players = playersFrom(league, r, { home: g.home.abbr, away: g.away.abbr });
-  return { players, runs: n, basis: m.ctx.basis };
+  const players = playersFrom(league, r, { home: g.home.abbr, away: g.away.abbr }, g.playoff);
+  const basis = lineup?.note ? `${m.ctx.basis} · ${lineup.note}` : m.ctx.basis;
+  return { players, runs: n, basis };
+}
+
+/**
+ * Who sits, for a baseball simulation: every position player outside the
+ * day's starting nine. Left to itself the engine bats the nine with the most
+ * plate appearances, which on the 2026 replays was the real nine on only 31%
+ * of lineups — a regular's day off, a platoon, a September call-up all miss —
+ * and its numbers were calibrated on the posted nine
+ * (research/player-props/evaluate_mlb.py). The nine is the posted lineup
+ * card when MLB has it (about two to four hours before first pitch), else the
+ * nine the team started its last game with. MLB's names are matched to
+ * ESPN's roster; if fewer than eight of a side's nine match, that side is
+ * left to the engine rather than guessed at.
+ */
+async function mlbBenched(
+  m: Awaited<ReturnType<typeof buildMatchup>>,
+  g: SlateEntry,
+  date: string,
+): Promise<{ benched: string[]; note: string } | null> {
+  if (m.league !== "mlb") return null;
+  const day = await mlbDayLineups(date);
+  const game = day
+    // ESPN's slate says "Guardians", MLB "Cleveland Guardians".
+    .filter(
+      (x) =>
+        x.homeName.endsWith(normName(g.home.name)) && x.awayName.endsWith(normName(g.away.name)),
+    )
+    .sort(
+      (a, b) =>
+        Math.abs(Date.parse(a.start) - Date.parse(g.date)) -
+        Math.abs(Date.parse(b.start) - Date.parse(g.date)),
+    )[0];
+  if (!game) return null;
+  const benched: string[] = [];
+  const how: string[] = [];
+  for (const side of ["home", "away"] as const) {
+    const nine =
+      game[side].posted.length >= 9
+        ? game[side].posted
+        : await mlbLastNine(game[side].teamId, date);
+    const names = new Set(nine.map(normName));
+    const shorts = nine.map(shortName);
+    const batters = m[side].batters;
+    const inNine = batters.filter(
+      (b) =>
+        names.has(normName(b.name)) ||
+        (shorts.filter((s) => s === shortName(b.name)).length === 1 &&
+          batters.filter((x) => shortName(x.name) === shortName(b.name)).length === 1),
+    );
+    if (nine.length < 9 || inNine.length < 8) {
+      how.push(`${m[side].abbr}: the engine's nine`);
+      continue;
+    }
+    const keep = new Set(inNine.map((b) => b.id));
+    const pitchers = new Set(m[side].pitchers.map((p) => p.id));
+    for (const b of batters) if (!keep.has(b.id) && !pitchers.has(b.id)) benched.push(b.id);
+    how.push(
+      `${m[side].abbr}: ${game[side].posted.length >= 9 ? "posted lineup" : "last game's lineup"}`,
+    );
+  }
+  return { benched, note: how.join(", ") };
+}
+
+type SideLineup = { teamId: number; posted: string[] };
+type DayLineup = {
+  start: string;
+  homeName: string;
+  awayName: string;
+  home: SideLineup;
+  away: SideLineup;
+};
+
+const lineupCache = new Map<string, { at: number; v: DayLineup[] }>();
+
+/** MLB's schedule for a day with each side's posted lineup card, if out. */
+async function mlbDayLineups(date: string): Promise<DayLineup[]> {
+  const hit = lineupCache.get(date);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.v;
+  const d = await fetch(`${MLB_API}/schedule?sportId=1&date=${date}&hydrate=lineups,team`, {
+    signal: AbortSignal.timeout(15000),
+  }).then((r) => (r.ok ? r.json() : null));
+  const v: DayLineup[] = ((d?.dates ?? []) as any[])
+    .flatMap((x) => x.games ?? [])
+    .map((x: any) => {
+      const side = (s: "home" | "away"): SideLineup => ({
+        teamId: Number(x.teams?.[s]?.team?.id ?? 0),
+        posted: ((x.lineups?.[`${s}Players`] ?? []) as any[]).map((p) => String(p.fullName ?? "")),
+      });
+      return {
+        start: String(x.gameDate ?? ""),
+        homeName: normName(String(x.teams?.home?.team?.name ?? "")),
+        awayName: normName(String(x.teams?.away?.team?.name ?? "")),
+        home: side("home"),
+        away: side("away"),
+      };
+    });
+  lineupCache.set(date, { at: Date.now(), v });
+  return v;
+}
+
+/** The nine a team started its last finished game with, in order. */
+async function mlbLastNine(teamId: number, date: string): Promise<string[]> {
+  if (!teamId) return [];
+  const sched = await fetch(
+    `${MLB_API}/schedule?sportId=1&teamId=${teamId}&startDate=${addDays(date, -10)}&endDate=${addDays(date, -1)}&gameType=R,F,D,L,W`,
+    { signal: AbortSignal.timeout(15000) },
+  ).then((r) => (r.ok ? r.json() : null));
+  const last = ((sched?.dates ?? []) as any[])
+    .flatMap((x) => x.games ?? [])
+    .filter((x: any) => ["F", "O"].includes(x.status?.codedGameState))
+    .sort((a: any, b: any) => String(a.gameDate).localeCompare(String(b.gameDate)))
+    .pop();
+  if (!last) return [];
+  const box = await fetch(`${MLB_API}/game/${last.gamePk}/boxscore`, {
+    signal: AbortSignal.timeout(15000),
+  }).then((r) => (r.ok ? r.json() : null));
+  for (const s of ["home", "away"] as const) {
+    const t = box?.teams?.[s];
+    if (Number(t?.team?.id) !== teamId) continue;
+    return Object.values<any>(t?.players ?? {})
+      .filter((p) => Number(p.battingOrder) % 100 === 0 && Number(p.battingOrder) > 0)
+      .sort((a, b) => Number(a.battingOrder) - Number(b.battingOrder))
+      .map((p) => String(p.person?.fullName ?? ""));
+  }
+  return [];
 }
 
 /**
@@ -917,7 +1045,22 @@ const MODEL_NAME: Record<string, string> = {
   "nfl-td-pairrank-v1": "Previous TD model",
   "nfl-td-logistic-v1": "Earlier TD model",
   "nfl-props-logistic-v1": "Logistic prop models",
+  "mlb-props-logistic-v1": "Logistic prop models",
+  "mlb-tb2-logistic-v1": "2+ bases model",
 };
+
+/** Bet names for the logistic prop models' market codes, per league. */
+async function modelLabelsFor(league: SimPropsLeague): Promise<Record<string, { label: string }>> {
+  if (league === "mlb") {
+    const { default: m } = await import("./mlb-props-model.json");
+    return {
+      ...(m as { markets: Record<string, { label: string }> }).markets,
+      tb2: { label: "2+ total bases" },
+    };
+  }
+  const { default: m } = await import("./nfl-props-model.json");
+  return (m as { markets: Record<string, { label: string }> }).markets;
+}
 
 /**
  * This season's picks from the boards that came before the simulations —
@@ -954,8 +1097,7 @@ export async function readSeasonLedger(league: SimPropsLeague): Promise<SeasonLe
     rows.push(...(data ?? []));
     if (!data || data.length < 1000) break;
   }
-  const { default: nflModel } = await import("./nfl-props-model.json");
-  const labels = (nflModel as { markets: Record<string, { label: string }> }).markets;
+  const labels = await modelLabelsFor(league);
   const byKey = new Map<string, SeasonLedgerRow>();
   for (const r of rows) {
     const k = `${r.model_version}|${r.market}`;
@@ -1140,8 +1282,7 @@ export async function readGameResults(
       return out;
     })(),
   ]);
-  const { default: nflModel } = await import("./nfl-props-model.json");
-  const modelLabels = (nflModel as { markets: Record<string, { label: string }> }).markets;
+  const modelLabels = await modelLabelsFor(league);
   const simBy = new Map<string, SimPlayer[]>(
     (sims ?? []).map((s: { event_id: string; players: SimPlayer[] }) => [
       String(s.event_id),

@@ -538,7 +538,14 @@ export function simBoard(league: SimPropsLeague, board: string): BoardDef | unde
 // ------------------------------------------------------------ calibration
 
 type Curve = { x: number[]; y: number[] };
-const CAL = calibration as unknown as { curves: Record<string, Record<string, Curve>> };
+/** Playoff games only: a log-odds shift on the simulator's share per stat
+ *  (before calibration) and a factor on its averages — research/player-props
+ *  evaluate_mlb.py fits them on past postseasons. */
+type PlayoffAdj = { shift?: Record<string, number>; mean?: Record<string, number> };
+const CAL = calibration as unknown as {
+  curves: Record<string, Record<string, Curve>>;
+  playoff?: Record<string, PlayoffAdj>;
+};
 
 /** The backtest's calibration map for a market: simulator share in, the share
  *  that actually came in out. Linear between knots, flat above the top one,
@@ -591,13 +598,21 @@ export function probOf(league: SimPropsLeague, pl: SimPlayer, market: string): n
 
 const round = (x: number, d = 5) => Math.round(x * 10 ** d) / 10 ** d;
 
-/** A simulation's players, as the boards store and read them. */
+const shiftShare = (x: number, d: number) =>
+  x <= 0 || x >= 1 || !d ? x : 1 / (1 + Math.exp(-(Math.log(x / (1 - x)) + d)));
+
+/** A simulation's players, as the boards store and read them. A playoff game
+ *  takes the league's playoff adjustment, where there is one: replayed on the
+ *  2024-26 MLB postseasons, the simulator let starters go deeper and scored
+ *  more than playoff games do. */
 export function playersFrom(
   league: SimPropsLeague,
   r: MassResult,
   abbr: { home: string; away: string },
+  playoff = false,
 ): SimPlayer[] {
   const keys = SIM_KEYS[league];
+  const adj = playoff ? CAL.playoff?.[league] : undefined;
   return r.players
     .filter((p) => p.played > 0.02)
     .map((p) => {
@@ -605,8 +620,9 @@ export function playersFrom(
       const mean: Record<string, number> = {};
       for (const s of p.props)
         if (keys.includes(s.key)) {
-          pp[s.key] = s.over.map((x) => round(x));
-          mean[s.key] = round(s.mean, 3);
+          const d = adj?.shift?.[s.key] ?? 0;
+          pp[s.key] = s.over.map((x) => round(shiftShare(x, d)));
+          mean[s.key] = round(s.mean * (adj?.mean?.[s.key] ?? 1), 3);
         }
       return {
         id: p.id,
