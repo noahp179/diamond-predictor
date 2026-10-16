@@ -259,14 +259,22 @@ export const getBoardRecord = createServerFn({ method: "GET" })
     let note: string | null = null;
     const { simBoard } = await import("./sim-props-shared");
     if (
-      (sport === "nba" || sport === "nhl" || sport === "nfl" || sport === "mlb") &&
+      (sport === "nba" ||
+        sport === "nhl" ||
+        sport === "nfl" ||
+        sport === "cfb" ||
+        sport === "mlb") &&
       simBoard(sport, board)
     ) {
       // The simulation boards: one model version per market (sim-props.server).
       const { readSimBoard } = await import("./sim-props.server");
       view = await readSimBoard(sport, board);
       note = "Picks are recorded from the first morning the simulations run.";
-    } else if (board === "td-scorers" && (sport === "nfl" || sport === "cfb")) {
+    } else if (
+      (board === "td-scorers" && sport === "nfl") ||
+      (board === "td-model" && sport === "cfb")
+    ) {
+      // the touchdown models' own record (college's has its own board)
       const { readTdLedger } = await import("./td-ledger.server");
       view = await readTdLedger(sport);
     } else if (board === "two-bases" && sport === "mlb") {

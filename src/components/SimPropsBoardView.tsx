@@ -48,8 +48,8 @@ const SPORT_WORD: Record<SimPropsLeague, string> = {
 const BUILT_FROM: Record<SimPropsLeague, string> = {
   nba: "each player's minutes, shot rates and role against tonight's opponent",
   nhl: "each player's minutes, shot rates and role against tonight's opponent",
-  nfl: "each player's minutes, shot rates and role against tonight's opponent",
-  cfb: "each player's minutes, shot rates and role against tonight's opponent",
+  nfl: "snap by snap against tonight's opponent, with play calls from each team's tendencies, every carry and target going to a real player, and the injury report applied",
+  cfb: "snap by snap against tonight's opponent, with play calls from each team's tendencies, every carry and target going to a real player, each team rated on its schedule, and the injury report applied",
   mlb: "every plate appearance against tonight's starter and bullpen, in tonight's park, with the day's nine — the posted lineup card once MLB has it, else the team's last one",
 };
 /** How the simulator steps through a game. */
@@ -64,8 +64,8 @@ const PLAY_UNIT: Record<SimPropsLeague, string> = {
 const RUN_TIME: Record<SimPropsLeague, string> = {
   nba: "11am",
   nhl: "11am",
-  nfl: "11am",
-  cfb: "11am",
+  nfl: "7am",
+  cfb: "8am",
   mlb: "10am",
 };
 const BROWSER_RUNS = 10_000;
@@ -110,6 +110,8 @@ const METHOD_LABEL: Record<string, string> = {
   hybrid: "Fitted model + simulator",
   blend: "Half simulator, half fitted model",
   model: "The previous model on this page",
+  // college: the touchdown model, which keeps its own board
+  model_cfb: "The touchdown model (its own board, TD model)",
   model_td1: "The shipped first-touchdown model",
   model_share: "Anytime model, split by share",
 };
@@ -466,7 +468,7 @@ function HowItWorks({
             more accurate.
           </p>
         )}
-        {market.key !== "first" && bt?.chosen !== "sim" ? (
+        {(market.key !== "first" || bt?.chosen === "sim_cal") && bt?.chosen !== "sim" ? (
           <p>
             <strong className="text-foreground">3. Correct with last season.</strong> A simulator is
             a little over-sure at the extremes — it can give a bench player 0%. So each raw
@@ -510,7 +512,7 @@ function HowItWorks({
                   >
                     <td className="py-2 pr-3 normal-case">
                       {m === bt.chosen ? "▸ " : ""}
-                      {METHOD_LABEL[m] ?? m}
+                      {METHOD_LABEL[league === "cfb" && m === "model" ? "model_cfb" : m] ?? m}
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums">{v.brier.toFixed(4)}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{v.auc.toFixed(3)}</td>

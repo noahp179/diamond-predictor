@@ -21,10 +21,21 @@ OUT = os.path.join(HERE, "..", "..", "src", "lib", "sim-props-backtest.json")
 
 
 def bands(cal: list[dict]) -> list[dict]:
-    out = []
+    """Decile rows labelled "about X%". Neighbours that round to the same X
+    are pooled into one row: low-chance markets put two or three deciles at
+    "about 2%", and the page cannot tell two rows of the same name apart."""
+    out: list[dict] = []
     for c in cal:
         p = c["predicted"]
-        out.append({"band": f"about {round(p * 100)}%", "n": c["n"], "predicted": p, "actual": c["actual"]})
+        band = f"about {round(p * 100)}%"
+        if out and out[-1]["band"] == band:
+            o = out[-1]
+            n = o["n"] + c["n"]
+            o["predicted"] = (o["predicted"] * o["n"] + p * c["n"]) / n
+            o["actual"] = (o["actual"] * o["n"] + c["actual"] * c["n"]) / n
+            o["n"] = n
+        else:
+            out.append({"band": band, "n": c["n"], "predicted": p, "actual": c["actual"]})
     return out
 
 
@@ -76,7 +87,10 @@ def football(league: str, season: str) -> dict:
     d = json.load(open(path))
     out = {}
     a = d["anytime"]
-    chosen_any = "sim_cal" if league == "nfl" else "model"
+    # Both boards run on the calibrated simulator. College's touchdown model
+    # did better on these games, and stays on the site as its own board;
+    # its row here says by how much.
+    chosen_any = "sim_cal"
     out["td:0"] = {
         "label": "Anytime touchdown",
         "season": season,
@@ -89,7 +103,8 @@ def football(league: str, season: str) -> dict:
     }
     f = d.get("first_td") or {}
     if f:
-        chosen_first = "sim" if league == "nfl" else "model_share"
+        # college's first-scorer share goes through a map (export_calibration.py)
+        chosen_first = "sim" if league == "nfl" else "sim_cal"
         out["first"] = {
             "label": "First touchdown",
             "season": season,
@@ -165,6 +180,7 @@ def main() -> None:
     new_markets(out, "nba", os.path.join(RES, "nba_markets_backtest.json"), "the 2025-26 NBA season")
     new_markets(out, "nhl", os.path.join(RES, "nhl_markets_backtest.json"), "the 2025-26 NHL season")
     new_markets(out, "nfl", os.path.join(RES, "nfl_props_backtest.json"), "the 2025 NFL season and 2026 to date")
+    new_markets(out, "cfb", os.path.join(RES, "cfb_props_backtest.json"), "the 2025 college season and 2026 to date")
     runs = {}
     for sport in ("nba", "nhl"):
         p = os.path.join(RES, f"{sport}_runs_study.json")
@@ -183,6 +199,10 @@ def main() -> None:
         return x
 
     out = rnd(out)
+    # leagues other scripts write (MLB: evaluate_mlb.py) stay as they are
+    if os.path.exists(OUT):
+        for k, v in json.load(open(OUT)).items():
+            out.setdefault(k, v)
     with open(OUT, "w") as f:
         json.dump(out, f, separators=(",", ":"))
     print("wrote", OUT, {k: list(v) for k, v in out.items()})

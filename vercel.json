@@ -29,6 +29,10 @@
       "schedule": "26 9 * * *"
     },
     {
+      "path": "/api/public/hooks/sim-props?league=cfb&settle=1",
+      "schedule": "33 9 * * *"
+    },
+    {
       "path": "/api/public/hooks/sim-props?league=mlb&slot=0",
       "schedule": "5 14 * * *"
     },
@@ -90,27 +94,67 @@
     },
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=0",
-      "schedule": "22 16 * * *"
+      "schedule": "5 11 * * *"
     },
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=1",
-      "schedule": "29 16 * * *"
+      "schedule": "12 11 * * *"
     },
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=2",
-      "schedule": "36 16 * * *"
+      "schedule": "19 11 * * *"
     },
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=3",
-      "schedule": "43 16 * * *"
+      "schedule": "26 11 * * *"
     },
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=4",
-      "schedule": "50 16 * * *"
+      "schedule": "33 11 * * *"
     },
     {
       "path": "/api/public/hooks/sim-props?league=nfl&slot=5",
-      "schedule": "57 16 * * *"
+      "schedule": "40 11 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=0",
+      "schedule": "2 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=1",
+      "schedule": "8 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=2",
+      "schedule": "14 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=3",
+      "schedule": "20 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=4",
+      "schedule": "26 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=5",
+      "schedule": "32 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=6",
+      "schedule": "38 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=7",
+      "schedule": "44 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=8",
+      "schedule": "50 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=cfb&slot=9",
+      "schedule": "56 12 * * *"
     }
   ]
 }
