@@ -1,0 +1,87 @@
+{
+ "title": "Simulator upgrade, October 2026",
+ "season": "The 2025-26 season, held out",
+ "summary": "About thirty factors were tested one at a time on the 2024-25 season, and only those that made the numbers more accurate were kept. The combination was then checked on 2025-26, a season none of the choices were made on. The biggest gain came from who plays and for how long.",
+ "kept": [
+  {
+   "name": "Recent minutes",
+   "what": "planned minutes lean 75% toward the last few games (half-life two games), catching role changes, benchings and trades",
+   "effect": "-2.0% error"
+  },
+  {
+   "name": "Recent rates",
+   "what": "shooting, passing and rebounding rates lean a quarter of the way toward the last ten games",
+   "effect": "-0.2%"
+  },
+  {
+   "name": "Shot zones",
+   "what": "from play-by-play: each shooter's rim share against the defense's rim protection, blocks by shot distance, how often each shooter's makes are assisted",
+   "effect": "-0.1%"
+  },
+  {
+   "name": "Betting total and spread",
+   "what": "each game's pace and margin are moved to ESPN's line before the real run",
+   "effect": "-0.2%"
+  },
+  {
+   "name": "Questionable players",
+   "what": "play in their share of the simulated games (probable 95%, day-to-day 75%, questionable 60%) and are priced for the games they play",
+   "effect": "untestable on past games"
+  },
+  {
+   "name": "Re-run before tip-off",
+   "what": "games whose injury news changes after the morning are played again before tip-off, and their picks replaced",
+   "effect": "untestable on past games"
+  }
+ ],
+ "dropped": [
+  {
+   "name": "Return-from-injury minutes cap",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Starters from recent games",
+   "effect": "-0.1%, not significant"
+  },
+  {
+   "name": "Each player's own minutes swing",
+   "effect": "+0.2% (worse)"
+  },
+  {
+   "name": "Real offensive-rebound split",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Three-point prior from free throws",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Opponent three-point % regressed",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Each team's own home edge",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Referee crew",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Home-scorer crediting",
+   "effect": "0.0%"
+  },
+  {
+   "name": "Rest days, 4-in-6, travel, time zones",
+   "effect": "no reliable effect"
+  },
+  {
+   "name": "Playoff rotation of eight",
+   "effect": "0.0%"
+  }
+ ],
+ "untested": [
+  "historical injury-report designations (not archived)",
+  "play types and player tracking (stats.nba.com blocks cloud servers)"
+ ]
+}

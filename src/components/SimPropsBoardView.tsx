@@ -46,10 +46,10 @@ const SPORT_WORD: Record<SimPropsLeague, string> = {
 };
 /** What a simulated game is built from, in the sport's own terms. */
 const BUILT_FROM: Record<SimPropsLeague, string> = {
-  nba: "each player's minutes, shot rates and role against tonight's opponent",
+  nba: "each player's minutes and role weighted toward his last few games, his shot rates and shot zones against tonight's defense, tonight's betting total and spread, questionable players playing in their share of the games, and a re-run before tip-off when the injury news changes",
   nhl: "each player's minutes, shot rates and role against tonight's opponent",
   nfl: "snap by snap against tonight's opponent, with play calls from each team's tendencies, every carry and target going to a real player, and the injury report applied",
-  cfb: "snap by snap against tonight's opponent, with play calls from each team's tendencies, every carry and target going to a real player, each team rated on its schedule, and the injury report applied",
+  cfb: "snap by snap against tonight's opponent, with play calls from each team's tendencies, every carry and target going to a real player weighted toward his last few games, starters sitting in blowouts, each team rated on its schedule, and the injury report applied",
   mlb: "every plate appearance against tonight's starter and bullpen, in tonight's park, with the day's nine — the posted lineup card once MLB has it, else the team's last one",
 };
 /** How the simulator steps through a game. */

@@ -92,7 +92,10 @@ def eligible(sport: str, p: dict) -> bool:
 
 def load_sim(sport: str, season: int) -> dict:
     out = {}
-    for path in glob.glob(os.path.join(DATA, f"sim_{sport}_{season}*.jsonl")):
+    # SIM_TAG: score a factor variant (data/sim_{tag}_{sport}_{season}*.jsonl).
+    tag = os.environ.get("SIM_TAG")
+    pre = f"sim_{tag}" if tag else "sim"
+    for path in glob.glob(os.path.join(DATA, f"{pre}_{sport}_{season}*.jsonl")):
         with open(path) as f:
             for line in f:
                 g = json.loads(line)

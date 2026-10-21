@@ -39,7 +39,7 @@ import { Accumulator } from "./sim/aggregate";
 import { buildMatchup, buildSlate, type SlateEntry } from "./sim/build.server";
 import { seedFor } from "./sim/core";
 import { runner } from "./sim/engine";
-import type { SimLeague } from "./sim/types";
+import type { SimLeague, SimMatchup } from "./sim/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyTable = { from: (t: string) => any };
@@ -94,14 +94,17 @@ export async function simulateGame(
   date: string,
   runs: number,
   deadline: number,
+  built?: SimMatchup,
 ): Promise<{ players: SimPlayer[]; runs: number; basis: string }> {
-  const m = await buildMatchup({
-    league: league as SimLeague,
-    homeId: g.home.id,
-    awayId: g.away.id,
-    date,
-    gameId: g.id,
-  });
+  const m =
+    built ??
+    (await buildMatchup({
+      league: league as SimLeague,
+      homeId: g.home.id,
+      awayId: g.away.id,
+      date,
+      gameId: g.id,
+    }));
   // Baseball: the day's nine, so the bench sits (see mlbBenched).
   const lineup = league === "mlb" ? await mlbBenched(m, g, date).catch(() => null) : null;
   const play = runner(m, { benched: lineup?.benched ?? [], activated: [] });
@@ -339,6 +342,127 @@ export async function runSimSlot(
     }
   }
   return { ok: true, slate: slate.length, slot, games: out, ms: Date.now() - t0 };
+}
+
+// --------------------------------------------------------- before tip-off
+
+/** Plays per game in a pre-tip re-run: half the morning's, to stay inside the
+ *  hosting plan's CPU allowance (see TARGET_RUNS). */
+export const LATE_RUNS = 5_000;
+/** A change in a rotation player's chance of playing that counts as news. */
+const NEWS = 0.3;
+
+/**
+ * NBA news since the morning run, for one game: a rotation player (12+
+ * planned minutes) whose chance of playing has moved by NEWS or more — ruled
+ * out, upgraded, or back — against what the stored simulation played him in.
+ */
+export function nbaNews(m: SimMatchup, stored: SimPlayer[]): string[] {
+  if (m.league !== "nba") return [];
+  const before = new Map(stored.map((p) => [p.id, p.played]));
+  const out: string[] = [];
+  for (const team of [m.home, m.away]) {
+    // Who the rotation is now: the eight with the most planned minutes among
+    // those not ruled out (a player missing from the morning's board was
+    // either out then or outside the rotation; only the first is news).
+    const plan = (p: (typeof team.players)[number]) => p.x?.rmin ?? p.mpg;
+    const top8 = new Set(
+      team.players
+        .filter((p) => p.status !== "out")
+        .sort((a, b) => plan(b) - plan(a))
+        .slice(0, 8)
+        .map((p) => p.id),
+    );
+    for (const p of team.players) {
+      if (plan(p) < 12) continue;
+      const now = p.status === "out" ? 0 : (p.playP ?? 1);
+      const was = before.get(p.id);
+      if (was === undefined) {
+        if (now >= 1 - NEWS && top8.has(p.id)) out.push(`${p.short} in`);
+      } else if (Math.abs(now - was) >= NEWS) out.push(`${p.short} ${now > was ? "in" : "out"}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * A pre-tip pass over today's NBA games starting in the next four hours:
+ * each one whose injury news has changed since it was simulated is played
+ * again (LATE_RUNS) and its board and ledger picks replaced. Games without
+ * news cost only the ESPN reads. The ledger keeps one set of picks per game,
+ * the last before tip-off.
+ */
+export async function runLateSlot(league: SimPropsLeague, date: string, budgetMs = 270_000) {
+  const db = admin();
+  if (!db) return { ok: false, reason: "no service-role key" };
+  if (league !== "nba") return { ok: true, games: 0, reason: "NBA only" };
+  const t0 = Date.now();
+  const now = Date.now();
+  const slate = (await buildSlate(league as SimLeague, date)).filter((g) => {
+    const at = Date.parse(g.date);
+    return g.state === "pre" && !g.preseason && at > now + 10 * 60_000 && at < now + 4 * 3600_000;
+  });
+  if (!slate.length) return { ok: true, games: 0 };
+  const { data: have } = await db
+    .from("sim_props")
+    .select("event_id, players")
+    .eq("league", league)
+    .in(
+      "event_id",
+      slate.map((g) => g.id),
+    );
+  const stored = new Map<string, SimPlayer[]>(
+    (have ?? []).map((r: { event_id: string; players: SimPlayer[] }) => [r.event_id, r.players]),
+  );
+  const out: { id: string; news: string[]; runs?: number }[] = [];
+  for (const g of slate) {
+    if (Date.now() - t0 > budgetMs - 30_000) break;
+    try {
+      const m = await buildMatchup({
+        league: league as SimLeague,
+        homeId: g.home.id,
+        awayId: g.away.id,
+        date,
+        gameId: g.id,
+      });
+      const prev = stored.get(g.id);
+      const news = prev ? nbaNews(m, prev) : ["not yet simulated"];
+      if (!news.length) {
+        out.push({ id: g.id, news });
+        continue;
+      }
+      const r = await simulateGame(league, g, date, LATE_RUNS, Date.now() + 60_000, m);
+      const row: SimGameRow = {
+        league,
+        event_id: g.id,
+        game_date: date,
+        start_time: g.date || null,
+        home_id: g.home.id,
+        away_id: g.away.id,
+        home_abbr: g.home.abbr,
+        away_abbr: g.away.abbr,
+        runs: r.runs,
+        version: SIM_VERSION,
+        players: r.players,
+        basis: `${r.basis} · re-run before tip-off (${news.join(", ")})`,
+        generated_at: new Date().toISOString(),
+      };
+      const { error } = await db.from("sim_props").upsert(row, { onConflict: "league,event_id" });
+      if (error) throw new Error(error.message);
+      // Replace the game's unsettled picks with the new board's.
+      await db
+        .from("player_predictions")
+        .delete()
+        .eq("event_id", g.id)
+        .like("model_version", `${league}-sim-%`)
+        .is("settled_at", null);
+      await snapshotSimPicks(league, row);
+      out.push({ id: g.id, news, runs: r.runs });
+    } catch (err) {
+      console.error(`[sim-props] late ${league} ${g.id}:`, err);
+    }
+  }
+  return { ok: true, games: out, ms: Date.now() - t0 };
 }
 
 // ------------------------------------------------------------------ read

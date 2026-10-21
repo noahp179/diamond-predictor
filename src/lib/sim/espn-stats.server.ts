@@ -56,7 +56,7 @@ function limited<T>(run: () => Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => queue.push(() => void go().then(resolve, reject)));
 }
 
-async function getJson<T>(url: string, ms = 20000): Promise<T> {
+export async function getJson<T>(url: string, ms = 20000): Promise<T> {
   return limited(async () => {
     // ESPN's stats hosts answer the occasional request with a 503 or a reset
     // connection and serve the identical request a second later, so a failure
@@ -649,4 +649,62 @@ function cfbGame(id: string): Promise<CfbGame | null> {
   return cached(`cfbgame:${id}`, 7 * 24 * HOUR, async () =>
     readSummary(await getJson<Summary>(`${SITE}/${ESPN_PATH.cfb}/summary?event=${id}`)),
   );
+}
+
+/**
+ * College: each player's line a game over his last few appearances for this
+ * team this season (recency-weighted: the latest counts double the one
+ * `half` games before it), and the day of the team's last game. Read from
+ * the same cached game summaries cfbTeamLines folds into season totals, so
+ * it costs no extra requests.
+ */
+export function cfbRecent(
+  teamId: string,
+  season: number,
+  date: string,
+  k = 4,
+  half = 2,
+): Promise<{
+  players: Record<string, { s: Record<string, number>; n: number }>;
+  last: string | null;
+}> {
+  return cached(`cfbrecent:${teamId}:${season}:${date}`, HOUR, async () => {
+    type Schedule = {
+      events?: {
+        id: string;
+        date?: string;
+        competitions?: { status?: { type?: { completed?: boolean } } }[];
+      }[];
+    };
+    const sch = await getJson<Schedule>(
+      `${SITE}/${ESPN_PATH.cfb}/teams/${teamId}/schedule?season=${season}&seasontype=2`,
+    );
+    const done = (sch.events ?? [])
+      .filter(
+        (e) => e.competitions?.[0]?.status?.type?.completed && (e.date ?? "") < `${date}T06:00Z`,
+      )
+      .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+    const games = await Promise.all(done.map((e) => cfbGame(e.id).catch(() => null)));
+    const apps = new Map<string, Record<string, number>[]>();
+    for (const g of games) {
+      const mine = g?.teams.find((t) => t.teamId === teamId);
+      if (!mine) continue;
+      for (const [pid, l] of mine.players) apps.set(pid, [...(apps.get(pid) ?? []), l.s]);
+    }
+    const players: Record<string, { s: Record<string, number>; n: number }> = {};
+    for (const [pid, all] of apps) {
+      const list = all.slice(-k);
+      let wSum = 0;
+      const acc: Record<string, number> = {};
+      list.forEach((s, i) => {
+        const w = Math.pow(0.5, (list.length - 1 - i) / half);
+        wSum += w;
+        for (const [key, v] of Object.entries(s)) acc[key] = (acc[key] ?? 0) + w * v;
+      });
+      for (const key of Object.keys(acc)) acc[key] /= wSum;
+      players[pid] = { s: acc, n: list.length };
+    }
+    const last = done.length ? (done[done.length - 1].date ?? "").slice(0, 10) || null : null;
+    return { players, last };
+  });
 }

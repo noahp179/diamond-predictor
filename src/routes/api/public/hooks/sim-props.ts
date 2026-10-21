@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { todayET } from "@/lib/date";
 import {
   recordResults,
+  runLateSlot,
   runSimSlot,
   settleSimPicks,
   SLOTS,
@@ -16,6 +17,8 @@ import {
  *   GET /api/public/hooks/sim-props?league=nba&slot=0
  *   GET /api/public/hooks/sim-props?league=nba&settle=1   (grade finished games and
  *                                                          store their box scores)
+ *   GET /api/public/hooks/sim-props?league=nba&late=1     (before tip-off: re-run the
+ *                                                          games whose injury news changed)
  *
  * One cron per slot (vercel.json): a slot is a few games, sized to finish
  * inside one function's time limit at the full count. Same contract as the
@@ -42,6 +45,12 @@ async function run(request: Request): Promise<Response> {
     const results = await recordResults(league, date, Math.max(0, 270_000 - (Date.now() - t0)));
     console.log(`[cron] sim-props settle ${league}: ${JSON.stringify({ ...result, results })}`);
     return Response.json({ ok: true, ...result, results });
+  }
+  if (league && LEAGUES.has(league) && url.searchParams.get("late")) {
+    const date = url.searchParams.get("date") ?? todayET();
+    const result = await runLateSlot(league, date);
+    console.log(`[cron] sim-props late ${league} ${date}: ${JSON.stringify(result)}`);
+    return Response.json({ date, ...result });
   }
   const slot = Number(url.searchParams.get("slot") ?? "0");
   if (

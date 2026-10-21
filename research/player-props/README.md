@@ -339,3 +339,26 @@ The soccer research checked the same thing on its engine (`research/soccer-score
 - `evaluate_markets.py`, `evaluate_nfl_props.py`, `marketlib.py`, `dump_markets.ts`, `tables_markets.py`: every market on the boards.
 - `fit_means.py`: the corrected projections.
 - `season_to_date.py`: this season's games already played, replayed as the boards would have called them (calibration from earlier seasons only) → `src/lib/sim-props-season.json`, the "This season" view on the Analytics pages.
+
+## October 2026: factor tests and the upgraded simulators
+
+Every factor the data allows was tested one at a time, combined, and checked
+on a season none of the choices were made on. Full tables:
+`NBA_FACTORS.md` (NBA) and `CFB_FACTORS.md` (college).
+
+- **NBA, 2025-26 held out:** error −3.05% across all 49 markets (49 better,
+  0 worse). Kept: recent minutes, recent per-minute rates, shot zones from
+  play-by-play, the betting total and spread. Also shipped, untestable on
+  past games: questionable players drawn per game, and a re-run before
+  tip-off when the injury news changes.
+- **College, 2026 to date held out:** error −2.49% across all 42 markets
+  (42 better, 0 worse). Kept: recent usage, starters sitting in blowouts, the
+  betting total and spread.
+- **The blend** (half simulator, half gradient-boosted trees), 2% better than
+  the old simulator, is 0.4% better than the new one, and the trees alone are
+  now 3.5% worse; it stays unshipped.
+
+The production replays (`data/sim_nba_*`, `data/sim_cfb_*`), calibration maps,
+projection maps and every backtest file were regenerated with the upgraded
+simulators. `export_upgrade.py` writes the before/after table the Analytics
+pages show.

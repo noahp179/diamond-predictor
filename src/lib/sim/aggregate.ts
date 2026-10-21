@@ -280,23 +280,28 @@ export class Accumulator {
     const players: PlayerSummary[] = this.roster
       .map((r, i) => {
         const games = st.played[i];
+        // A player who may not play (the NBA's questionable list) is priced
+        // for the games he plays: if he sits, a bet on him is void.
+        const src = (this.m[r.side] as { players?: { playP?: number }[] }).players?.[r.p.idx];
+        const cond = src?.playP !== undefined && games > 0;
+        const nn = cond ? games : n;
         const props: PropSummary[] = r.props
           .map((d, k) => {
             const h = { ...st.hists[i][k] };
             // Games he didn't play count as zeros: the projection is for the
             // game, not conditional on him appearing.
             const zeros = st.n - games;
-            if (zeros > 0) inc(h, 0, zeros);
+            if (zeros > 0 && !cond) inc(h, 0, zeros);
             let sum = 0;
             for (const [v, c] of Object.entries(h)) sum += Number(v) * c;
             return {
               key: d.key,
-              mean: sum / n,
-              sd: sdOf(h, n),
-              median: quantile(h, n, 0.5),
-              p10: quantile(h, n, 0.1),
-              p90: quantile(h, n, 0.9),
-              over: d.lines.map((l) => overProb(h, n, l)),
+              mean: sum / nn,
+              sd: sdOf(h, nn),
+              median: quantile(h, nn, 0.5),
+              p10: quantile(h, nn, 0.1),
+              p90: quantile(h, nn, 0.9),
+              over: d.lines.map((l) => overProb(h, nn, l)),
               hist: h,
             };
           })
