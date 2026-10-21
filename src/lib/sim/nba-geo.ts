@@ -46,6 +46,7 @@ export function nbaMiles(a: string, b: string): number {
   const dLat = (q.lat - p.lat) * rad;
   const dLon = (q.lon - p.lon) * rad;
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(p.lat * rad) * Math.cos(q.lat * rad) * Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(p.lat * rad) * Math.cos(q.lat * rad) * Math.sin(dLon / 2) ** 2;
   return 2 * 3959 * Math.asin(Math.sqrt(h));
 }

@@ -287,8 +287,7 @@ function prepTeam(
   const edge = college ? CFB_HOME_EDGE : HOME_EDGE;
   // Rest: a bye week, or a short week (college plays Thursdays and Fridays).
   const rest = m.ctx.fb?.rest?.[side];
-  const restF =
-    rest === undefined ? 1 : rest >= 12 ? 1 + FK.bye : rest <= 5 ? 1 + FK.shortWeek : 1;
+  const restF = rest === undefined ? 1 : rest >= 12 ? 1 + FK.bye : rest <= 5 ? 1 + FK.shortWeek : 1;
   const mktF = m.ctx.fb?.mkt?.[side] ?? 1;
   const pace = t.pace;
   const tempo = pace ? Math.max(0.85, Math.min(1.15, pace.league / Math.max(1, pace.value))) : 1;
@@ -1613,7 +1612,8 @@ export function nflMarketAdjust(
     const tot = h + a;
     const mar = h - a;
     const T = line.total !== null && wTotal > 0 ? (1 - wTotal) * tot + wTotal * line.total : tot;
-    const M = line.spread !== null && wSpread > 0 ? (1 - wSpread) * mar + wSpread * -line.spread : mar;
+    const M =
+      line.spread !== null && wSpread > 0 ? (1 - wSpread) * mar + wSpread * -line.spread : mar;
     return [(T + M) / 2, (T - M) / 2];
   };
   const [h0, a0] = run(1, 1);

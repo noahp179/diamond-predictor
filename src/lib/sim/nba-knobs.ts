@@ -74,6 +74,9 @@ export const NBA_KNOBS = {
   mktSpread: 0,
   /** Playoffs: rotation depth (9 = as in the regular season). */
   playoffDepth: 9,
+  /** 1: a questionable player plays in only his share of the simulated games
+   *  (NBA_PLAY_CHANCE); 0: he always plays, as before. */
+  qProb: 0,
 
   // ---- shot zones
   /** 1: twos priced by zone against this defense's rim and non-rim figures

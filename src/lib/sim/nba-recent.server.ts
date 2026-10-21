@@ -159,9 +159,7 @@ export async function nbaRecentGames(
       getJson<Schedule>(
         `${SITE}/${ESPN_PATH.nba}/teams/${teamId}/schedule?seasontype=${t}${yr}`,
         20000,
-      ).catch(
-        () => ({}) as Schedule,
-      ),
+      ).catch(() => ({}) as Schedule),
     ),
   );
   const done = [...(reg.events ?? []), ...(post.events ?? [])]

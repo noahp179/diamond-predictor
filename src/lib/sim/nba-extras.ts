@@ -61,7 +61,10 @@ export function nbaPlayerExtras(
   const recent = games.slice(-k);
   const out: Record<string, NbaPlayerExtra> = {};
   // Shot zones, per shooter.
-  const z = new Map<string, { two: number; rim: number; m2: number; a2: number; m3: number; a3: number }>();
+  const z = new Map<
+    string,
+    { two: number; rim: number; m2: number; a2: number; m3: number; a3: number }
+  >();
   for (const g of games.slice(-zk))
     for (const [id, zone, made, ast] of g.shots ?? []) {
       const v = z.get(id) ?? { two: 0, rim: 0, m2: 0, a2: 0, m3: 0, a3: 0 };

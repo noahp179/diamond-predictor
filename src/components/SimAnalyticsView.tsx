@@ -111,7 +111,151 @@ const METHOD: Record<string, string> = {
   model: "Previous model",
   model_td1: "First-TD model",
   model_share: "Anytime model split by share",
+  sim_prev: "Previous simulator, calibrated",
 };
+
+type UpgradeRow = {
+  label: string;
+  stat: string;
+  n: number;
+  old: { brier: number; top_hit: number | null };
+  new: { brier: number; top_hit: number | null };
+};
+type UpgradeLeague = {
+  title: string;
+  season: string;
+  games: number;
+  summary: string;
+  kept: { name: string; what: string; effect: string }[];
+  dropped: { name: string; effect: string }[];
+  untested?: string[];
+  rows: UpgradeRow[];
+};
+const UPGRADE = (backtest as unknown as { upgrade?: Record<string, UpgradeLeague> }).upgrade ?? {};
+
+/**
+ * The simulator's latest upgrade, on the season held out to judge it: what
+ * was added, what was tested and left out, and every market's error score
+ * and top-pick hit rate before and after.
+ */
+function Upgrade({ league }: { league: SimPropsLeague }) {
+  const u = UPGRADE[league];
+  const [stat, setStat] = useState("all");
+  if (!u) return null;
+  const stats = [...new Set(u.rows.map((r) => r.stat))];
+  const rows = stat === "all" ? u.rows : u.rows.filter((r) => r.stat === stat);
+  const better = u.rows.filter((r) => r.new.brier < r.old.brier - 1e-5).length;
+  const avg =
+    u.rows.reduce((a, r) => a + (r.new.brier / r.old.brier - 1), 0) / Math.max(1, u.rows.length);
+  return (
+    <section className="mt-8 border border-border bg-card">
+      <div className="px-5 py-5 sm:px-6">
+        <h2 className="font-display text-2xl">{u.title}</h2>
+        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{u.summary}</p>
+        <StatBar>
+          <Stat label="Markets more accurate" value={`${better} of ${u.rows.length}`} />
+          <Stat label="Average change in error" value={`${(avg * 100).toFixed(1)}%`} />
+          <Stat label="Games replayed" value={u.games.toLocaleString()} />
+        </StatBar>
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <div>
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+              Added
+            </h3>
+            <ul className="mt-2 space-y-2 text-sm">
+              {u.kept.map((k) => (
+                <li key={k.name}>
+                  <span className="text-foreground">{k.name}</span>{" "}
+                  <span className="text-muted-foreground">— {k.what}</span>{" "}
+                  <span className="whitespace-nowrap font-mono text-xs text-primary">
+                    {k.effect}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+              Tested and left out
+            </h3>
+            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+              {u.dropped.map((k) => (
+                <li key={k.name}>
+                  {k.name} <span className="whitespace-nowrap font-mono text-xs">{k.effect}</span>
+                </li>
+              ))}
+            </ul>
+            {u.untested?.length ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Not testable on past games: {u.untested.join("; ")}.
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Stat">
+          {["all", ...stats].map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={stat === k}
+              onClick={() => setStat(k)}
+              className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest ${
+                stat === k
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {k === "all" ? "All" : k}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="overflow-x-auto border-t border-border">
+        <table className="w-full min-w-[640px] border-collapse font-mono text-[11px]">
+          <thead>
+            <tr className="border-b border-border text-left uppercase tracking-widest text-muted-foreground">
+              <th className="px-5 py-2 font-normal sm:px-6">Market</th>
+              <th className="py-2 pr-3 text-right font-normal">Error before</th>
+              <th className="py-2 pr-3 text-right font-normal">Error now</th>
+              <th className="py-2 pr-3 text-right font-normal">Change</th>
+              <th className="py-2 pr-5 text-right font-normal sm:pr-6">
+                Top picks came in (before → now)
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const d = r.new.brier / r.old.brier - 1;
+              return (
+                <tr key={r.label} className="border-b border-border/40">
+                  <td className="px-5 py-1.5 normal-case sm:px-6">{r.label}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{r.old.brier.toFixed(4)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{r.new.brier.toFixed(4)}</td>
+                  <td
+                    className={`py-1.5 pr-3 text-right tabular-nums ${d < -0.0005 ? "text-primary" : d > 0.0005 ? "text-destructive" : "text-muted-foreground"}`}
+                  >
+                    {d >= 0 ? "+" : ""}
+                    {(d * 100).toFixed(1)}%
+                  </td>
+                  <td className="py-1.5 pr-5 text-right tabular-nums sm:pr-6">
+                    {r.old.top_hit === null ? "—" : pct(r.old.top_hit, 1)} →{" "}
+                    {r.new.top_hit === null ? "—" : pct(r.new.top_hit, 1)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground sm:px-6">
+        {u.season}: every game replayed with only what was known that morning, both versions scored
+        on the same player-games, each calibrated on other weeks of the same season. Error score is
+        the Brier score: lower is better.
+      </p>
+    </section>
+  );
+}
 
 type Live = { n: number; hits: number; said: number; voids: number; pending: number };
 const empty = (): Live => ({ n: 0, hits: 0, said: 0, voids: 0, pending: 0 });
@@ -433,6 +577,8 @@ export function SimAnalyticsView({ league }: { league: SimPropsLeague }) {
           </table>
         </div>
       </section>
+
+      <Upgrade league={league} />
 
       <details className="group mt-8 border border-border bg-card">
         <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 sm:px-6">

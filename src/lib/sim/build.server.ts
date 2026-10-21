@@ -25,6 +25,7 @@
  */
 
 import {
+  cfbRecent,
   cfbTeamLines,
   playerStats,
   roster as fetchRoster,
@@ -69,6 +70,7 @@ import cfb2025 from "./cfb-2025.json";
 import { cfbRatings } from "./cfb-ratings.server";
 import coaching from "./nfl-coaching.json";
 import { FB_KNOBS } from "./football-knobs";
+import { nbaContext } from "./nba-context.server";
 import { NBA_KNOBS } from "./nba-knobs";
 import { poolTeams, tendencies } from "./tendencies.server";
 
@@ -404,7 +406,12 @@ function nbaPlayer(
   const disc = unknown ? 0.97 : 1;
   const pts = g(s, "offensive.points");
   const ast = g(s, "offensive.assists");
-  const ftp = reg(g(s, "offensive.freeThrowsMade"), g(s, "offensive.freeThrowsAttempted"), env.ftp, K.kft);
+  const ftp = reg(
+    g(s, "offensive.freeThrowsMade"),
+    g(s, "offensive.freeThrowsAttempted"),
+    env.ftp,
+    K.kft,
+  );
   // Free-throw shooting says something about three-point shooting.
   const prior3 = env.fg3p + K.fg3ft * (ftp - env.ftp);
   const rates = {
@@ -423,7 +430,8 @@ function nbaPlayer(
     const w = K.rateW * Math.min(1, x.rateMin / K.rateFull);
     for (const k of Object.keys(rates) as (keyof typeof rates)[]) {
       const v = x.rates[k];
-      if (v !== undefined) rates[k] = (1 - w) * rates[k] + w * reg(v * x.rateMin, x.rateMin, env[k], K.kRate);
+      if (v !== undefined)
+        rates[k] = (1 - w) * rates[k] + w * reg(v * x.rateMin, x.rateMin, env[k], K.kRate);
     }
   }
   const rebF = rates.reb / Math.max(1e-9, reb0);
@@ -455,7 +463,23 @@ function nbaPlayer(
     fg3p: disc * reg(tpm, tpa, prior3, K.k3),
     ftp,
     ...(x ? { x } : {}),
+    ...(K.qProb && availability(e) === "questionable" ? { playP: nbaPlayChance(e.injury) } : {}),
   };
+}
+
+/**
+ * How often an NBA player on the injury report plays, by the report's word.
+ * The official report's designations, as the league describes them and as
+ * public tallies of the report have found: probable almost always plays,
+ * questionable a little more often than not; ESPN's "day-to-day" covers
+ * minor knocks without a designation.
+ */
+export function nbaPlayChance(injury: string | null | undefined): number {
+  const s = injury ?? "";
+  if (/probable/i.test(s)) return 0.95;
+  if (/day-to-day/i.test(s)) return 0.75;
+  if (/questionable/i.test(s)) return 0.6;
+  return 1;
 }
 
 // ------------------------------------------------------------------ NHL
@@ -1258,6 +1282,27 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     ...(b2b ? { b2b } : {}),
   };
 
+  // College: recent usage and rest, from the cached game summaries.
+  if (league === "cfb") {
+    const day = (d: string | null) => (d ? Math.round(Date.parse(`${d}T12:00:00Z`) / 86400000) : 0);
+    const [h, a] = await Promise.all(
+      [homeId, awayId].map((id) => cfbRecent(id, se.current, date).catch(() => null)),
+    );
+    ctx.fb = {
+      players: { ...(h?.players ?? {}), ...(a?.players ?? {}) },
+      rest: {
+        home: h?.last ? day(date) - day(h.last) : undefined,
+        away: a?.last ? day(date) - day(a.last) : undefined,
+      },
+    };
+  }
+  // NBA: recent box scores, play-by-play and the schedule (nba-extras.ts).
+  if (league === "nba")
+    ctx.nba = await nbaContext(
+      { id: homeId, abbr: homeMeta.abbr, players: homeRoster.map((e) => e.id) },
+      { id: awayId, abbr: awayMeta.abbr, players: awayRoster.map((e) => e.id) },
+      date,
+    ).catch(() => undefined);
   if (league === "nba" || league === "nhl")
     return assembleMatchup(
       league,

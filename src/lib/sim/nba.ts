@@ -198,7 +198,9 @@ function prepTeam(
   const sx = nx?.[side];
   const own = nx?.home?.homeEdge;
   const edge =
-    own !== undefined && K.homeTeam > 0 ? (1 - K.homeTeam) * HOME_EDGE + K.homeTeam * own : HOME_EDGE;
+    own !== undefined && K.homeTeam > 0
+      ? (1 - K.homeTeam) * HOME_EDGE + K.homeTeam * own
+      : HOME_EDGE;
   const homeEdge = neutral ? 0 : side === "home" ? edge : -edge;
   // Second night of a back-to-back: tired legs, ~2 points (2025-26).
   const tired = m.ctx.b2b?.[side] ? B2B_MAKE : 1;
@@ -298,7 +300,11 @@ function posGroup(pos: string): keyof typeof POS_ZONE {
  * (shifted by how often this defense allows rim shots) is priced against its
  * rim and non-rim figures.
  */
-function prepShots(off: TeamPrep, def: TeamPrep, dz: { rim: number; jump: number; rimFreq: number } | undefined) {
+function prepShots(
+  off: TeamPrep,
+  def: TeamPrep,
+  dz: { rim: number; jump: number; rimFreq: number } | undefined,
+) {
   for (let i = 0; i < off.team.players.length; i++) {
     const pl = off.team.players[i];
     const x = pl.x;
@@ -307,7 +313,7 @@ function prepShots(off: TeamPrep, def: TeamPrep, dz: { rim: number; jump: number
     off.blk2[i] = 1;
     off.astF[i] = 1;
     const rimN = x?.rimN ?? 0;
-    const r = (((x?.rim ?? 0) * rimN + 60 * pz.rim) / (rimN + 60));
+    const r = ((x?.rim ?? 0) * rimN + 60 * pz.rim) / (rimN + 60);
     if (K.zones && dz) {
       // The shooter's own edge (odds multiplier) over the league in both
       // zones, solved so his mix reproduces his two-point percentage.
@@ -327,7 +333,9 @@ function prepShots(off: TeamPrep, def: TeamPrep, dz: { rim: number; jump: number
     if (K.zoneBlk) {
       // Missed twos near the basket are blocked far more often.
       const close = Math.min(0.98, r + (LG_CLOSE - LG_RIM));
-      const f = (close * BLK_CLOSE + (1 - close) * BLK_JUMP) / (LG_CLOSE * BLK_CLOSE + (1 - LG_CLOSE) * BLK_JUMP);
+      const f =
+        (close * BLK_CLOSE + (1 - close) * BLK_JUMP) /
+        (LG_CLOSE * BLK_CLOSE + (1 - LG_CLOSE) * BLK_JUMP);
       off.blk2[i] = Math.pow(f, K.zoneBlk);
     }
     if (K.zoneAst) {
@@ -822,10 +830,13 @@ export function nbaMarketAdjust(
 ): { pace: number; home: number; away: number } | null {
   const line = m.ctx.line;
   if (!line || (line.total === null && line.spread === null)) return null;
-  const prep = prepareNba({ ...m, ctx: { ...m.ctx, nba: { ...m.ctx.nba, mkt: undefined } } }, {
-    benched: [],
-    activated: [],
-  });
+  const prep = prepareNba(
+    { ...m, ctx: { ...m.ctx, nba: { ...m.ctx.nba, mkt: undefined } } },
+    {
+      benched: [],
+      activated: [],
+    },
+  );
   let h = 0;
   let a = 0;
   for (let i = 0; i < sims; i++) {

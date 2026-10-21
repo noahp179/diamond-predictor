@@ -40,6 +40,9 @@ export interface BasePlayer {
   injury?: string;
   /** Games the rates rest on, after weighting last season. */
   sample: number;
+  /** NBA: the chance a player listed as probable / questionable / day-to-day
+   *  plays (the engine draws it per game; see engine.ts). */
+  playP?: number;
   /** Season per-game averages (seasons blended, not regressed), keyed like
    *  the projections in props.ts — what the player usually does, for
    *  comparing with what the simulation expects in this game. */

@@ -155,6 +155,18 @@
     {
       "path": "/api/public/hooks/sim-props?league=cfb&slot=9",
       "schedule": "56 12 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=nba&late=1",
+      "schedule": "10 21 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=nba&late=2",
+      "schedule": "10 23 * * *"
+    },
+    {
+      "path": "/api/public/hooks/sim-props?league=nba&late=3",
+      "schedule": "10 1 * * *"
     }
   ]
 }
