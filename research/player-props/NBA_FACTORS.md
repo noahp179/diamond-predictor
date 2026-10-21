@@ -321,3 +321,98 @@ game by game with as-of data, toggle one factor at a time.
 10. **Market:** spread/total as a benchmark and possibly a prior.
 11. The W-rated folklore (revenge games, national TV, arena backgrounds, hot hand,
     momentum), one quick test each, expected to wash out.
+
+---
+
+# Results (October 2026)
+
+Every factor that the box scores, ESPN play-by-play, referee assignments and
+betting lines allow was switched on one at a time in the props backtest
+(`scripts/props-backtest.ts`, knobs in `src/lib/sim/nba-knobs.ts`), on
+2024-25: 1,318 games, 33,714 player-games, all 49 markets the boards
+publish, 600 plays a game. Scored by `nba_factor_eval.py`: calibrated Brier
+(isotonic, cross-fitted over five blocks of game days), the average relative
+change over the 49 markets, and a paired bootstrap over games (95% range).
+The winners were then combined and checked on **2025-26, which no choice was
+made on**.
+
+## One at a time, 2024-25
+
+| factor | change in error | 95% range | markets better / worse | kept |
+|---|---|---|---|---|
+| Recent minutes, 25% weight | −1.26% | −1.39, −1.14 | 48 / 1 | |
+| Recent minutes, 50% | −1.84% | −2.04, −1.66 | 48 / 1 | |
+| **Recent minutes, 75%** | **−2.00%** | −2.27, −1.77 | 48 / 1 | ✅ |
+| Recent minutes, 100% | −1.80% | −2.11, −1.51 | 45 / 2 | |
+| Recent minutes 50%, half-life 2 games | −2.06% | −2.28, −1.87 | 49 / 0 | ✅ (half-life 2) |
+| … half-life 8 games | −1.73% | | 47 / 1 | |
+| … window 5 / 20 games | −1.89% / −1.83% | | 48 / 1 | |
+| … without the nine-man cut | −1.56% | | 37 / 9 | |
+| **Recent per-minute rates, 25%** | **−0.23%** | −0.30, −0.15 | 37 / 9 | ✅ |
+| Recent rates, 50% | −0.27% | −0.39, −0.14 | 30 / 13 | |
+| **Shot zones (rim vs other twos, blocks by distance, assisted share)** | **−0.08%** | −0.15, −0.01 | 23 / 12 | ✅ |
+| … zones over the whole season | −0.07% | | 22 / 16 | |
+| Last season fades over 20 games (not 30) | −0.13% | −0.19, −0.08 | 33 / 3 | ✗ (nothing once combined) |
+| Last season fades over 45 games | +0.14% | | 7 / 37 | |
+| Last season's floor 0% / 10% / 35% | +0.03% / −0.04% / +0.30% | | | |
+| Starters from the last five games | −0.07% | −0.13, +0.01 | 22 / 9 | ✗ |
+| Minutes held down after a 3+ game absence | −0.03% / −0.04% | | | ✗ |
+| Each player's own minutes swing (50% / 100%) | +0.01% / +0.16% | | 12 / 31 at 100% | ✗ |
+| Minutes cap 38 | 0.00% | | 14 / 12 | ✗ |
+| Real offensive-rebound split from box scores | −0.03% / 0.00% | | | ✗ |
+| Three-point prior from free-throw % | +0.02% / +0.03% | | | ✗ |
+| Regression strengths (2P, 3P, rates ×½ / ×2) | −0.0 to +0.14% | | | ✗ |
+| Opponent 3P% allowed regressed ½ / fully | +0.01% | | | ✗ |
+| Opponent 2P% allowed regressed ½ | +0.05% | | 8 / 26 | ✗ |
+| Each team's own home edge (½ / full) | 0.00% / −0.03% | | | ✗ |
+| Referee crew's free-throw rate (½ / full) | −0.01% / 0.00% | | | ✗ |
+| Home scorer's assist / block / steal crediting | −0.03% / +0.02% | | | ✗ |
+| Playoff rotation of eight | −0.01% | | | ✗ |
+
+Schedule, measured as each team's points against the simulator
+(`nba_schedule_resid.py`, 2,434 team-games): rest beyond one day +0.1 pts
+(se 0.5), fourth game in six nights +0.5 (0.6), per 1,000 miles +0.4 (0.8),
+per time zone east −1.1 (0.7), west +0.6 (0.7). None is reliably different
+from zero, so none was added. Visitors at altitude scored +4.2 (1.4) **more**
+than expected — the opposite of the folklore, and more likely the two teams'
+defenses that season than the thin air; not added.
+
+Why a defense's three-point percentage doesn't help: split-half, it is noise
+(r = 0.01 in 2024-25, 0.13 in 2025-26), while the share of shots it allows at
+the rim is stable (0.78, 0.84) — which is what the zone factor uses.
+
+## Combined, 2024-25
+
+| combination | change |
+|---|---|
+| recent minutes 75%, half-life 2, full weight after 3 games | −2.10% |
+| + recent rates 25% | −2.29% |
+| **+ shot zones (shipped)** | **−2.33%** (48 / 1) |
+| recent minutes 100% instead | −1.95% |
+| recent rates 40% instead | −2.35% (threes worse) |
+
+## Held out: 2025-26 (1,316 games, 33,373 player-games)
+
+| | change in error | 95% range | markets better / worse |
+|---|---|---|---|
+| **Upgraded simulator** | **−2.85%** | −3.16, −2.54 | **49 / 0** |
+| + betting total and spread, half weight | −2.95% | −3.26, −2.65 | 49 / 0 |
+| **+ betting total and spread, full weight (shipped)** | **−3.05%** | −3.37, −2.74 | **49 / 0** |
+
+Projection errors (mean absolute, per player-game): minutes 6.0 → 4.9,
+points 4.31 → 3.97, rebounds 1.85 → 1.70, assists 1.21 → 1.13, threes 0.79 →
+0.77. The market's own gain over the upgraded simulator, by half of the
+season: −0.07% (first half, not significant) and −0.28% (second, significant).
+Only 2025-26 has ESPN's lines, so that weight was chosen on it.
+
+## Also shipped, not testable on past games
+
+- **Questionable players** play in their share of the simulated games
+  (probable 95%, day-to-day 75%, questionable 60%) and are priced for the
+  games they play — a bet on a player who sits is void.
+- **A re-run before tip-off**: three evening passes (5, 7 and 9pm ET) re-run
+  any game starting within four hours whose injury news has moved a rotation
+  player's chance of playing by 30 points, at 5,000 plays, and replace its
+  ledger picks (unsettled ones only).
+
+Neither can be backtested: ESPN keeps no history of injury designations.

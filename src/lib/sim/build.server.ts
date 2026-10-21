@@ -70,6 +70,8 @@ import cfb2025 from "./cfb-2025.json";
 import { cfbRatings } from "./cfb-ratings.server";
 import coaching from "./nfl-coaching.json";
 import { FB_KNOBS } from "./football-knobs";
+import { nbaMarketAdjust } from "./nba";
+import { nflMarketAdjust } from "./nfl";
 import { nbaContext } from "./nba-context.server";
 import { NBA_KNOBS } from "./nba-knobs";
 import { poolTeams, tendencies } from "./tendencies.server";
@@ -987,6 +989,7 @@ const DEF_FLOOR: Record<string, { tkl: number; sk: number; int: number }> = {
 
 /** A per-game rate leaning toward his recent games (FB_KNOBS.recentW). */
 function blendRecent(season: number, recent: number | undefined, n: number | undefined): number {
+  // Only college games carry recent lines (ctx.fb, buildMatchup).
   if (!FB_KNOBS.recentW || recent === undefined || !n) return season;
   const w = FB_KNOBS.recentW * Math.min(1, n / FB_KNOBS.recentFull);
   return (1 - w) * season + w * recent;
@@ -1303,7 +1306,16 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
       { id: awayId, abbr: awayMeta.abbr, players: awayRoster.map((e) => e.id) },
       date,
     ).catch(() => undefined);
-  if (league === "nba" || league === "nhl")
+  if (league === "nba") {
+    const m = assembleMatchup(league, se, homeMeta, awayMeta, homeRoster, awayRoster, ctx);
+    // The market's total and spread, folded in before the real run.
+    if (m.league === "nba" && (NBA_KNOBS.mktTotal > 0 || NBA_KNOBS.mktSpread > 0)) {
+      const adj = nbaMarketAdjust(m, NBA_KNOBS.mktTotal, NBA_KNOBS.mktSpread);
+      if (adj) m.ctx.nba = { ...m.ctx.nba, mkt: adj };
+    }
+    return m;
+  }
+  if (league === "nhl")
     return assembleMatchup(
       league,
       se,
@@ -1322,7 +1334,7 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     league === "cfb"
       ? await Promise.all([collegeSeason(se, homeId, awayId), cfbRatings(date).catch(() => null)])
       : [se, null];
-  return assembleFootball(
+  const fm = assembleFootball(
     league,
     se,
     fse,
@@ -1333,6 +1345,12 @@ export async function buildMatchup(req: MatchupRequest): Promise<SimMatchup> {
     ctx,
     ratings,
   );
+  // College: the market's total and spread, folded in before the real run.
+  if (fm.league === "cfb" && (FB_KNOBS.mktTotal > 0 || FB_KNOBS.mktSpread > 0)) {
+    const adj = nflMarketAdjust(fm, FB_KNOBS.mktTotal, FB_KNOBS.mktSpread);
+    if (adj) fm.ctx.fb = { ...fm.ctx.fb, mkt: adj };
+  }
+  return fm;
 }
 
 /**

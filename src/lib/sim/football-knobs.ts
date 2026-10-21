@@ -7,18 +7,18 @@
  */
 export const FB_KNOBS = {
   /** Weight on recent targets and carries a game (vs the season's). */
-  recentW: 0,
+  recentW: 0.75,
   /** Appearances needed for full weight. */
   recentFull: 3,
   /** Score margin from which a side's starters sit in the fourth quarter (0 = never). */
-  pull: 0,
+  pull: 28,
   /** Share of the usual work the sitting starters still get. */
   pullF: 0.25,
   /** 1: the trailing side sits its starters too, not just the leader. */
-  pullBoth: 0,
+  pullBoth: 1,
   /** Weight on the market's total and spread. */
-  mktTotal: 0,
-  mktSpread: 0,
+  mktTotal: 1,
+  mktSpread: 1,
   /** Offensive efficiency factor per week of extra rest (a bye), and for a short week. */
   bye: 0,
   shortWeek: 0,

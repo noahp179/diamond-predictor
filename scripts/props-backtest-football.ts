@@ -370,12 +370,27 @@ function main() {
         venue: "",
         neutral: g.neutral,
         playoff: g.stype === 3,
-        line: g.odds
-          ? { provider: "ESPN", spread: g.odds.spread, total: g.odds.total, homeMl: null, awayMl: null }
-          : null,
+        line:
+          g.odds && league === "cfb"
+            ? {
+                provider: "ESPN",
+                spread: g.odds.spread,
+                total: g.odds.total,
+                homeMl: null,
+                awayMl: null,
+              }
+            : null,
         basis: se.basis,
         indoor: false,
-        fb: { players: fbPlayers, rest: { home: restOf(g.home.id), away: restOf(g.away.id) } },
+        // College factors only (football-knobs.ts); the NFL replays as before.
+        ...(league === "cfb"
+          ? {
+              fb: {
+                players: fbPlayers,
+                rest: { home: restOf(g.home.id), away: restOf(g.away.id) },
+              },
+            }
+          : {}),
       };
       const m = assembleFootball(
         league,
@@ -389,7 +404,7 @@ function main() {
         ratings,
         false,
       );
-      if (FB_KNOBS.mktTotal > 0 || FB_KNOBS.mktSpread > 0) {
+      if (league === "cfb" && (FB_KNOBS.mktTotal > 0 || FB_KNOBS.mktSpread > 0)) {
         const adj = nflMarketAdjust(
           m as Extract<SimMatchup, { league: "nfl" | "cfb" }>,
           FB_KNOBS.mktTotal,

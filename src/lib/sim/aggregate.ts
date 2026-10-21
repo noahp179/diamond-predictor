@@ -282,7 +282,8 @@ export class Accumulator {
         const games = st.played[i];
         // A player who may not play (the NBA's questionable list) is priced
         // for the games he plays: if he sits, a bet on him is void.
-        const cond = (r.p as { playP?: number }).playP !== undefined && games > 0;
+        const src = (this.m[r.side] as { players?: { playP?: number }[] }).players?.[r.p.idx];
+        const cond = src?.playP !== undefined && games > 0;
         const nn = cond ? games : n;
         const props: PropSummary[] = r.props
           .map((d, k) => {

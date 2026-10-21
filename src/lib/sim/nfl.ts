@@ -446,11 +446,11 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   const qb = [T[0].qb, T[1].qb];
   const college = prep.college;
   const formSd = college ? FK.formSd : FORM_SD;
-  // Blowouts: from the fourth quarter, a side up (or, optionally, down) by
+  // College blowouts: from the fourth quarter, a side up (or, optionally, down) by
   // FK.pull sits its starting quarterback and its regular backs and receivers.
   const pulled = [false, false];
   const checkPull = () => {
-    if (!FK.pull || quarter < 4) return;
+    if (!FK.pull || !college || quarter < 4) return;
     for (const s of [0, 1]) {
       const lead = score[s] - score[1 - s];
       if (pulled[s] || !(lead >= FK.pull || (FK.pullBoth && -lead >= FK.pull))) continue;

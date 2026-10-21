@@ -361,12 +361,26 @@ export function nbaNews(m: SimMatchup, stored: SimPlayer[]): string[] {
   if (m.league !== "nba") return [];
   const before = new Map(stored.map((p) => [p.id, p.played]));
   const out: string[] = [];
-  for (const p of [...m.home.players, ...m.away.players]) {
-    const mins = p.x?.rmin ?? p.mpg;
-    if (mins < 12) continue;
-    const now = p.status === "out" ? 0 : (p.playP ?? 1);
-    const was = before.get(p.id) ?? 0;
-    if (Math.abs(now - was) >= NEWS) out.push(`${p.short} ${now > was ? "in" : "out"}`);
+  for (const team of [m.home, m.away]) {
+    // Who the rotation is now: the eight with the most planned minutes among
+    // those not ruled out (a player missing from the morning's board was
+    // either out then or outside the rotation; only the first is news).
+    const plan = (p: (typeof team.players)[number]) => p.x?.rmin ?? p.mpg;
+    const top8 = new Set(
+      team.players
+        .filter((p) => p.status !== "out")
+        .sort((a, b) => plan(b) - plan(a))
+        .slice(0, 8)
+        .map((p) => p.id),
+    );
+    for (const p of team.players) {
+      if (plan(p) < 12) continue;
+      const now = p.status === "out" ? 0 : (p.playP ?? 1);
+      const was = before.get(p.id);
+      if (was === undefined) {
+        if (now >= 1 - NEWS && top8.has(p.id)) out.push(`${p.short} in`);
+      } else if (Math.abs(now - was) >= NEWS) out.push(`${p.short} ${now > was ? "in" : "out"}`);
+    }
   }
   return out;
 }

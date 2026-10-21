@@ -11,9 +11,9 @@
 export const NBA_KNOBS = {
   // ---- minutes
   /** Weight on recent minutes (vs season minutes), at full recent sample. */
-  recentW: 0,
+  recentW: 0.75,
   /** Recent games needed for full weight. */
-  recentFull: 5,
+  recentFull: 3,
   /** Minutes multiplier for a player's first game back after missing 3+. */
   ret1: 1,
   /** ... and for his second and third games back. */
@@ -33,7 +33,7 @@ export const NBA_KNOBS = {
   /** Pseudo-rebounds at the position's split when regressing it. */
   orebK: 30,
   /** Weight on recent per-minute rates (usage, passing, rebounding). */
-  rateW: 0,
+  rateW: 0.25,
   /** Recent minutes needed for full weight. */
   rateFull: 250,
   /** Three-point prior moves this much per point of free-throw % above league. */
@@ -70,22 +70,22 @@ export const NBA_KNOBS = {
   /** Weight on the home scorer's assist / block / steal crediting. */
   scorer: 0,
   /** Weight on the market's total (pace) and spread (make probability). */
-  mktTotal: 0,
-  mktSpread: 0,
+  mktTotal: 1,
+  mktSpread: 1,
   /** Playoffs: rotation depth (9 = as in the regular season). */
   playoffDepth: 9,
   /** 1: a questionable player plays in only his share of the simulated games
    *  (NBA_PLAY_CHANCE); 0: he always plays, as before. */
-  qProb: 0,
+  qProb: 1,
 
   // ---- shot zones
   /** 1: twos priced by zone against this defense's rim and non-rim figures
    *  (in place of its overall two-point factor). */
-  zones: 0,
+  zones: 1,
   /** Weight on the shooter's rim share in how often a missed two is blocked. */
-  zoneBlk: 0,
+  zoneBlk: 1,
   /** Weight on the shooter's own assisted share in whether a make is assisted. */
-  zoneAst: 0,
+  zoneAst: 1,
 };
 
 export type NbaKnobs = typeof NBA_KNOBS;

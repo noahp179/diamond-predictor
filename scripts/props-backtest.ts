@@ -306,7 +306,10 @@ class NbaHist {
   refs = new Map<string, { n: number; fta: number }>();
   lgFta = { n: 0, fta: 0 };
   road = new Map<string, { n: number; ast: number; blk: number; stl: number }>();
-  arena = new Map<string, { ast: number; blk: number; stl: number; eAst: number; eBlk: number; eStl: number }>();
+  arena = new Map<
+    string,
+    { ast: number; blk: number; stl: number; eAst: number; eBlk: number; eStl: number }
+  >();
   margin = new Map<string, { hn: number; hm: number; rn: number; rm: number }>();
 
   newSeason() {
@@ -332,8 +335,7 @@ class NbaHist {
     const vis = g.away.id;
     const rv = this.road.get(vis);
     const lg = this.lgRoad();
-    const exp = (k: "ast" | "blk" | "stl") =>
-      rv && rv.n >= 5 ? rv[k] / rv.n : lg ? lg[k] : null;
+    const exp = (k: "ast" | "blk" | "stl") => (rv && rv.n >= 5 ? rv[k] / rv.n : lg ? lg[k] : null);
     const eA = exp("ast");
     if (eA !== null) {
       const a = this.arena.get(g.home.id) ?? { ast: 0, blk: 0, stl: 0, eAst: 0, eBlk: 0, eStl: 0 };
@@ -411,8 +413,20 @@ class NbaHist {
   extra(g: Game, x: Extra | undefined, d: string): NbaGameExtra {
     const ids = (tid: string) => g.players.filter((p) => p.team === tid && p.pid).map((p) => p.pid);
     const players = {
-      ...nbaPlayerExtras(this.games.get(g.home.id) ?? [], ids(g.home.id), RECENT_K, RECENT_HALF, ZONE_K),
-      ...nbaPlayerExtras(this.games.get(g.away.id) ?? [], ids(g.away.id), RECENT_K, RECENT_HALF, ZONE_K),
+      ...nbaPlayerExtras(
+        this.games.get(g.home.id) ?? [],
+        ids(g.home.id),
+        RECENT_K,
+        RECENT_HALF,
+        ZONE_K,
+      ),
+      ...nbaPlayerExtras(
+        this.games.get(g.away.id) ?? [],
+        ids(g.away.id),
+        RECENT_K,
+        RECENT_HALF,
+        ZONE_K,
+      ),
     };
     const out: NbaGameExtra = {
       players,
@@ -516,7 +530,8 @@ function main() {
   const hist = sport === "nba" ? new NbaHist() : null;
   const extras = new Map<string, Extra>();
   if (hist) {
-    for (const s of [SEASON - 2, SEASON - 1, SEASON]) for (const [k, v] of loadExtra(s)) extras.set(k, v);
+    for (const s of [SEASON - 2, SEASON - 1, SEASON])
+      for (const [k, v] of loadExtra(s)) extras.set(k, v);
     for (const s of [SEASON - 2, SEASON - 1]) {
       hist.newSeason();
       const gs = load(s).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

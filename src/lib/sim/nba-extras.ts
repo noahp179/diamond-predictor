@@ -46,7 +46,7 @@ export const NBA_ZONE_GAMES = 10;
 /** Recent games read for minutes, starts and rates. */
 export const NBA_RECENT_GAMES = 10;
 /** Recency half-life for minutes, in games. */
-export const NBA_RECENT_HALF = 4;
+export const NBA_RECENT_HALF = 2;
 
 const dayNum = (d: string) => Math.round(Date.parse(`${d}T12:00:00Z`) / 86400000);
 
