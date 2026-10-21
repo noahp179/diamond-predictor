@@ -56,7 +56,7 @@ function limited<T>(run: () => Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => queue.push(() => void go().then(resolve, reject)));
 }
 
-async function getJson<T>(url: string, ms = 20000): Promise<T> {
+export async function getJson<T>(url: string, ms = 20000): Promise<T> {
   return limited(async () => {
     // ESPN's stats hosts answer the occasional request with a 503 or a reset
     // connection and serve the identical request a second later, so a failure

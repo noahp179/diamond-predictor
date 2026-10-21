@@ -50,6 +50,7 @@ import type {
   MlbTeam,
   NbaEnv,
   NbaPlayer,
+  NbaPlayerExtra,
   NbaTeam,
   NflEnv,
   NflPlayer,
@@ -67,6 +68,7 @@ import type {
 import cfb2025 from "./cfb-2025.json";
 import { cfbRatings } from "./cfb-ratings.server";
 import coaching from "./nfl-coaching.json";
+import { NBA_KNOBS } from "./nba-knobs";
 import { poolTeams, tendencies } from "./tendencies.server";
 
 // ------------------------------------------------------------- blending
@@ -151,7 +153,9 @@ export function makeSeason(x: {
   const gps = [...stCur.values()].map((r) => r.gp);
   const gpNow = gps.length ? gps.reduce((a, b) => a + b, 0) / gps.length : 0;
   const noCur = league === "cfb" ? gpNow < 0.5 : cur.size === 0;
-  const w = noCur ? 1 : Math.max(0.2, Math.min(1, 1 - gpNow / HALF[league]));
+  const floor = league === "nba" ? NBA_KNOBS.wFloor : 0.2;
+  const half = league === "nba" ? NBA_KNOBS.half : HALF[league];
+  const w = noCur ? 1 : Math.max(floor, Math.min(1, 1 - gpNow / half));
   const now = seasonLabel(league, current);
   const games = `${Math.round(gpNow)} game${Math.round(gpNow) === 1 ? "" : "s"}`;
   const then = seasonLabel(league, prior);
@@ -372,24 +376,56 @@ function nbaEnv(se: Season): NbaEnv & {
   };
 }
 
-function nbaPlayer(se: Season, e: RosterEntry, env: ReturnType<typeof nbaEnv>): NbaPlayer {
+function nbaPlayer(
+  se: Season,
+  e: RosterEntry,
+  env: ReturnType<typeof nbaEnv>,
+  x?: NbaPlayerExtra,
+): NbaPlayer {
+  const K = NBA_KNOBS;
   const s = pooled(se, e.id);
   const G = g(s, "general.gamesPlayed");
   const M = g(s, "general.minutes");
-  const K = 250; // pseudo-minutes at the league rate
-  const r = (count: number, lg: number) => reg(count, M, lg, K);
+  const r = (count: number, lg: number) => reg(count, M, lg, K.kRate);
   const fga = g(s, "offensive.fieldGoalsAttempted");
   const tpa = g(s, "offensive.threePointFieldGoalsAttempted");
   const fgm = g(s, "offensive.fieldGoalsMade");
   const tpm = g(s, "offensive.threePointFieldGoalsMade");
   const reb = g(s, "general.rebounds");
-  const share = nbaOrebShare(e.pos);
+  // The rebound split: by position, or from his own box scores, regressed
+  // toward the position's split.
+  let share = nbaOrebShare(e.pos);
+  if (K.orebReal && x?.rebN && x.orebShare !== undefined)
+    share = (x.orebShare * x.rebN + K.orebK * share) / (x.rebN + K.orebK);
   // Unknowns (rookies, call-ups) shoot a touch below the league: the players
   // who arrive without numbers are, on average, not its better shooters.
   const unknown = M < 1;
   const disc = unknown ? 0.97 : 1;
   const pts = g(s, "offensive.points");
   const ast = g(s, "offensive.assists");
+  const ftp = reg(g(s, "offensive.freeThrowsMade"), g(s, "offensive.freeThrowsAttempted"), env.ftp, K.kft);
+  // Free-throw shooting says something about three-point shooting.
+  const prior3 = env.fg3p + K.fg3ft * (ftp - env.ftp);
+  const rates = {
+    fg2a: r(fga - tpa, env.fg2a),
+    fg3a: r(tpa, env.fg3a),
+    fta: r(g(s, "offensive.freeThrowsAttempted"), env.fta),
+    reb: r(reb, env.reb),
+    ast: r(g(s, "offensive.assists"), env.ast),
+    stl: r(g(s, "defensive.steals"), env.stl),
+    blk: r(g(s, "defensive.blocks"), env.blk),
+    tov: r(g(s, "offensive.turnovers"), env.tov),
+  };
+  const reb0 = rates.reb;
+  // Recent per-minute rates, when the recent box scores are known.
+  if (K.rateW > 0 && x?.rates && x.rateMin) {
+    const w = K.rateW * Math.min(1, x.rateMin / K.rateFull);
+    for (const k of Object.keys(rates) as (keyof typeof rates)[]) {
+      const v = x.rates[k];
+      if (v !== undefined) rates[k] = (1 - w) * rates[k] + w * reg(v * x.rateMin, x.rateMin, env[k], K.kRate);
+    }
+  }
+  const rebF = rates.reb / Math.max(1e-9, reb0);
   return {
     ...base(e, G),
     avg: perGame(G, {
@@ -404,19 +440,20 @@ function nbaPlayer(se: Season, e: RosterEntry, env: ReturnType<typeof nbaEnv>): 
       min: M,
     }),
     mpg: unknown ? 8 : M / Math.max(1, G),
-    fg2a: r(fga - tpa, env.fg2a),
-    fg3a: r(tpa, env.fg3a),
-    fta: r(g(s, "offensive.freeThrowsAttempted"), env.fta),
-    oreb: r(reb * share, env.oreb),
-    dreb: r(reb * (1 - share), env.dreb),
-    ast: r(g(s, "offensive.assists"), env.ast),
-    stl: r(g(s, "defensive.steals"), env.stl),
-    blk: r(g(s, "defensive.blocks"), env.blk),
-    tov: r(g(s, "offensive.turnovers"), env.tov),
+    fg2a: rates.fg2a,
+    fg3a: rates.fg3a,
+    fta: rates.fta,
+    oreb: r(reb * share, env.oreb) * rebF,
+    dreb: r(reb * (1 - share), env.dreb) * rebF,
+    ast: rates.ast,
+    stl: rates.stl,
+    blk: rates.blk,
+    tov: rates.tov,
     pf: r(g(s, "general.fouls"), env.pf),
-    fg2p: disc * reg(fgm - tpm, fga - tpa, env.fg2p, 150),
-    fg3p: disc * reg(tpm, tpa, env.fg3p, 250),
-    ftp: reg(g(s, "offensive.freeThrowsMade"), g(s, "offensive.freeThrowsAttempted"), env.ftp, 60),
+    fg2p: disc * reg(fgm - tpm, fga - tpa, env.fg2p, K.k2),
+    fg3p: disc * reg(tpm, tpa, prior3, K.k3),
+    ftp,
+    ...(x ? { x } : {}),
   };
 }
 
@@ -1056,7 +1093,9 @@ export function assembleMatchup(
     const env = nbaEnv(se);
     const mk = (meta: TeamMeta, ros: RosterEntry[]): NbaTeam => ({
       ...teamInfo(meta, teamRates(se, meta.id, env.ppg), se),
-      players: ros.map((e) => nbaPlayer(se, e, env)).sort((a, b) => b.mpg - a.mpg),
+      players: ros
+        .map((e) => nbaPlayer(se, e, env, ctx.nba?.players?.[e.id]))
+        .sort((a, b) => b.mpg - a.mpg),
     });
     const { ppg, pace, fg2p, fg3p, ftp, stl, blk, ast, pf } = env;
     return {

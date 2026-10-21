@@ -105,6 +105,8 @@ export interface NbaPlayer extends BasePlayer {
   fg2p: number;
   fg3p: number;
   ftp: number;
+  /** What recent box scores say about him (minutes, starts, returns). */
+  x?: NbaPlayerExtra;
 }
 
 export interface NbaTeam extends TeamInfo {
@@ -308,6 +310,69 @@ export interface MatchupContext {
   indoor?: boolean;
   /** NBA: a team on the second night of a back-to-back (2025-26: ~2 points). */
   b2b?: Partial<Record<Side, boolean>>;
+  /** NBA: what recent box scores, the schedule and the officials add. */
+  nba?: NbaGameExtra;
+}
+
+/** NBA, per player, from his team's recent box scores (all optional). */
+export interface NbaPlayerExtra {
+  /** Minutes a game over the recent games he was available for (a coach's
+   *  decision counts as zero), recency-weighted. */
+  rmin?: number;
+  /** Recent games he was available for. */
+  rgp?: number;
+  /** Starts in his last five games available. */
+  rstarts?: number;
+  /** Which game back this is after missing three or more (1 = first). */
+  back?: number;
+  /** Game-to-game spread of his minutes: sd / mean over recent games played. */
+  minCv?: number;
+  /** Offensive share of his recent rebounds, and how many rebounds that is. */
+  orebShare?: number;
+  rebN?: number;
+  /** Recent per-minute rates, and the minutes they cover. */
+  rates?: Partial<Record<"fg2a" | "fg3a" | "fta" | "ast" | "tov" | "reb" | "stl" | "blk", number>>;
+  rateMin?: number;
+  /** Shot zones from play-by-play: share of his twos taken at the rim, and
+   *  the share of his made twos and threes that were assisted, with the
+   *  attempts / makes behind each. */
+  rim?: number;
+  rimN?: number;
+  ast2?: number;
+  ast2N?: number;
+  ast3?: number;
+  ast3N?: number;
+}
+
+export interface NbaSideExtra {
+  /** Days since the team's last game (1 = back-to-back). */
+  rest?: number;
+  /** Fourth game in six nights. */
+  g4in6?: boolean;
+  /** Miles travelled since the last game. */
+  miles?: number;
+  /** Time zones moved east since the last game (negative = west). */
+  tzEast?: number;
+  /** The team's own home edge, as a make-probability bump, regressed. */
+  homeEdge?: number;
+  /** This team's defense by zone, against the league: odds multipliers on
+   *  rim and other twos going in, and on a two being at the rim. */
+  def?: { rim: number; jump: number; rimFreq: number };
+}
+
+export interface NbaGameExtra {
+  players?: Record<string, NbaPlayerExtra>;
+  home?: NbaSideExtra;
+  away?: NbaSideExtra;
+  /** Played at altitude (Denver, Utah). */
+  altitude?: boolean;
+  /** The crew's free throws / fouls relative to the league (1 = average). */
+  refFt?: number;
+  /** The home scorer's crediting relative to the league (1 = average). */
+  scorer?: { ast: number; blk: number; stl: number };
+  /** Set from the market before the real run: pace and make-probability
+   *  multipliers per side. */
+  mkt?: { pace: number; home: number; away: number };
 }
 
 export type SimMatchup =
