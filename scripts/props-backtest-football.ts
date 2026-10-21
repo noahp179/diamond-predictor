@@ -42,7 +42,9 @@ import type {
   TeamMeta,
   TeamTotals,
 } from "../src/lib/sim/espn-stats.server";
-import type { MatchupContext } from "../src/lib/sim/types";
+import { FB_KNOBS, setFbKnobs } from "../src/lib/sim/football-knobs";
+import { nflMarketAdjust } from "../src/lib/sim/nfl";
+import type { MatchupContext, SimMatchup } from "../src/lib/sim/types";
 
 type League = "nfl" | "cfb";
 const [league, seasonArg, rawDir, shardArg, shardsArg, simsArg] = process.argv.slice(2) as [
@@ -58,6 +60,11 @@ const SHARD = Number(shardArg ?? 0);
 const SHARDS = Number(shardsArg ?? 1);
 const SIMS = Number(simsArg ?? 1000);
 const DATA = "research/player-props/data";
+// Factor tests: knob overrides (JSON), an output tag, the recent window.
+if (process.env.FB_KNOBS) setFbKnobs(JSON.parse(process.env.FB_KNOBS));
+const TAG = process.env.OUT_TAG ?? "";
+const RECENT_K = Number(process.env.RECENT_K ?? 4);
+const RECENT_HALF = Number(process.env.RECENT_HALF ?? 2);
 
 type RawSummary = Summary & {
   header?: Summary["header"] & {
@@ -72,6 +79,7 @@ type RawSummary = Summary & {
       }[];
     }[];
   };
+  pickcenter?: { spread?: number | null; overUnder?: number | null }[];
   boxscore?: Summary["boxscore"] & {
     teams?: { team?: { id?: string }; statistics?: { name?: string; displayValue?: string }[] }[];
   };
@@ -90,6 +98,7 @@ type Game = {
   /** teamId -> player id -> byathlete-keyed line for this game */
   lines: Map<string, Map<string, { name: string; s: Record<string, number> }>>;
   third: Map<string, { conv: number; att: number }>;
+  odds: { spread: number | null; total: number | null } | null;
 };
 
 function readRaw(path: string): RawSummary {
@@ -133,6 +142,10 @@ function loadGames(): Game[] {
       as: Number(away.score ?? 0),
       lines: new Map(g.teams.map((t) => [t.teamId, t.players])),
       third,
+      odds: (() => {
+        const pc = (sum.pickcenter ?? []).find((x) => x.spread != null || x.overUnder != null);
+        return pc ? { spread: pc.spread ?? null, total: pc.overUnder ?? null } : null;
+      })(),
     });
   }
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -288,8 +301,12 @@ function main() {
   }
 
   const cur = new Totals();
+  // Recent appearances per player (this season), and each team's last game day.
+  const recent = new Map<string, { s: Record<string, number> }[]>();
+  const lastDay = new Map<string, string>();
+  const dayNum = (d: string) => Math.round(Date.parse(`${d}T12:00:00Z`) / 86400000);
   const suffix = SHARDS > 1 ? `.${SHARD}` : "";
-  const out = createWriteStream(`${DATA}/sim_${league}_${SEASON}${suffix}.jsonl`);
+  const out = createWriteStream(`${DATA}/sim${TAG}_${league}_${SEASON}${suffix}.jsonl`);
   const t0 = Date.now();
   let done = 0;
   for (let gi = 0; gi < games.length; gi++) {
@@ -328,15 +345,37 @@ function main() {
           (a, b) =>
             (b[1].s["passing.passingAttempts"] ?? 0) - (a[1].s["passing.passingAttempts"] ?? 0),
         )[0]?.[0];
+      const fbPlayers: Record<string, { s: Record<string, number>; n: number }> = {};
+      for (const tid of [g.home.id, g.away.id])
+        for (const pid of (g.lines.get(tid) ?? new Map()).keys()) {
+          const list = (recent.get(pid) ?? []).slice(-RECENT_K);
+          if (!list.length) continue;
+          let wSum = 0;
+          const acc: Record<string, number> = {};
+          list.forEach((x, i) => {
+            const w = Math.pow(0.5, (list.length - 1 - i) / RECENT_HALF);
+            wSum += w;
+            for (const [k, v] of Object.entries(x.s)) acc[k] = (acc[k] ?? 0) + w * v;
+          });
+          for (const k of Object.keys(acc)) acc[k] /= wSum;
+          fbPlayers[pid] = { s: acc, n: list.length };
+        }
+      const restOf = (tid: string) => {
+        const l = lastDay.get(tid);
+        return l ? dayNum(date) - dayNum(l) : undefined;
+      };
       const ctx: MatchupContext = {
         gameId: g.id,
         date,
         venue: "",
         neutral: g.neutral,
         playoff: g.stype === 3,
-        line: null,
+        line: g.odds
+          ? { provider: "ESPN", spread: g.odds.spread, total: g.odds.total, homeMl: null, awayMl: null }
+          : null,
         basis: se.basis,
         indoor: false,
+        fb: { players: fbPlayers, rest: { home: restOf(g.home.id), away: restOf(g.away.id) } },
       };
       const m = assembleFootball(
         league,
@@ -350,6 +389,14 @@ function main() {
         ratings,
         false,
       );
+      if (FB_KNOBS.mktTotal > 0 || FB_KNOBS.mktSpread > 0) {
+        const adj = nflMarketAdjust(
+          m as Extract<SimMatchup, { league: "nfl" | "cfb" }>,
+          FB_KNOBS.mktTotal,
+          FB_KNOBS.mktSpread,
+        );
+        if (adj) m.ctx.fb = { ...m.ctx.fb, mkt: adj };
+      }
       const starter = { home: qb(g.home.id), away: qb(g.away.id) };
       const play = runner(m, {
         benched: [],
@@ -389,6 +436,14 @@ function main() {
         console.log(
           `${league} ${SEASON} shard ${SHARD}: ${done} games, ${((Date.now() - t0) / 1000).toFixed(0)}s`,
         );
+    }
+    for (const tid of [g.home.id, g.away.id]) {
+      lastDay.set(tid, g.date.slice(0, 10));
+      for (const [pid, l] of g.lines.get(tid) ?? new Map()) {
+        const list = recent.get(pid) ?? [];
+        list.push({ s: l.s });
+        recent.set(pid, list.slice(-12));
+      }
     }
     if (g.stype === 2) cur.fold(g, posNow);
     else

@@ -312,6 +312,18 @@ export interface MatchupContext {
   b2b?: Partial<Record<Side, boolean>>;
   /** NBA: what recent box scores, the schedule and the officials add. */
   nba?: NbaGameExtra;
+  /** Football: recent usage, rest, and the market fitted before the run. */
+  fb?: FbGameExtra;
+}
+
+export interface FbGameExtra {
+  /** Per player: his box-score line a game over his recent appearances
+   *  (recency-weighted, byathlete keys), and how many appearances that is. */
+  players?: Record<string, { s: Record<string, number>; n: number }>;
+  /** Days since each side's last game. */
+  rest?: Partial<Record<Side, number>>;
+  /** Offensive efficiency multipliers fitted to the market's total and spread. */
+  mkt?: { home: number; away: number };
 }
 
 /** NBA, per player, from his team's recent box scores (all optional). */

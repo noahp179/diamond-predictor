@@ -68,6 +68,7 @@ import type {
 import cfb2025 from "./cfb-2025.json";
 import { cfbRatings } from "./cfb-ratings.server";
 import coaching from "./nfl-coaching.json";
+import { FB_KNOBS } from "./football-knobs";
 import { NBA_KNOBS } from "./nba-knobs";
 import { poolTeams, tendencies } from "./tendencies.server";
 
@@ -960,7 +961,19 @@ const DEF_FLOOR: Record<string, { tkl: number; sk: number; int: number }> = {
   DB: { tkl: 2.8, sk: 0.03, int: 0.05 },
 };
 
-function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
+/** A per-game rate leaning toward his recent games (FB_KNOBS.recentW). */
+function blendRecent(season: number, recent: number | undefined, n: number | undefined): number {
+  if (!FB_KNOBS.recentW || recent === undefined || !n) return season;
+  const w = FB_KNOBS.recentW * Math.min(1, n / FB_KNOBS.recentFull);
+  return (1 - w) * season + w * recent;
+}
+
+function nflPlayer(
+  se: Season,
+  e: RosterEntry,
+  lg: NflLg,
+  x?: { s: Record<string, number>; n: number },
+): NflPlayer {
   const s = pooled(se, e.id);
   const G = Math.max(0, g(s, "general.gamesPlayed"));
   const per = Math.max(1, G);
@@ -973,6 +986,7 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
   const u = usage(se.league, s, e.pos);
   const car = u.car;
   const tgt = u.tgt;
+  const ru = x ? usage(se.league, x.s, e.pos) : null;
   const recs = g(s, "receiving.receptions");
   const rg = lg.rush[rushGroup(e.pos)];
   const cg = lg.rec[recGroup(e.pos)];
@@ -1019,7 +1033,7 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
     passTd: reg(g(s, "passing.passingTouchdowns"), att, E.passTd * 0.85, 250),
     intRate: reg(g(s, "passing.interceptions"), att, E.intRate * 1.15, 300),
     sackRate: reg(sk, att + sk, E.sackRate * 1.05, 180),
-    carries: car / per,
+    carries: blendRecent(car / per, ru?.car, x?.n),
     ypc_r: reg(u.ryd, car, rg.ypc * 0.96, 70),
     rushTd: reg(g(s, "rushing.rushingTouchdowns"), car, rg.td, 90),
     fumble: reg(
@@ -1028,7 +1042,7 @@ function nflPlayer(se: Season, e: RosterEntry, lg: NflLg): NflPlayer {
       lg.fumble,
       150,
     ),
-    targets: tgt / per,
+    targets: blendRecent(tgt / per, ru?.tgt, x?.n),
     catchRate: reg(recs, tgt, cg.catch - 0.02, 45),
     ypr: reg(g(s, "receiving.receivingYards"), recs, cg.ypr * 0.95, 30),
     recTd: reg(g(s, "receiving.receivingTouchdowns"), tgt, cg.td, 70),
@@ -1302,7 +1316,7 @@ export function assembleFootball(
   const mk = (meta: TeamMeta, ros: RosterEntry[]): NflTeam => {
     const players = ros
       .filter((e) => e.group !== "practiceSquad")
-      .map((e) => nflPlayer(fse, e, lg));
+      .map((e) => nflPlayer(fse, e, lg, ctx.fb?.players?.[e.id]));
     // How pass-heavy this roster plays: its targets against its carries,
     // relative to the league's, mapped onto the league's ~58% pass rate.
     let tg = 0;

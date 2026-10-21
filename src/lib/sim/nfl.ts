@@ -35,6 +35,7 @@
 
 import { available, Box, clock, finish, Log, ordinal, Rng } from "./core";
 import { NFL } from "./columns";
+import { FB_KNOBS as FK } from "./football-knobs";
 import coaching from "./nfl-coaching.json";
 import type {
   FootballLeague,
@@ -176,6 +177,9 @@ interface TeamPrep {
   scramble: Record<number, number>;
   targets: number[];
   targetW: number[];
+  /** Positions in rushers / targets of the regulars who sit in a blowout. */
+  regRush: Set<number>;
+  regTgt: Set<number>;
   kicker: number;
   punter: number;
   def: number[];
@@ -281,6 +285,11 @@ function prepTeam(
     rush: (ratio("defYpcRush") ?? fallback) * soft,
   };
   const edge = college ? CFB_HOME_EDGE : HOME_EDGE;
+  // Rest: a bye week, or a short week (college plays Thursdays and Fridays).
+  const rest = m.ctx.fb?.rest?.[side];
+  const restF =
+    rest === undefined ? 1 : rest >= 12 ? 1 + FK.bye : rest <= 5 ? 1 + FK.shortWeek : 1;
+  const mktF = m.ctx.fb?.mkt?.[side] ?? 1;
   const pace = t.pace;
   const tempo = pace ? Math.max(0.85, Math.min(1.15, pace.league / Math.max(1, pace.value))) : 1;
   const k = kicker >= 0 ? P[kicker] : null;
@@ -296,8 +305,22 @@ function prepTeam(
       i === qb
         ? qbRuns * (1 - SCRAMBLE_SHARE)
         : college
-          ? Math.pow(P[i].carries, CFB_RUSH_POW) / Math.pow(8, CFB_RUSH_POW - 1)
+          ? Math.pow(P[i].carries, FK.rushPow) / Math.pow(8, FK.rushPow - 1)
           : Math.pow(P[i].carries, 1.15),
+    ),
+    regRush: new Set(
+      rushers
+        .map((i, k) => [k, i === qb ? -1 : P[i].carries] as const)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([k]) => k),
+    ),
+    regTgt: new Set(
+      targets
+        .map((i, k) => [k, P[i].targets] as const)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([k]) => k),
     ),
     qbYpc,
     scramble: Object.fromEntries(
@@ -311,7 +334,7 @@ function prepTeam(
       }),
     ),
     targets,
-    targetW: targets.map((i) => Math.pow(P[i].targets, college ? CFB_TARGET_POW : 1.2)),
+    targetW: targets.map((i) => Math.pow(P[i].targets, college ? FK.targetPow : 1.2)),
     kicker,
     punter,
     def,
@@ -335,7 +358,9 @@ function prepTeam(
     off:
       (neutral ? 1 : side === "home" ? 1 + edge : 1 - edge) *
       (college && team.fcs && !opp.fcs ? FCS_OFF : 1) *
-      (college ? Math.exp((CFB_STRENGTH * (team.rating ?? 0)) / 2) : 1),
+      (college ? Math.exp((CFB_STRENGTH * (team.rating ?? 0)) / 2) : 1) *
+      restF *
+      mktF,
     vs,
     tempo,
     goOdds: college
@@ -421,7 +446,19 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
   const timeouts = [3, 3];
   const qb = [T[0].qb, T[1].qb];
   const college = prep.college;
-  const formSd = college ? CFB_FORM_SD : FORM_SD;
+  const formSd = college ? FK.formSd : FORM_SD;
+  // Blowouts: from the fourth quarter, a side up (or, optionally, down) by
+  // FK.pull sits its starting quarterback and its regular backs and receivers.
+  const pulled = [false, false];
+  const checkPull = () => {
+    if (!FK.pull || quarter < 4) return;
+    for (const s of [0, 1]) {
+      const lead = score[s] - score[1 - s];
+      if (pulled[s] || !(lead >= FK.pull || (FK.pullBoth && -lead >= FK.pull))) continue;
+      pulled[s] = true;
+      if (T[s].backupQb !== qb[s]) qb[s] = T[s].backupQb;
+    }
+  };
   const form = [0, 1].map(() => Math.max(0.75, Math.min(1.25, 1 + rng.normal(0, formSd))));
 
   let quarter = 1;
@@ -803,7 +840,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const tp = T[s];
     if (!tp.rushers.length) return tp.qb;
     const w = tp.rushers.map(
-      (i, k) => tp.rushW[k] * (redZone ? Math.sqrt(P(s, i).rushTd / 0.035) : 1),
+      (i, k) =>
+        tp.rushW[k] *
+        (redZone ? Math.sqrt(P(s, i).rushTd / 0.035) : 1) *
+        (pulled[s] && tp.regRush.has(k) ? FK.pullF : 1),
     );
     const pick = tp.rushers[rng.pick(w)];
     // The injured starter's runs go to whoever is under centre now.
@@ -814,7 +854,10 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
     const tp = T[s];
     if (!tp.targets.length) return -1;
     const w = tp.targets.map(
-      (i, k) => tp.targetW[k] * (redZone ? Math.sqrt(P(s, i).recTd / 0.05) : 1),
+      (i, k) =>
+        tp.targetW[k] *
+        (redZone ? Math.sqrt(P(s, i).recTd / 0.05) : 1) *
+        (pulled[s] && tp.regTgt.has(k) ? FK.pullF : 1),
     );
     return tp.targets[rng.pick(w)];
   };
@@ -1382,6 +1425,7 @@ export function playNfl(prep: NflPrep, seed: number, record: boolean): GameResul
       if (call === "fg") return void fieldGoal();
     }
     if (penalty()) return;
+    checkPull();
     if (rng.chance(passRate(s))) passPlay();
     else runPlay();
     // Quarterback injury: rare, but it is the event that most changes a game.
@@ -1536,4 +1580,55 @@ export function checkInvariants(m: NflMatchup, r: GameResult): string[] {
   }
   void m;
   return errs;
+}
+
+/**
+ * The market's total and spread, folded in: short pre-runs measure what the
+ * engine expects, and returns offensive-efficiency multipliers per side that
+ * move it `wTotal` / `wSpread` of the way to the line. Points respond to
+ * efficiency more than one for one (longer drives, more touchdowns), so the
+ * response is measured once and the second step uses it.
+ */
+export function nflMarketAdjust(
+  m: NflMatchup,
+  wTotal: number,
+  wSpread: number,
+  sims = 300,
+): { home: number; away: number } | null {
+  const line = m.ctx.line;
+  if (!line || (line.total === null && line.spread === null)) return null;
+  const run = (h: number, a: number) => {
+    const mm = { ...m, ctx: { ...m.ctx, fb: { ...m.ctx.fb, mkt: { home: h, away: a } } } };
+    const prep = prepareNfl(mm, { benched: [], activated: [] });
+    let hs = 0;
+    let as = 0;
+    for (let i = 0; i < sims; i++) {
+      const r = playNfl(prep, (0x9e3779b1 * (i + 1)) >>> 0, false);
+      hs += r.home;
+      as += r.away;
+    }
+    return [hs / sims, as / sims];
+  };
+  const target = (h: number, a: number) => {
+    const tot = h + a;
+    const mar = h - a;
+    const T = line.total !== null && wTotal > 0 ? (1 - wTotal) * tot + wTotal * line.total : tot;
+    const M = line.spread !== null && wSpread > 0 ? (1 - wSpread) * mar + wSpread * -line.spread : mar;
+    return [(T + M) / 2, (T - M) / 2];
+  };
+  const [h0, a0] = run(1, 1);
+  const [th, ta] = target(h0, a0);
+  // First step at an assumed response of 2 (points % per efficiency %).
+  const e0 = 2;
+  const fh = Math.pow(Math.max(3, th) / Math.max(3, h0), 1 / e0);
+  const fa = Math.pow(Math.max(3, ta) / Math.max(3, a0), 1 / e0);
+  const [h1, a1] = run(fh, fa);
+  const resp = (f: number, p1: number, p0: number) =>
+    Math.abs(Math.log(f)) > 0.01 ? Math.max(0.8, Math.min(4, Math.log(p1 / p0) / Math.log(f))) : e0;
+  const eh = resp(fh, Math.max(3, h1), Math.max(3, h0));
+  const ea = resp(fa, Math.max(3, a1), Math.max(3, a0));
+  return {
+    home: Math.max(0.6, Math.min(1.6, Math.pow(Math.max(3, th) / Math.max(3, h0), 1 / eh))),
+    away: Math.max(0.6, Math.min(1.6, Math.pow(Math.max(3, ta) / Math.max(3, a0), 1 / ea))),
+  };
 }
