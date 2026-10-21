@@ -1,0 +1,15 @@
+{
+ "title": "Simulator upgrade, October 2026",
+ "season": "The 2026 season to date, held out",
+ "summary": "Every factor was tested one at a time on the 2025 season, and only those that made the numbers more accurate were kept. The combination was then checked on 2026 to date, which none of the choices were made on.",
+ "kept": [
+  {"name": "Recent usage", "what": "targets and carries lean 75% toward each player's last four appearances (half-life two games)", "effect": "-1.1% error"},
+  {"name": "Blowouts", "what": "from the fourth quarter, a side up or down 28+ sits its starting quarterback, top two backs and top three receivers", "effect": "-0.2%"}
+ ],
+ "dropped": [
+  {"name": "Bye week / short week", "effect": "0.0%"},
+  {"name": "Usage concentration retuned", "effect": "0.0%"},
+  {"name": "Game-to-game form spread", "effect": "0.0%"}
+ ],
+ "untested": ["weather (ESPN keeps none for college games)", "depth charts and injury reports (not archived)"]
+}
